@@ -462,7 +462,8 @@
         "- BondingCurve PDA (price engine + SOL reserve)",
         "- CreatorVault PDA (12-month lock tracker)",
         "- RewardPool PDA (holder fee accumulator)",
-        "- Creator's ATA (minted + frozen)"
+        "- Creator's ATA (minted + frozen)",
+        "- Initial SOL liquidity injected into bonding curve reserve"
       ],
       "discriminator": [
         84,
@@ -668,6 +669,10 @@
         },
         {
           "name": "slope",
+          "type": "u64"
+        },
+        {
+          "name": "initial_liquidity",
           "type": "u64"
         }
       ]
@@ -1357,6 +1362,11 @@
       "code": 6023,
       "name": "UnauthorizedOracle",
       "msg": "Unauthorized: only protocol authority can record engagement"
+    },
+    {
+      "code": 6024,
+      "name": "InsufficientInitialLiquidity",
+      "msg": "Initial liquidity below minimum — inject more SOL to give your token value"
     }
   ],
   "types": [

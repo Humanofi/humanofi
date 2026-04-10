@@ -38,14 +38,16 @@ pub mod humanofi {
     /// - CreatorVault PDA (12-month lock tracker)
     /// - RewardPool PDA (holder fee accumulator)
     /// - Creator's ATA (minted + frozen)
+    /// - Initial SOL liquidity injected into bonding curve reserve
     pub fn create_token(
         ctx: Context<CreateToken>,
         name: String,
         symbol: String,
         base_price: u64,
         slope: u64,
+        initial_liquidity: u64,
     ) -> Result<()> {
-        instructions::create_token::handler(ctx, name, symbol, base_price, slope)
+        instructions::create_token::handler(ctx, name, symbol, base_price, slope, initial_liquidity)
     }
 
     /// Buy tokens from the bonding curve.

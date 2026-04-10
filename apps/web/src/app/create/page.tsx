@@ -15,6 +15,8 @@ const TREASURY = new PublicKey(
 
 const DEFAULT_BASE_PRICE = 10_000;
 const DEFAULT_SLOPE = 1_000;
+const SOL_PRICE_USD = 170; // Approximate SOL/USD for display
+const LAMPORTS_PER_SOL_CONST = 1_000_000_000;
 
 // ── Expanded categories ──
 const CATEGORIES = [
@@ -117,6 +119,7 @@ export default function CreatePage() {
   const [instagram, setInstagram] = useState("");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [initialLiquidityUSD, setInitialLiquidityUSD] = useState(20); // $5-$100
   const [step, setStep] = useState<"connect" | "form" | "launching" | "done">("connect");
   const [currentSection, setCurrentSection] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -243,6 +246,7 @@ export default function CreatePage() {
         symbol: tokenSymbol.toUpperCase(),
         basePrice: DEFAULT_BASE_PRICE,
         slope: DEFAULT_SLOPE,
+        initialLiquidity: Math.floor((initialLiquidityUSD / SOL_PRICE_USD) * LAMPORTS_PER_SOL_CONST),
         treasury: TREASURY,
       });
 
@@ -289,7 +293,7 @@ export default function CreatePage() {
       setStep("form");
       setLaunchStep(0);
     }
-  }, [tokenName, tokenSymbol, category, bio, avatarPreview, avatarFile, story, offer, country, twitter, linkedin, website, instagram, createToken, walletAddress]);
+  }, [tokenName, tokenSymbol, category, bio, avatarPreview, avatarFile, story, offer, country, twitter, linkedin, website, instagram, initialLiquidityUSD, createToken, walletAddress]);
 
   // Form sections for step-by-step flow
   const sections = [
@@ -666,9 +670,75 @@ export default function CreatePage() {
                       <li>A <strong>Token-2022 mint</strong> is created on Solana</li>
                       <li><strong>100M tokens</strong> are minted to your vault (locked 1 year)</li>
                       <li>A <strong>bonding curve</strong> market is activated — anyone can buy/sell</li>
+                      <li><strong>${initialLiquidityUSD}</strong> injected as initial liquidity — your token starts with real value</li>
                       <li>Your profile goes <strong>live on the marketplace</strong></li>
                       <li>You can start posting in your <strong>Inner Circle</strong> (token-gated feed)</li>
                     </ul>
+                  </div>
+
+                  {/* ── Initial Liquidity Selector ── */}
+                  <div style={{
+                    padding: 24,
+                    border: "2px solid var(--accent)",
+                    background: "linear-gradient(135deg, rgba(0,0,0,0.02), rgba(0,0,0,0.04))",
+                    marginBottom: 28,
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                      <span style={{ fontSize: "1.3rem" }}>💎</span>
+                      <span style={{ fontWeight: 800, fontSize: "0.9rem" }}>Initial Liquidity</span>
+                    </div>
+
+                    <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", lineHeight: 1.6, marginBottom: 16 }}>
+                      This SOL goes directly into your bonding curve as starting liquidity.
+                      <strong> Nobody holds these funds</strong> — they give your token a real starting value.
+                      We recommend <strong>$20+</strong> for a strong launch. Minimum is $5.
+                    </p>
+
+                    {/* Preset buttons */}
+                    <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+                      {[5, 10, 20, 50, 100].map((amount) => (
+                        <button
+                          key={amount}
+                          onClick={() => setInitialLiquidityUSD(amount)}
+                          style={{
+                            padding: "8px 16px",
+                            fontSize: "0.82rem",
+                            fontWeight: initialLiquidityUSD === amount ? 800 : 600,
+                            border: initialLiquidityUSD === amount ? "2px solid var(--accent)" : "2px solid var(--border)",
+                            background: initialLiquidityUSD === amount ? "var(--accent)" : "#fff",
+                            color: initialLiquidityUSD === amount ? "#fff" : "var(--text)",
+                            cursor: "pointer",
+                            transition: "all 0.15s",
+                          }}
+                        >
+                          ${amount}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Slider */}
+                    <input
+                      type="range"
+                      min={5}
+                      max={100}
+                      step={5}
+                      value={initialLiquidityUSD}
+                      onChange={(e) => setInitialLiquidityUSD(Number(e.target.value))}
+                      style={{ width: "100%", accentColor: "var(--accent)" }}
+                    />
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", color: "var(--text-muted)", marginTop: 4 }}>
+                      <span>$5 (minimum)</span>
+                      <span style={{ fontWeight: 800, color: "var(--text)", fontSize: "0.85rem" }}>
+                        ${initialLiquidityUSD} ≈ {(initialLiquidityUSD / SOL_PRICE_USD).toFixed(3)} SOL
+                      </span>
+                      <span>$100</span>
+                    </div>
+
+                    {initialLiquidityUSD < 20 && (
+                      <div style={{ marginTop: 12, padding: "8px 12px", background: "#fff3cd", fontSize: "0.72rem", color: "#856404", fontWeight: 600 }}>
+                        💡 We recommend at least $20 for a strong initial token value.
+                      </div>
+                    )}
                   </div>
 
                   <button
@@ -684,7 +754,7 @@ export default function CreatePage() {
                     }}
                     onClick={handleLaunch}
                   >
-                    🚀 Launch My Token (~$10 in SOL)
+                    🚀 Launch My Token (${initialLiquidityUSD} + ~$2 fees)
                   </button>
                 </div>
               )}

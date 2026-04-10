@@ -32,22 +32,41 @@ use crate::state::*;
 /// 1. Validate inputs (name, symbol, prices)
 /// 2. Initialize Token-2022 Mint with bonding_curve PDA as authority
 /// 3. Initialize BondingCurve, RewardPool, CreatorVault PDAs
-/// 4. Create creator's token account (ATA)
-/// 5. Mint creator's share to their ATA
-/// 6. Freeze creator's ATA (tokens locked)
+/// 4. Transfer initial liquidity SOL to bonding curve reserve
+/// 5. Create creator's token account (ATA)
+/// 6. Mint creator's share to their ATA
+/// 7. Freeze creator's ATA (tokens locked)
 pub fn handler(
     ctx: Context<CreateToken>,
     _name: String,
     _symbol: String,
     base_price: u64,
     slope: u64,
+    initial_liquidity: u64,
 ) -> Result<()> {
     // ---- Validate inputs ----
     require!(base_price > 0, HumanofiError::InvalidBasePrice);
     require!(slope > 0, HumanofiError::InvalidCurveFactor);
+    require!(initial_liquidity >= MIN_INITIAL_LIQUIDITY, HumanofiError::InsufficientInitialLiquidity);
 
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;
+    let curve_bump = ctx.bumps.bonding_curve;
+
+    // ---- Transfer initial liquidity: creator → bonding curve PDA ----
+    // Must happen BEFORE we take &mut on bonding_curve (borrow rules)
+    if initial_liquidity > 0 {
+        anchor_lang::system_program::transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                anchor_lang::system_program::Transfer {
+                    from: ctx.accounts.creator.to_account_info(),
+                    to: ctx.accounts.bonding_curve.to_account_info(),
+                },
+            ),
+            initial_liquidity,
+        )?;
+    }
 
     // ---- Initialize Bonding Curve PDA ----
     let curve = &mut ctx.accounts.bonding_curve;
@@ -56,10 +75,10 @@ pub fn handler(
     curve.base_price = base_price;
     curve.slope = slope;
     curve.supply_sold = 0;
-    curve.sol_reserve = 0;
+    curve.sol_reserve = initial_liquidity;
     curve.created_at = now;
     curve.is_active = true;
-    curve.bump = ctx.bumps.bonding_curve;
+    curve.bump = curve_bump;
 
     // ---- Initialize Creator Vault PDA (progressive vesting) ----
     let vault = &mut ctx.accounts.creator_vault;
@@ -109,11 +128,12 @@ pub fn handler(
     ))?;
 
     msg!(
-        "✅ Token created | mint={} | creator={} | base_price={} | slope={}",
+        "✅ Token created | mint={} | creator={} | base_price={} | slope={} | initial_liquidity={}",
         ctx.accounts.mint.key(),
         ctx.accounts.creator.key(),
         base_price,
-        slope
+        slope,
+        initial_liquidity
     );
 
     Ok(())

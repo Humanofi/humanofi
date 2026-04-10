@@ -88,6 +88,7 @@ export function useHumanofi() {
       symbol: string;
       basePrice: number; // in lamports
       slope: number;
+      initialLiquidity: number; // in lamports
       treasury: PublicKey;
     }) => {
       if (!program || !publicKey) {
@@ -112,7 +113,8 @@ export function useHumanofi() {
           params.name,
           params.symbol,
           new BN(params.basePrice),
-          new BN(params.slope)
+          new BN(params.slope),
+          new BN(params.initialLiquidity)
         )
         .accountsStrict({
           creator: publicKey,

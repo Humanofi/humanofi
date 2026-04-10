@@ -85,4 +85,8 @@ pub enum HumanofiError {
 
     #[msg("Unauthorized: only protocol authority can record engagement")]
     UnauthorizedOracle,
+
+    // ---- Initial Liquidity (6080-6089) ----
+    #[msg("Initial liquidity below minimum — inject more SOL to give your token value")]
+    InsufficientInitialLiquidity,
 }

@@ -89,6 +89,12 @@ pub const SEED_LIMITER: &[u8] = b"limiter";
 pub const SEED_REWARD_STATE: &[u8] = b"reward_state";
 pub const SEED_ENGAGEMENT: &[u8] = b"engagement";
 
+// ---- Initial Liquidity ----
+
+/// Minimum SOL a creator must inject into the bonding curve at creation.
+/// ~$5 in SOL (0.03 SOL ≈ $5 at ~$170/SOL). Gives token a non-zero starting value.
+pub const MIN_INITIAL_LIQUIDITY: u64 = 30_000_000; // 0.03 SOL = 30M lamports
+
 // ---- Engagement Rewards ----
 
 /// Minimum actions per epoch to qualify for reward claims
