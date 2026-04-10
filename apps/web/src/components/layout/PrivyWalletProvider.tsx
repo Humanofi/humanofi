@@ -26,6 +26,8 @@ export function PrivyWalletProvider({ children }: PrivyWalletProviderProps) {
     return <>{children}</>;
   }
 
+  const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.devnet.solana.com";
+
   return (
     <PrivyProvider
       appId={appId}
@@ -47,6 +49,17 @@ export function PrivyWalletProvider({ children }: PrivyWalletProviderProps) {
             connectors: solanaConnectors,
           },
         },
+        // Solana RPC endpoints — fixes "No RPC configuration found" error
+        solanaClusters: [
+          {
+            name: "devnet",
+            rpcUrl: rpcUrl,
+          },
+          {
+            name: "mainnet-beta",
+            rpcUrl: "https://api.mainnet-beta.solana.com",
+          },
+        ],
       }}
     >
       {children}

@@ -139,7 +139,8 @@ export default function PersonPage({
     if (authenticated && connected) {
       checkHolder();
     }
-  }, [walletAddress, creator, authenticated, connected]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletAddress, creator?.mint_address, authenticated, connected]);
 
   // ── Build display data (real or mock) ──
   const person: Person | null = creator
