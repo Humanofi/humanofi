@@ -13,7 +13,7 @@ const jakarta = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: "Humanofi — The first market where humans are the asset | Beta Devnet",
   description:
-    "Back the people you believe in. Access their private worlds. The value of your access grows with their reputation.",
+    "Back the people you believe in. Buy their token, access their private inner circle, and grow with them. Built on Solana.",
 };
 
 export default function RootLayout({
