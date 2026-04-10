@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef, useMemo, useEffect, useDeferredValue } from "react";
 import Topbar from "@/components/Topbar";
 import Footer from "@/components/Footer";
+import { LivePreviewCard } from "@/components/LivePreviewCard";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
 import { PublicKey } from "@solana/web3.js";
@@ -65,6 +66,10 @@ const COUNTRIES = [
   { code: "PH", name: "Philippines" }, { code: "TW", name: "Taiwan" },
   { code: "HK", name: "Hong Kong" },
 ];
+
+// Pre-built lookup Maps for O(1) access (no .find() on every render)
+const CATEGORY_EMOJI_MAP = new Map(CATEGORIES.map(c => [c.value, c.emoji]));
+const COUNTRY_NAME_MAP = new Map(COUNTRIES.map(c => [c.code, c.name]));
 
 // ── Styles ──
 const labelStyle: React.CSSProperties = {
@@ -147,6 +152,10 @@ export default function CreatePage() {
   const deferredCategory = useDeferredValue(category);
   const deferredCountry = useDeferredValue(country);
   const deferredAvatar = useDeferredValue(avatarPreview);
+
+  // Pre-resolved lookups (primitive strings for memo comparison)
+  const deferredCategoryEmoji = CATEGORY_EMOJI_MAP.get(deferredCategory) || "";
+  const deferredCountryName = COUNTRY_NAME_MAP.get(deferredCountry) || "";
 
   // Handle avatar upload
   const handleAvatarChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -716,86 +725,21 @@ export default function CreatePage() {
               </div>
             </div>
 
-            {/* Right: Live Preview Card (uses deferred values for perf) */}
-            <div style={{ position: "sticky", top: 100 }}>
-              <div style={{ fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12, color: "var(--text-muted)" }}>
-                Live Preview
-              </div>
-              <div style={{
-                border: "2px solid var(--border)",
-                background: "#fff",
-                overflow: "hidden",
-              }}>
-                {/* Photo */}
-                <div style={{
-                  width: "100%",
-                  height: 220,
-                  background: deferredAvatar ? `url(${deferredAvatar}) center/cover` : "linear-gradient(135deg, #f0f0f0, #e0e0e0)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}>
-                  {!deferredAvatar && (
-                    <div style={{ fontSize: "3rem", opacity: 0.3 }}>◈</div>
-                  )}
-                </div>
-
-                {/* Info */}
-                <div style={{ padding: 20 }}>
-                  {deferredCategory && (
-                    <div style={{
-                      display: "inline-block",
-                      padding: "3px 10px",
-                      border: "2px solid var(--border)",
-                      fontSize: "0.65rem",
-                      fontWeight: 800,
-                      textTransform: "uppercase",
-                      marginBottom: 12,
-                    }}>
-                      {CATEGORIES.find((c) => c.value === deferredCategory)?.emoji} {deferredCategory}
-                    </div>
-                  )}
-
-                  <div style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 4 }}>
-                    {deferredName || "Your Name"}
-                  </div>
-
-                  {deferredSymbol && (
-                    <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--accent)", marginBottom: 12 }}>
-                      ${deferredSymbol}
-                    </div>
-                  )}
-
-                  <div style={{
-                    fontSize: "0.78rem",
-                    color: "var(--text-muted)",
-                    lineHeight: 1.5,
-                    display: "-webkit-box",
-                    WebkitLineClamp: 3,
-                    WebkitBoxOrient: "vertical",
-                    overflow: "hidden",
-                  }}>
-                    {deferredBio || "Your bio will appear here..."}
-                  </div>
-
-                  {/* Socials preview */}
-                  {(twitter || linkedin || instagram || website) && (
-                    <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-                      {twitter && <span style={{ fontSize: "0.7rem", fontWeight: 700, background: "#f0f0f0", padding: "2px 8px" }}>𝕏</span>}
-                      {linkedin && <span style={{ fontSize: "0.7rem", fontWeight: 700, background: "#f0f0f0", padding: "2px 8px" }}>in</span>}
-                      {instagram && <span style={{ fontSize: "0.7rem", fontWeight: 700, background: "#f0f0f0", padding: "2px 8px" }}>📷</span>}
-                      {website && <span style={{ fontSize: "0.7rem", fontWeight: 700, background: "#f0f0f0", padding: "2px 8px" }}>🌐</span>}
-                    </div>
-                  )}
-
-                  {deferredCountry && (
-                    <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: 8 }}>
-                      📍 {COUNTRIES.find((c) => c.code === deferredCountry)?.name}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+            {/* Right: Live Preview Card (memoized for performance) */}
+            <LivePreviewCard
+              name={deferredName}
+              symbol={deferredSymbol}
+              bio={deferredBio}
+              category={deferredCategory}
+              categoryEmoji={deferredCategoryEmoji}
+              country={deferredCountry}
+              countryName={deferredCountryName}
+              avatar={deferredAvatar}
+              twitter={twitter}
+              linkedin={linkedin}
+              instagram={instagram}
+              website={website}
+            />
           </div>
         )}
 
