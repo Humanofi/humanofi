@@ -98,9 +98,8 @@ pub const MIN_ENGAGEMENT_ACTIONS: u16 = 4;
 pub const ENGAGEMENT_EPOCH_DURATION: i64 = 30 * 24 * 60 * 60; // 2_592_000
 
 /// Protocol authority pubkey (oracle API signer)
-/// This is the public key of the keypair used by the API to sign
-/// engagement records. Update this when deploying.
+/// Pubkey: HwjhotCERc13H1HVpmejq9mEjJAKUccutx9LzVLQshkH
 pub const PROTOCOL_AUTHORITY: Pubkey = Pubkey::new_from_array([
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-]); // TODO: Set to actual oracle pubkey before deploy
+    251, 192, 163, 189, 237, 131, 160, 77, 242, 237, 73, 235, 117, 30, 198, 23,
+    111, 140, 246, 93, 102, 215, 206, 245, 18, 173, 24, 243, 242, 50, 247, 14,
+]);

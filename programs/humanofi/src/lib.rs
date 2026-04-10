@@ -80,8 +80,8 @@ pub mod humanofi {
     ///
     /// Uses reward-per-token pattern (gas-efficient, O(1)):
     /// pending = balance × (global_rpt - personal_rpt) / precision
-    pub fn claim_rewards(ctx: Context<ClaimRewards>) -> Result<()> {
-        instructions::claim_rewards::handler(ctx)
+    pub fn claim_rewards(ctx: Context<ClaimRewards>, epoch: u64) -> Result<()> {
+        instructions::claim_rewards::handler(ctx, epoch)
     }
 
     /// Record a holder's engagement score on-chain (ORACLE ONLY).
@@ -89,8 +89,8 @@ pub mod humanofi {
     /// Called by the API server (protocol authority) to attest
     /// that a holder has been active in the Inner Circle this month.
     /// The EngagementRecord PDA is then verified during claim_rewards.
-    pub fn record_engagement(ctx: Context<RecordEngagement>, actions_count: u16) -> Result<()> {
-        instructions::record_engagement::handler(ctx, actions_count)
+    pub fn record_engagement(ctx: Context<RecordEngagement>, actions_count: u16, epoch: u64) -> Result<()> {
+        instructions::record_engagement::handler(ctx, actions_count, epoch)
     }
 
     /// Unlock creator tokens based on progressive vesting schedule.

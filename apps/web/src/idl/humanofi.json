@@ -237,6 +237,10 @@
       "docs": [
         "Claim accumulated rewards from the holder fee pool.",
         "",
+        "ENGAGEMENT GATED: Holder must have >= MIN_ENGAGEMENT_ACTIONS",
+        "in the current epoch (month) to qualify. The engagement record",
+        "is written by the protocol oracle via record_engagement.",
+        "",
         "Uses reward-per-token pattern (gas-efficient, O(1)):",
         "pending = balance × (global_rpt - personal_rpt) / precision"
       ],
@@ -332,6 +336,43 @@
           }
         },
         {
+          "name": "engagement_record",
+          "docs": [
+            "Engagement record for current epoch (proves holder was active)"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  103,
+                  97,
+                  103,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              },
+              {
+                "kind": "arg",
+                "path": "epoch"
+              }
+            ]
+          }
+        },
+        {
           "name": "holder_token_account",
           "docs": [
             "Holder's token account (to verify balance)"
@@ -404,7 +445,12 @@
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": []
+      "args": [
+        {
+          "name": "epoch",
+          "type": "u64"
+        }
+      ]
     },
     {
       "name": "create_token",
@@ -622,6 +668,103 @@
         },
         {
           "name": "slope",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "record_engagement",
+      "docs": [
+        "Record a holder's engagement score on-chain (ORACLE ONLY).",
+        "",
+        "Called by the API server (protocol authority) to attest",
+        "that a holder has been active in the Inner Circle this month.",
+        "The EngagementRecord PDA is then verified during claim_rewards."
+      ],
+      "discriminator": [
+        41,
+        176,
+        233,
+        105,
+        106,
+        185,
+        47,
+        42
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "Protocol oracle authority (API signer)"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "holder",
+          "docs": [
+            "The holder whose engagement is being recorded"
+          ]
+        },
+        {
+          "name": "mint",
+          "docs": [
+            "The Token-2022 Mint"
+          ]
+        },
+        {
+          "name": "engagement_record",
+          "docs": [
+            "Engagement record PDA (init_if_needed for first record)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  110,
+                  103,
+                  97,
+                  103,
+                  101,
+                  109,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              },
+              {
+                "kind": "arg",
+                "path": "epoch"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System Program"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "actions_count",
+          "type": "u16"
+        },
+        {
+          "name": "epoch",
           "type": "u64"
         }
       ]
@@ -1042,6 +1185,19 @@
       ]
     },
     {
+      "name": "EngagementRecord",
+      "discriminator": [
+        234,
+        28,
+        96,
+        202,
+        59,
+        32,
+        240,
+        7
+      ]
+    },
+    {
       "name": "HolderRewardState",
       "discriminator": [
         115,
@@ -1186,6 +1342,21 @@
       "code": 6020,
       "name": "ZeroAmount",
       "msg": "Token amount must be greater than zero"
+    },
+    {
+      "code": 6021,
+      "name": "EngagementExpired",
+      "msg": "Engagement record expired — must be from current epoch"
+    },
+    {
+      "code": 6022,
+      "name": "InsufficientEngagement",
+      "msg": "Insufficient engagement — minimum actions required this month"
+    },
+    {
+      "code": 6023,
+      "name": "UnauthorizedOracle",
+      "msg": "Unauthorized: only protocol authority can record engagement"
     }
   ],
   "types": [
@@ -1298,6 +1469,57 @@
             "name": "created_at",
             "docs": [
               "Unix timestamp when the vault was created (start of vesting)"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EngagementRecord",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "docs": [
+              "The Token-2022 mint this record belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "docs": [
+              "The holder's wallet address"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "epoch",
+            "docs": [
+              "Epoch number (unix_timestamp / EPOCH_DURATION)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "actions_count",
+            "docs": [
+              "Number of qualified actions this epoch",
+              "(reactions, replies, votes, etc.)"
+            ],
+            "type": "u16"
+          },
+          {
+            "name": "last_recorded_at",
+            "docs": [
+              "Last time engagement was recorded by oracle"
             ],
             "type": "i64"
           },

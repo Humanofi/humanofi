@@ -285,8 +285,10 @@ export function useHumanofi() {
         TOKEN_2022_PROGRAM_ID
       );
 
+      const epoch = Math.floor(Date.now() / 1000 / ENGAGEMENT_EPOCH_DURATION);
+
       const txPromise = program.methods
-        .claimRewards()
+        .claimRewards(new BN(epoch))
         .accountsStrict({
           holder: publicKey,
           mint,

@@ -80,3 +80,6 @@ CLAUDE.md
 AGENTS.md
 apps/web/CLAUDE.md
 apps/web/AGENTS.md
+
+# Oracle keypair (secret)
+oracle-keypair.json

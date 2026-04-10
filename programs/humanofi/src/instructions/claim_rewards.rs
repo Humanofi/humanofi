@@ -21,7 +21,7 @@ use crate::constants::*;
 use crate::errors::HumanofiError;
 use crate::state::*;
 
-pub fn handler(ctx: Context<ClaimRewards>) -> Result<()> {
+pub fn handler(ctx: Context<ClaimRewards>, epoch: u64) -> Result<()> {
     let holder_balance = ctx.accounts.holder_token_account.amount;
     require!(holder_balance > 0, HumanofiError::ZeroHolderBalance);
 
@@ -83,6 +83,7 @@ pub fn handler(ctx: Context<ClaimRewards>) -> Result<()> {
 }
 
 #[derive(Accounts)]
+#[instruction(epoch: u64)]
 pub struct ClaimRewards<'info> {
     /// The holder claiming rewards
     #[account(mut)]
@@ -116,7 +117,7 @@ pub struct ClaimRewards<'info> {
             SEED_ENGAGEMENT,
             mint.key().as_ref(),
             holder.key().as_ref(),
-            &current_epoch_from_timestamp(Clock::get()?.unix_timestamp).to_le_bytes(),
+            &epoch.to_le_bytes(),
         ],
         bump = engagement_record.bump,
         constraint = engagement_record.holder == holder.key() @ HumanofiError::InvalidMint,

@@ -17,7 +17,7 @@ use crate::constants::*;
 use crate::errors::HumanofiError;
 use crate::state::*;
 
-pub fn handler(ctx: Context<RecordEngagement>, actions_count: u16) -> Result<()> {
+pub fn handler(ctx: Context<RecordEngagement>, actions_count: u16, epoch: u64) -> Result<()> {
     // Verify oracle authority
     require!(
         ctx.accounts.authority.key() == PROTOCOL_AUTHORITY,
@@ -25,7 +25,6 @@ pub fn handler(ctx: Context<RecordEngagement>, actions_count: u16) -> Result<()>
     );
 
     let clock = Clock::get()?;
-    let epoch = current_epoch_from_timestamp(clock.unix_timestamp);
 
     let record = &mut ctx.accounts.engagement_record;
     record.mint = ctx.accounts.mint.key();
@@ -47,6 +46,7 @@ pub fn handler(ctx: Context<RecordEngagement>, actions_count: u16) -> Result<()>
 }
 
 #[derive(Accounts)]
+#[instruction(actions_count: u16, epoch: u64)]
 pub struct RecordEngagement<'info> {
     /// Protocol oracle authority (API signer)
     #[account(mut)]
@@ -68,7 +68,7 @@ pub struct RecordEngagement<'info> {
             SEED_ENGAGEMENT,
             mint.key().as_ref(),
             holder.key().as_ref(),
-            &current_epoch_from_timestamp(Clock::get()?.unix_timestamp).to_le_bytes(),
+            &epoch.to_le_bytes(),
         ],
         bump,
     )]

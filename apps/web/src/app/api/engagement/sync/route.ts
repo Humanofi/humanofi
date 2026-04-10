@@ -125,9 +125,9 @@ export async function POST(request: NextRequest) {
       PROGRAM_ID
     );
 
-    // Send record_engagement transaction
+    // Send record_engagement transaction (actions_count, epoch)
     const sig = await program.methods
-      .recordEngagement(engagement.total_actions)
+      .recordEngagement(engagement.total_actions, new (await import("@coral-xyz/anchor")).BN(epoch))
       .accountsStrict({
         authority: oracleKeypair.publicKey,
         holder: holderPubkey,
