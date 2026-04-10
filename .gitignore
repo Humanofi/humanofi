@@ -70,3 +70,13 @@ Thumbs.db
 
 # ---- Internal references ----
 references/
+
+# ---- Internal scripts & seed ----
+scripts/
+supabase/seed/
+
+# ---- AI config files (internal) ----
+CLAUDE.md
+AGENTS.md
+apps/web/CLAUDE.md
+apps/web/AGENTS.md
