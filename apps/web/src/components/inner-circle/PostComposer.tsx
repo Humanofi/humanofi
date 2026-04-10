@@ -2,10 +2,10 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChatText, Megaphone, ChartBar, CalendarBlank, Paperclip, Microphone, Stop, Play, Trash, ImageSquare, VideoCamera, Globe, YoutubeLogo, Question } from "@phosphor-icons/react";
+import { ChatText, Megaphone, ChartBar, CalendarBlank, Paperclip, Microphone, Stop, Play, Trash, ImageSquare, VideoCamera, Globe, YoutubeLogo, Question, Crown } from "@phosphor-icons/react";
 import { toast } from "sonner";
 
-type PostType = "text" | "announcement" | "poll" | "event" | "youtube" | "question";
+type PostType = "text" | "announcement" | "poll" | "event" | "youtube" | "question" | "premium";
 
 // ── Public Post Toggle with Countdown ──
 function PublicPostToggle({
@@ -97,6 +97,7 @@ const TYPE_CONFIG: Record<PostType, { icon: React.ReactNode; label: string; plac
   question: { icon: <Question size={16} weight="bold" />, label: "AMA", placeholder: "Invite your holders to ask you questions..." },
   poll: { icon: <ChartBar size={16} weight="bold" />, label: "Poll", placeholder: "Ask your holders a question..." },
   event: { icon: <CalendarBlank size={16} weight="bold" />, label: "Event", placeholder: "Describe your upcoming event..." },
+  premium: { icon: <Crown size={16} weight="bold" />, label: "Premium", placeholder: "Exclusive content for top holders..." },
 };
 
 const YOUTUBE_REGEX = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
@@ -112,6 +113,7 @@ export default function PostComposer({ mintAddress, walletAddress, onPublished }
   const [eventDate, setEventDate] = useState("");
   const [eventTitle, setEventTitle] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [premiumThreshold, setPremiumThreshold] = useState(100);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -232,6 +234,12 @@ export default function PostComposer({ mintAddress, walletAddress, onPublished }
         metadata.youtube_url = youtubeUrl;
         metadata.youtube_id = ytMatch[1];
       }
+      if (postType === "premium") {
+        metadata.min_tokens = premiumThreshold;
+      }
+      if (isPublic) {
+        metadata.is_public = true;
+      }
 
       const res = await fetch(`/api/inner-circle/${mintAddress}/posts`, {
         method: "POST",
@@ -266,7 +274,7 @@ export default function PostComposer({ mintAddress, walletAddress, onPublished }
         toast.success("Published!");
         setContent(""); setPostType("text"); setSelectedFiles([]); setFilePreviews([]);
         setPollOptions(["", ""]); setEventDate(""); setEventTitle(""); setExpanded(false);
-        setAudioPreview(null); setIsPublic(false); setYoutubeUrl("");
+        setAudioPreview(null); setIsPublic(false); setYoutubeUrl(""); setPremiumThreshold(100);
         onPublished();
       } else {
         toast.error((await res.json()).error || "Failed to publish");
@@ -389,6 +397,42 @@ export default function PostComposer({ mintAddress, walletAddress, onPublished }
                   onChange={(e) => setEventTitle(e.target.value)} className="ic-composer__event-input" />
                 <input type="datetime-local" value={eventDate}
                   onChange={(e) => setEventDate(e.target.value)} className="ic-composer__event-input" />
+              </div>
+            )}
+
+            {/* Premium threshold */}
+            {postType === "premium" && (
+              <div className="ic-composer__premium-field">
+                <div className="ic-composer__premium-label">
+                  <Crown size={14} weight="fill" />
+                  <span>Minimum tokens to unlock</span>
+                </div>
+                <div className="ic-composer__premium-controls">
+                  <div className="ic-composer__premium-presets">
+                    {[100, 1000, 10000, 100000, 1000000].map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        className={`ic-composer__premium-preset ${premiumThreshold === v ? "ic-composer__premium-preset--active" : ""}`}
+                        onClick={() => setPremiumThreshold(v)}
+                      >
+                        {v >= 1000000 ? `${v / 1000000}M` : v >= 1000 ? `${v / 1000}K` : v}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="ic-composer__premium-input-wrap">
+                    <input
+                      type="number"
+                      min={1}
+                      max={100000000}
+                      step={100}
+                      value={premiumThreshold}
+                      onChange={(e) => setPremiumThreshold(Math.max(1, parseInt(e.target.value) || 100))}
+                      className="ic-composer__premium-input"
+                    />
+                    <span className="ic-composer__premium-unit">tokens</span>
+                  </div>
+                </div>
               </div>
             )}
 

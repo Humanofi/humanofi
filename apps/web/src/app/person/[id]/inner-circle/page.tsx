@@ -10,6 +10,7 @@ import PostCard, { PostData } from "@/components/inner-circle/PostCard";
 import PostComposer from "@/components/inner-circle/PostComposer";
 import PresenceSidebar from "@/components/inner-circle/PresenceSidebar";
 import FlyingEmojis from "@/components/inner-circle/FlyingEmojis";
+import { Archive } from "@phosphor-icons/react";
 import { toast } from "sonner";
 
 export default function InnerCirclePage() {
@@ -21,6 +22,8 @@ export default function InnerCirclePage() {
   const [loadingPosts, setLoadingPosts] = useState(true);
   const [userVotes, setUserVotes] = useState<Record<string, number>>({});
   const [userRsvps, setUserRsvps] = useState<Record<string, string>>({});
+  const [showArchived, setShowArchived] = useState(false);
+  const [holderBalance, setHolderBalance] = useState(0);
 
   const { onlineUsers, onlineCount, liveReactions, sendReaction, consumeReaction } =
     useRealtimeChannel(
@@ -41,7 +44,8 @@ export default function InnerCirclePage() {
     }
     setLoadingPosts(true);
     try {
-      const res = await fetch(`/api/inner-circle/${creator.mint_address}/posts`, {
+      const archiveParam = isCreator ? "&include_archived=true" : "";
+      const res = await fetch(`/api/inner-circle/${creator.mint_address}/posts?${archiveParam}`, {
         headers: { "x-wallet-address": walletAddress || "" },
       });
       if (!res.ok) { setLoadingPosts(false); return; }
@@ -49,6 +53,7 @@ export default function InnerCirclePage() {
       const data = await res.json();
       if (data.userVotes) setUserVotes(data.userVotes);
       if (data.userRsvps) setUserRsvps(data.userRsvps);
+      if (typeof data.holderBalance === "number") setHolderBalance(data.holderBalance);
 
       const fetchedPosts: PostData[] = (data.posts || []).map((p: any) => ({
         id: p.id,
@@ -58,6 +63,7 @@ export default function InnerCirclePage() {
         image_urls: p.image_urls || [],
         media_urls: p.media_urls || [],
         is_pinned: p.is_pinned || false,
+        is_archived: p.is_archived || false,
         creator_mint: p.creator_mint || creator.mint_address,
         created_at: p.created_at,
         reactions: {},
@@ -151,7 +157,18 @@ export default function InnerCirclePage() {
   // Delete post
   const handleDelete = useCallback((postId: string) => {
     setPosts((prev) => prev.filter((p) => p.id !== postId));
-    toast.success("Post deleted");
+  }, []);
+
+  // Update post (edit / archive)
+  const handleUpdate = useCallback((postId: string, updates: Partial<PostData>) => {
+    setPosts((prev) => {
+      const next = prev.map((p) => (p.id === postId ? { ...p, ...updates } : p));
+      // If we just un-archived the last archived post, switch back to feed
+      if (updates.is_archived === false && !next.some((p) => p.is_archived)) {
+        setShowArchived(false);
+      }
+      return next;
+    });
   }, []);
 
   const nextEvent = posts
@@ -205,34 +222,52 @@ export default function InnerCirclePage() {
             <PostComposer mintAddress={creator.mint_address} walletAddress={walletAddress} onPublished={fetchPosts} />
           )}
 
+          {/* Archive toggle (creator only) */}
+          {isCreator && posts.some((p) => p.is_archived) && (
+            <button
+              className={`ic-feed__archive-toggle ${showArchived ? "ic-feed__archive-toggle--active" : ""}`}
+              onClick={() => setShowArchived(!showArchived)}
+            >
+              <Archive size={16} weight={showArchived ? "fill" : "regular"} />
+              {showArchived ? "Back to Feed" : `Archive (${posts.filter((p) => p.is_archived).length})`}
+            </button>
+          )}
+
           {loadingPosts ? (
             <div className="ic-feed__loading">Loading feed...</div>
-          ) : posts.length > 0 ? (
-            <>
-              {posts.filter((p) => p.is_pinned).map((post) => (
-                <PostCard key={post.id} post={post}
-                  creatorName={creator?.display_name || ""} creatorAvatar={creator?.avatar_url || "/default-avatar.png"}
-                  isCreator={isCreator} walletAddress={walletAddress || ""} onVote={handleVote} onRsvp={handleRsvp} onDelete={handleDelete}
-                  onReactionChange={handleReactionChange} userVotes={userVotes} userRsvps={userRsvps}
-                />
-              ))}
-              {posts.filter((p) => !p.is_pinned).map((post) => (
-                <PostCard key={post.id} post={post}
-                  creatorName={creator?.display_name || ""} creatorAvatar={creator?.avatar_url || "/default-avatar.png"}
-                  isCreator={isCreator} walletAddress={walletAddress || ""} onVote={handleVote} onRsvp={handleRsvp} onDelete={handleDelete}
-                  onReactionChange={handleReactionChange} userVotes={userVotes} userRsvps={userRsvps}
-                />
-              ))}
-            </>
-          ) : (
+          ) : (() => {
+            const filtered = showArchived
+              ? posts.filter((p) => p.is_archived)
+              : posts.filter((p) => !p.is_archived);
+            return filtered.length > 0 ? (
+              <>
+                {filtered.filter((p) => p.is_pinned && !showArchived).map((post) => (
+                  <PostCard key={post.id} post={post}
+                    creatorName={creator?.display_name || ""} creatorAvatar={creator?.avatar_url || "/default-avatar.png"}
+                    isCreator={isCreator} walletAddress={walletAddress || ""} holderBalance={holderBalance} onVote={handleVote} onRsvp={handleRsvp} onDelete={handleDelete} onUpdate={handleUpdate}
+                    onReactionChange={handleReactionChange} userVotes={userVotes} userRsvps={userRsvps}
+                  />
+                ))}
+                {filtered.filter((p) => !p.is_pinned || showArchived).map((post) => (
+                  <PostCard key={post.id} post={post}
+                    creatorName={creator?.display_name || ""} creatorAvatar={creator?.avatar_url || "/default-avatar.png"}
+                    isCreator={isCreator} walletAddress={walletAddress || ""} holderBalance={holderBalance} onVote={handleVote} onRsvp={handleRsvp} onDelete={handleDelete} onUpdate={handleUpdate}
+                    onReactionChange={handleReactionChange} userVotes={userVotes} userRsvps={userRsvps}
+                  />
+                ))}
+              </>
+            ) : (
             <div className="ic-feed__empty">
               <div className="ic-feed__empty-icon">✨</div>
-              <div className="ic-feed__empty-title">No posts yet</div>
+              <div className="ic-feed__empty-title">{showArchived ? "No archived posts" : "No posts yet"}</div>
               <div className="ic-feed__empty-text">
-                {isCreator ? "Start sharing with your holders!" : `${creator?.display_name?.split(" ")[0]} hasn't posted yet. Stay tuned!`}
+                {showArchived
+                  ? "Archived posts will appear here."
+                  : isCreator ? "Start sharing with your holders!" : `${creator?.display_name?.split(" ")[0]} hasn't posted yet. Stay tuned!`}
               </div>
             </div>
-          )}
+            );
+          })()}
         </div>
       </div>
     </>

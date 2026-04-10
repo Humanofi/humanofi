@@ -44,6 +44,7 @@ export async function GET(
     .single();
 
   const isCreator = !!creator;
+  let holderBalance = isCreator ? Infinity : 0;
 
   if (!isCreator) {
     // 2. Verify token holdings ON-CHAIN (source of truth)
@@ -53,6 +54,7 @@ export async function GET(
       const { verifyTokenHolder } = await import("@/lib/solana/verify");
       const result = await verifyTokenHolder(walletAddress, mint);
       hasAccess = result.isHolder;
+      holderBalance = result.balance;
     } catch (err) {
       console.warn("[InnerCircle] On-chain verification failed, falling back to cache:", err);
       // 3. Fallback to Supabase cache if RPC fails
@@ -64,6 +66,7 @@ export async function GET(
         .gt("balance", 0)
         .single();
       hasAccess = !!holding;
+      if (holding) holderBalance = holding.balance;
     }
 
     if (!hasAccess) {
@@ -78,7 +81,10 @@ export async function GET(
   }
 
   // Fetch posts
-  const { data: posts, error } = await supabase
+  const url = new URL(request.url);
+  const includeArchived = url.searchParams.get("include_archived") === "true";
+
+  let postsQuery = supabase
     .from("inner_circle_posts")
     .select(`
       *,
@@ -88,6 +94,12 @@ export async function GET(
     .eq("creator_mint", mint)
     .order("created_at", { ascending: false })
     .limit(50);
+
+  if (!includeArchived) {
+    postsQuery = postsQuery.eq("is_archived", false);
+  }
+
+  const { data: posts, error } = await postsQuery;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -108,7 +120,7 @@ export async function GET(
     if (rsvps) rsvps.forEach(r => userRsvps[r.post_id] = r.status);
   }
 
-  return NextResponse.json({ posts: posts || [], isCreator, userVotes, userRsvps });
+  return NextResponse.json({ posts: posts || [], isCreator, holderBalance, userVotes, userRsvps });
 }
 
 /**

@@ -123,6 +123,14 @@ export default function UnifiedFeedPage() {
     }, []
   );
 
+  const handlePublicDelete = useCallback((postId: string) => {
+    setPublicPosts((prev) => prev.filter((p) => p.id !== postId));
+  }, []);
+
+  const handlePublicUpdate = useCallback((postId: string, updates: Partial<PublicPost>) => {
+    setPublicPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, ...updates } : p)));
+  }, []);
+
   const handleCircleReactionChange = useCallback(
     (postId: string, reactions: Record<string, number>, userReactions: string[]) => {
       setCirclePosts((prev) => prev.map((p) => (p.id === postId ? { ...p, reactions, userReactions } : p)));
@@ -208,6 +216,9 @@ export default function UnifiedFeedPage() {
                 {publicPosts.map((post) => (
                   <PublicPostCard key={post.id} post={post}
                     walletAddress={walletAddress || undefined}
+                    isOwner={!!humanofiUser?.mint_address && humanofiUser.mint_address === post.creator_mint}
+                    onDelete={handlePublicDelete}
+                    onUpdate={handlePublicUpdate}
                     onReactionChange={handlePublicReactionChange}
                   />
                 ))}

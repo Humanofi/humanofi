@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trash, DotsThreeVertical, Users, TrendUp } from "@phosphor-icons/react";
+import { Trash, DotsThreeVertical, Users, TrendUp, PencilSimple, FloppyDisk, X } from "@phosphor-icons/react";
 import MediaPlayer from "../inner-circle/MediaPlayer";
 import { toast } from "sonner";
 
@@ -46,6 +46,7 @@ interface PublicPostCardProps {
   isOwner?: boolean;
   walletAddress?: string;
   onDelete?: (id: string) => void;
+  onUpdate?: (id: string, updates: Partial<PublicPost>) => void;
   onReactionChange: (postId: string, reactions: Record<string, number>, userReactions: string[]) => void;
 }
 
@@ -66,11 +67,17 @@ export default function PublicPostCard({
   isOwner = false,
   walletAddress,
   onDelete,
+  onUpdate,
   onReactionChange,
 }: PublicPostCardProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   const [loading, setLoading] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editContent, setEditContent] = useState(post.content);
+  const [saving, setSaving] = useState(false);
 
   const ytMatch = post.content.match(YOUTUBE_REGEX);
   const ytVideoId = ytMatch ? ytMatch[1] : null;
@@ -112,12 +119,53 @@ export default function PublicPostCard({
   }, [post, walletAddress, loading, onReactionChange]);
 
   const handleDelete = async () => {
-    if (!onDelete) return;
+    if (!onDelete || !walletAddress) return;
+    setDeleting(true);
     try {
-      const res = await fetch(`/api/public-posts/${post.id}`, { method: "DELETE" });
-      if (res.ok) onDelete(post.id);
-    } catch { /* silent */ }
-    setShowMenu(false);
+      const res = await fetch(`/api/public-posts/${post.id}`, {
+        method: "DELETE",
+        headers: { "x-wallet-address": walletAddress },
+      });
+      if (res.ok) {
+        onDelete(post.id);
+        toast.success("Post supprimé");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Échec de la suppression");
+      }
+    } catch {
+      toast.error("Erreur réseau");
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!onUpdate || !walletAddress || !editContent.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/public-posts/${post.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-wallet-address": walletAddress,
+        },
+        body: JSON.stringify({ content: editContent.trim() }),
+      });
+      if (res.ok) {
+        onUpdate(post.id, { content: editContent.trim() });
+        setEditing(false);
+        toast.success("Post modifié");
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "Échec de la modification");
+      }
+    } catch {
+      toast.error("Erreur réseau");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -166,7 +214,12 @@ export default function PublicPostCard({
               <AnimatePresence>
                 {showMenu && (
                   <motion.div className="pub-post__menu" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0 }}>
-                    <button className="pub-post__menu-item" onClick={handleDelete}><Trash size={14} /> Delete</button>
+                    <button className="pub-post__menu-item" onClick={() => { setEditing(true); setEditContent(post.content); setShowMenu(false); }}>
+                      <PencilSimple size={14} /> Edit
+                    </button>
+                    <button className="pub-post__menu-item pub-post__menu-item--danger" onClick={() => { setShowDeleteModal(true); setShowMenu(false); }}>
+                      <Trash size={14} /> Delete
+                    </button>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -175,8 +228,22 @@ export default function PublicPostCard({
         </div>
       </div>
 
-      {/* Content */}
-      <div className="pub-post__content">{post.content}</div>
+      {/* Content — editable or static */}
+      {editing ? (
+        <div className="ic-post__edit">
+          <textarea className="ic-post__edit-input" value={editContent} onChange={(e) => setEditContent(e.target.value)} rows={3} />
+          <div className="ic-post__edit-actions">
+            <button className="btn-solid ic-post__edit-save" onClick={handleSaveEdit} disabled={saving}>
+              <FloppyDisk size={14} /> {saving ? "Saving..." : "Save"}
+            </button>
+            <button className="btn-outline ic-post__edit-cancel" onClick={() => { setEditing(false); setEditContent(post.content); }}>
+              <X size={14} /> Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="pub-post__content">{post.content}</div>
+      )}
 
       {/* YouTube */}
       {ytVideoId && (
@@ -247,6 +314,42 @@ export default function PublicPostCard({
 
         {totalReactions > 0 && <span className="ic-reactions__total">{totalReactions}</span>}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteModal && (
+          <motion.div
+            className="delete-modal__overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowDeleteModal(false)}
+          >
+            <motion.div
+              className="delete-modal"
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 20 }}
+              transition={{ duration: 0.2 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="delete-modal__icon"><Trash size={28} weight="fill" /></div>
+              <div className="delete-modal__title">Supprimer ce post ?</div>
+              <div className="delete-modal__text">
+                Cette action est irréversible. Le post public et toutes ses réactions seront supprimés définitivement.
+              </div>
+              <div className="delete-modal__actions">
+                <button className="delete-modal__cancel" onClick={() => setShowDeleteModal(false)} disabled={deleting}>
+                  Annuler
+                </button>
+                <button className="delete-modal__confirm" onClick={handleDelete} disabled={deleting}>
+                  <Trash size={14} /> {deleting ? "Suppression..." : "Supprimer"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

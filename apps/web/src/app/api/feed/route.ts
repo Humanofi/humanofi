@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
         inner_circle_replies(count)
       `)
       .in("creator_mint", heldMints)
+      .eq("is_archived", false)
       .order("created_at", { ascending: false })
       .limit(100);
 
