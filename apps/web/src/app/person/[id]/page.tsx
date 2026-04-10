@@ -55,6 +55,9 @@ export default function PersonPage({
   const [loading, setLoading] = useState(true);
   const [posts, setPosts] = useState<{ date: string; text: string }[]>([]);
   const [isHolder, setIsHolder] = useState(false);
+  const [isCreator, setIsCreator] = useState(false);
+  const [newPostContent, setNewPostContent] = useState("");
+  const [posting, setPosting] = useState(false);
 
   // Fallback to mock data if this ID is a mock slug
   const mockPerson = getPersonById(id) || null;
@@ -111,6 +114,7 @@ export default function PersonPage({
         if (res.ok) {
           const data = await res.json();
           setIsHolder(true);
+          setIsCreator(data.isCreator || false);
           setPosts(
             (data.posts || []).map((p: { content: string; created_at: string }) => ({
               text: p.content,
@@ -124,6 +128,8 @@ export default function PersonPage({
           );
         } else {
           setIsHolder(false);
+          // Check if user is creator even if no posts
+          setIsCreator(walletAddress === creator.wallet_address);
         }
       } catch {
         setIsHolder(false);
@@ -329,6 +335,74 @@ export default function PersonPage({
                 <div className="feed__count">{posts.length} POSTS</div>
               </div>
 
+              {/* Creator post form */}
+              {isCreator && creator && (
+                <div style={{
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: 12,
+                  padding: 16,
+                  marginBottom: 20,
+                }}>
+                  <textarea
+                    value={newPostContent}
+                    onChange={(e) => setNewPostContent(e.target.value)}
+                    placeholder="Share something with your Inner Circle..."
+                    style={{
+                      width: "100%",
+                      minHeight: 80,
+                      background: "transparent",
+                      border: "1px solid rgba(255,255,255,0.1)",
+                      borderRadius: 8,
+                      color: "var(--text)",
+                      padding: 12,
+                      fontSize: "0.9rem",
+                      resize: "vertical",
+                      fontFamily: "inherit",
+                    }}
+                  />
+                  <button
+                    className="btn-solid"
+                    disabled={posting || !newPostContent.trim()}
+                    onClick={async () => {
+                      if (!newPostContent.trim() || !creator) return;
+                      setPosting(true);
+                      try {
+                        const res = await fetch(`/api/inner-circle/${creator.mint_address}/posts`, {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                            "x-wallet-address": walletAddress || "",
+                          },
+                          body: JSON.stringify({ content: newPostContent }),
+                        });
+                        if (res.ok) {
+                          toast.success("Post published!");
+                          setNewPostContent("");
+                          // Add the new post to the top
+                          setPosts(prev => [{
+                            text: newPostContent,
+                            date: new Date().toLocaleDateString("en-US", {
+                              month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+                            }),
+                          }, ...prev]);
+                        } else {
+                          const data = await res.json();
+                          toast.error(data.error || "Failed to post");
+                        }
+                      } catch {
+                        toast.error("Failed to post");
+                      } finally {
+                        setPosting(false);
+                      }
+                    }}
+                    style={{ marginTop: 12, fontSize: "0.8rem" }}
+                  >
+                    {posting ? "Publishing..." : "Publish to Inner Circle"}
+                  </button>
+                </div>
+              )}
+
               {isHolder && posts.length > 0 ? (
                 posts.map((post, i) => (
                   <div key={i} className="feed__post">
@@ -336,6 +410,14 @@ export default function PersonPage({
                     <div className="feed__post-text">{post.text}</div>
                   </div>
                 ))
+              ) : isHolder && posts.length === 0 ? (
+                <div className="feed__locked">
+                  <div className="feed__locked-icon">✨</div>
+                  <div className="feed__locked-text">No posts yet</div>
+                  <div className="feed__locked-sub">
+                    {isCreator ? "Start sharing with your holders!" : `${person.name.split(" ")[0]} hasn't posted yet.`}
+                  </div>
+                </div>
               ) : (
                 <div className="feed__locked">
                   <div className="feed__locked-icon">◈</div>
