@@ -19,7 +19,6 @@ export async function GET(request: NextRequest) {
 
   const searchParams = request.nextUrl.searchParams;
   const category = searchParams.get("category");
-  const country = searchParams.get("country");
   const sortBy = searchParams.get("sort") || "activity_score";
   const limit = parseInt(searchParams.get("limit") || "50");
 
@@ -33,9 +32,6 @@ export async function GET(request: NextRequest) {
     query = query.eq("category", category);
   }
 
-  // Note: country is stored in verified_identities, not creator_tokens directly
-  // For simplicity, we'd need a join or denormalized field
-
   const { data, error } = await query;
 
   if (error) {
@@ -48,6 +44,12 @@ export async function GET(request: NextRequest) {
 /**
  * POST /api/creators
  * Register a new creator profile after on-chain token creation.
+ *
+ * Beta Devnet: KYC (hiuid) is optional.
+ * When KYC is implemented, the flow will be:
+ *   1. User completes KYC → gets hiuid
+ *   2. hiuid is passed here → we verify it exists in verified_identities
+ *   3. Only then can they create a token
  */
 export async function POST(request: NextRequest) {
   const supabase = createServerClient();
@@ -60,39 +62,34 @@ export async function POST(request: NextRequest) {
     const {
       mintAddress,
       walletAddress,
-      hiuid,
       displayName,
       category,
       bio,
       avatarUrl,
+      story,
+      offer,
+      country,
+      socials,
     } = body;
 
     // Validate required fields
-    if (!mintAddress || !walletAddress || !hiuid || !displayName || !category) {
+    if (!mintAddress || !walletAddress || !displayName || !category) {
       return NextResponse.json(
-        { error: "Missing required fields: mintAddress, walletAddress, hiuid, displayName, category" },
+        { error: "Missing required fields: mintAddress, walletAddress, displayName, category" },
         { status: 400 }
       );
     }
 
-    // Verify that the HIUID exists and has no token yet
-    const { data: identity } = await supabase
-      .from("verified_identities")
-      .select("has_token")
-      .eq("hiuid", hiuid)
+    // Check if this wallet already has a token
+    const { data: existing } = await supabase
+      .from("creator_tokens")
+      .select("id")
       .eq("wallet_address", walletAddress)
       .single();
 
-    if (!identity) {
+    if (existing) {
       return NextResponse.json(
-        { error: "Identity not verified. Complete KYC first." },
-        { status: 403 }
-      );
-    }
-
-    if (identity.has_token) {
-      return NextResponse.json(
-        { error: "This identity already has a token." },
+        { error: "This wallet already has a token." },
         { status: 409 }
       );
     }
@@ -102,14 +99,20 @@ export async function POST(request: NextRequest) {
     lockUntil.setFullYear(lockUntil.getFullYear() + 1);
 
     // Insert creator token record
+    // hiuid is set to wallet address as temporary identifier (Beta)
+    // Will be replaced by real KYC hiuid in production
     const { data, error } = await supabase.from("creator_tokens").insert({
       mint_address: mintAddress,
       wallet_address: walletAddress,
-      hiuid,
+      hiuid: walletAddress, // Beta: use wallet as temp hiuid
       display_name: displayName,
       category,
       bio: bio || "",
+      story: story || "",
+      offer: offer || "",
       avatar_url: avatarUrl || null,
+      country_code: country || null,
+      socials: socials || {},
       token_lock_until: lockUntil.toISOString(),
     });
 
@@ -117,12 +120,6 @@ export async function POST(request: NextRequest) {
       console.error("Failed to create creator token:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-
-    // Mark identity as having a token
-    await supabase
-      .from("verified_identities")
-      .update({ has_token: true })
-      .eq("hiuid", hiuid);
 
     return NextResponse.json({
       success: true,

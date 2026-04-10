@@ -3,40 +3,71 @@
 // ========================================
 // High-level hook wrapping all Anchor instructions
 // with proper PDA derivation, error handling, and toast notifications.
+//
+// Now uses useHumanofiProgram() internally — no wallet prop needed.
 
 "use client";
 
 import { useCallback } from "react";
 import { PublicKey, Keypair, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { toast } from "sonner";
-import {
-  useAnchorProgram,
-  PROGRAM_ID,
-  TOKEN_2022_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  deriveBondingCurvePDA,
-  deriveCreatorVaultPDA,
-  deriveRewardPoolPDA,
-  derivePurchaseLimiterPDA,
-  deriveRewardStatePDA,
-} from "./useAnchorProgram";
-import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { BN } from "@coral-xyz/anchor";
+import { getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { useHumanofiProgram, PROGRAM_ID } from "./useHumanofiProgram";
 
-interface WalletLike {
-  publicKey: PublicKey | null;
-  signTransaction?: (tx: never) => Promise<never>;
-  signAllTransactions?: (txs: never[]) => Promise<never[]>;
+// Re-export for consumers
+export { PROGRAM_ID };
+
+// ─── Token-2022 constants ───
+const TOKEN_2022_PROGRAM_ID = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+
+// ─── PDA derivers ───
+function deriveBondingCurvePDA(mint: PublicKey) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("curve"), mint.toBuffer()],
+    PROGRAM_ID
+  );
+}
+
+function deriveCreatorVaultPDA(mint: PublicKey) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("vault"), mint.toBuffer()],
+    PROGRAM_ID
+  );
+}
+
+function deriveRewardPoolPDA(mint: PublicKey) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("rewards"), mint.toBuffer()],
+    PROGRAM_ID
+  );
+}
+
+function derivePurchaseLimiterPDA(buyer: PublicKey, mint: PublicKey) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("limiter"), buyer.toBuffer(), mint.toBuffer()],
+    PROGRAM_ID
+  );
+}
+
+function deriveRewardStatePDA(mint: PublicKey, holder: PublicKey) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("reward_state"), mint.toBuffer(), holder.toBuffer()],
+    PROGRAM_ID
+  );
 }
 
 /**
  * useHumanofi — Master hook for all protocol interactions.
  *
+ * No wallet prop needed — uses useHumanofiProgram() internally.
+ *
  * Usage:
- *   const { createToken, buyTokens, sellTokens, claimRewards } = useHumanofi(wallet);
+ *   const { createToken, buyTokens, connected, publicKey } = useHumanofi();
  */
-export function useHumanofi(wallet: WalletLike | null) {
-  const { program, connection } = useAnchorProgram(wallet);
+export function useHumanofi() {
+  const { program, connection, publicKey, walletAddress, connected } = useHumanofiProgram();
 
   // ─── CREATE TOKEN ───
   const createToken = useCallback(
@@ -47,7 +78,7 @@ export function useHumanofi(wallet: WalletLike | null) {
       slope: number;
       treasury: PublicKey;
     }) => {
-      if (!program || !wallet?.publicKey) {
+      if (!program || !publicKey) {
         toast.error("Connect your wallet first.");
         return null;
       }
@@ -59,7 +90,7 @@ export function useHumanofi(wallet: WalletLike | null) {
 
       const creatorTokenAccount = getAssociatedTokenAddressSync(
         mint.publicKey,
-        wallet.publicKey,
+        publicKey,
         false,
         TOKEN_2022_PROGRAM_ID
       );
@@ -72,7 +103,7 @@ export function useHumanofi(wallet: WalletLike | null) {
           new BN(params.slope)
         )
         .accountsStrict({
-          creator: wallet.publicKey,
+          creator: publicKey,
           mint: mint.publicKey,
           bondingCurve,
           creatorVault,
@@ -94,7 +125,7 @@ export function useHumanofi(wallet: WalletLike | null) {
       const sig = await txPromise;
       return { signature: sig, mint: mint.publicKey };
     },
-    [program, wallet]
+    [program, publicKey]
   );
 
   // ─── BUY TOKENS ───
@@ -105,7 +136,7 @@ export function useHumanofi(wallet: WalletLike | null) {
       creatorWallet: PublicKey;
       treasury: PublicKey;
     }) => {
-      if (!program || !wallet?.publicKey) {
+      if (!program || !publicKey) {
         toast.error("Connect your wallet first.");
         return null;
       }
@@ -113,14 +144,11 @@ export function useHumanofi(wallet: WalletLike | null) {
       const lamports = Math.floor(params.solAmount * LAMPORTS_PER_SOL);
       const [bondingCurve] = deriveBondingCurvePDA(params.mint);
       const [rewardPool] = deriveRewardPoolPDA(params.mint);
-      const [purchaseLimiter] = derivePurchaseLimiterPDA(
-        wallet.publicKey,
-        params.mint
-      );
+      const [purchaseLimiter] = derivePurchaseLimiterPDA(publicKey, params.mint);
 
       const buyerTokenAccount = getAssociatedTokenAddressSync(
         params.mint,
-        wallet.publicKey,
+        publicKey,
         false,
         TOKEN_2022_PROGRAM_ID
       );
@@ -128,7 +156,7 @@ export function useHumanofi(wallet: WalletLike | null) {
       const txPromise = program.methods
         .buy(new BN(lamports))
         .accountsStrict({
-          buyer: wallet.publicKey,
+          buyer: publicKey,
           mint: params.mint,
           bondingCurve,
           rewardPool,
@@ -150,7 +178,7 @@ export function useHumanofi(wallet: WalletLike | null) {
 
       return txPromise;
     },
-    [program, wallet]
+    [program, publicKey]
   );
 
   // ─── SELL TOKENS ───
@@ -161,21 +189,18 @@ export function useHumanofi(wallet: WalletLike | null) {
       creatorWallet: PublicKey;
       treasury: PublicKey;
     }) => {
-      if (!program || !wallet?.publicKey) {
+      if (!program || !publicKey) {
         toast.error("Connect your wallet first.");
         return null;
       }
 
       const [bondingCurve] = deriveBondingCurvePDA(params.mint);
       const [rewardPool] = deriveRewardPoolPDA(params.mint);
-      const [purchaseLimiter] = derivePurchaseLimiterPDA(
-        wallet.publicKey,
-        params.mint
-      );
+      const [purchaseLimiter] = derivePurchaseLimiterPDA(publicKey, params.mint);
 
       const sellerTokenAccount = getAssociatedTokenAddressSync(
         params.mint,
-        wallet.publicKey,
+        publicKey,
         false,
         TOKEN_2022_PROGRAM_ID
       );
@@ -183,7 +208,7 @@ export function useHumanofi(wallet: WalletLike | null) {
       const txPromise = program.methods
         .sell(new BN(params.tokenAmount))
         .accountsStrict({
-          seller: wallet.publicKey,
+          seller: publicKey,
           mint: params.mint,
           bondingCurve,
           rewardPool,
@@ -204,23 +229,23 @@ export function useHumanofi(wallet: WalletLike | null) {
 
       return txPromise;
     },
-    [program, wallet]
+    [program, publicKey]
   );
 
   // ─── CLAIM REWARDS ───
   const claimRewards = useCallback(
     async (mint: PublicKey) => {
-      if (!program || !wallet?.publicKey) {
+      if (!program || !publicKey) {
         toast.error("Connect your wallet first.");
         return null;
       }
 
       const [rewardPool] = deriveRewardPoolPDA(mint);
-      const [holderRewardState] = deriveRewardStatePDA(mint, wallet.publicKey);
+      const [holderRewardState] = deriveRewardStatePDA(mint, publicKey);
 
       const holderTokenAccount = getAssociatedTokenAddressSync(
         mint,
-        wallet.publicKey,
+        publicKey,
         false,
         TOKEN_2022_PROGRAM_ID
       );
@@ -228,7 +253,7 @@ export function useHumanofi(wallet: WalletLike | null) {
       const txPromise = program.methods
         .claimRewards()
         .accountsStrict({
-          holder: wallet.publicKey,
+          holder: publicKey,
           mint,
           rewardPool,
           holderRewardState,
@@ -246,7 +271,7 @@ export function useHumanofi(wallet: WalletLike | null) {
 
       return txPromise;
     },
-    [program, wallet]
+    [program, publicKey]
   );
 
   // ─── FETCH BONDING CURVE STATE ───
@@ -273,8 +298,9 @@ export function useHumanofi(wallet: WalletLike | null) {
     fetchBondingCurve,
     program,
     connection,
-    connected: !!wallet?.publicKey,
-    publicKey: wallet?.publicKey ?? null,
+    connected,
+    publicKey,
+    walletAddress,
   };
 }
 

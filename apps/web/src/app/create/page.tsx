@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useCallback, useRef, useMemo, useEffect, useDeferredValue } from "react";
+import { useState, useCallback, useRef, useEffect, useDeferredValue } from "react";
 import Topbar from "@/components/Topbar";
 import Footer from "@/components/Footer";
 import { LivePreviewCard } from "@/components/LivePreviewCard";
-import { usePrivy, useWallets } from "@privy-io/react-auth";
+import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
 import { PublicKey } from "@solana/web3.js";
 import { toast } from "sonner";
@@ -122,46 +122,18 @@ export default function CreatePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Privy auth
-  const { authenticated, login, user } = usePrivy();
-  const { wallets } = useWallets();
-  const walletAddress = (user as { wallet?: { address?: string } } | null)?.wallet?.address || null;
+  const { authenticated, login } = usePrivy();
 
-  // Get the real Privy wallet with signing capabilities
-  const walletObj = useMemo(() => {
-    if (!walletAddress || wallets.length === 0) return null;
+  // Humanofi hook — handles Privy → Anchor bridge internally
+  const { createToken, walletAddress, connected } = useHumanofi();
+  const [launchStep, setLaunchStep] = useState(0); // 0=idle, 1=uploading, 2=creating, 3=registering, 4=done
 
-    // Find the matching wallet from Privy
-    const privyWallet = wallets.find(w => w.address === walletAddress);
-    if (!privyWallet) return null;
-
-    try {
-      return {
-        publicKey: new PublicKey(walletAddress),
-        signTransaction: async (tx: never) => {
-          const signed = await privyWallet.signTransaction({ transaction: tx as never });
-          return signed as never;
-        },
-        signAllTransactions: async (txs: never[]) => {
-          const signed = await Promise.all(
-            txs.map(tx => privyWallet.signTransaction({ transaction: tx as never }))
-          );
-          return signed as never[];
-        },
-      };
-    } catch {
-      return null;
-    }
-  }, [walletAddress, wallets]);
-
-  // Auto-switch to form when authenticated (in useEffect, not during render!)
+  // Auto-switch to form when authenticated
   useEffect(() => {
     if (authenticated && step === "connect") {
       setStep("form");
     }
   }, [authenticated, step]);
-
-  const { createToken } = useHumanofi(walletObj);
-  const [launchStep, setLaunchStep] = useState(0); // 0=idle, 1=uploading, 2=creating, 3=registering, 4=done
 
   // Deferred values for the preview card — keeps form inputs snappy
   const deferredName = useDeferredValue(tokenName);
@@ -290,12 +262,10 @@ export default function CreatePage() {
           body: JSON.stringify({
             mintAddress: result.mint.toBase58(),
             walletAddress,
-            hiuid: "pending", // Will be set after KYC
             displayName: tokenName,
             category,
             bio,
-            avatarUrl,         // ← Real Supabase Storage URL
-            metadataUrl,       // ← Metaplex-standard JSON URL
+            avatarUrl,
             story,
             offer,
             country,
@@ -319,7 +289,7 @@ export default function CreatePage() {
       setStep("form");
       setLaunchStep(0);
     }
-  }, [tokenName, tokenSymbol, category, bio, avatarPreview, avatarFile, story, offer, country, twitter, linkedin, website, instagram, createToken, walletObj]);
+  }, [tokenName, tokenSymbol, category, bio, avatarPreview, avatarFile, story, offer, country, twitter, linkedin, website, instagram, createToken, walletAddress]);
 
   // Form sections for step-by-step flow
   const sections = [

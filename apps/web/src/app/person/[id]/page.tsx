@@ -38,24 +38,9 @@ export default function PersonPage({
   const [activeTab, setActiveTab] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("");
 
-  // Privy auth
-  let authenticated = false;
-  let login = () => {};
-  let walletObj: { publicKey: PublicKey | null } | null = null;
-
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const privy = usePrivy();
-    authenticated = privy.authenticated;
-    login = privy.login;
-    const walletAddress = (privy.user as { wallet?: { address?: string } } | null)?.wallet?.address;
-    walletObj = walletAddress ? { publicKey: new PublicKey(walletAddress) } : null;
-  } catch {
-    // Privy not mounted
-  }
-
-  // Anchor integration
-  const { buyTokens, sellTokens, connected } = useHumanofi(walletObj);
+  // Auth & protocol
+  const { authenticated, login } = usePrivy();
+  const { buyTokens, sellTokens, connected } = useHumanofi();
 
   const handleTrade = useCallback(async () => {
     if (!authenticated) {
