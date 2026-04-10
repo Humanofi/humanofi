@@ -7,7 +7,7 @@
 "use client";
 
 import { PrivyProvider } from "@privy-io/react-auth";
-import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
+import { toSolanaWalletConnectors, defaultSolanaRpcsPlugin } from "@privy-io/react-auth/solana";
 
 const solanaConnectors = toSolanaWalletConnectors({
   shouldAutoConnect: true,
@@ -25,8 +25,6 @@ export function PrivyWalletProvider({ children }: PrivyWalletProviderProps) {
     console.warn("[Humanofi] NEXT_PUBLIC_PRIVY_APP_ID not set — running without auth");
     return <>{children}</>;
   }
-
-  const rpcUrl = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.devnet.solana.com";
 
   return (
     <PrivyProvider
@@ -49,17 +47,10 @@ export function PrivyWalletProvider({ children }: PrivyWalletProviderProps) {
             connectors: solanaConnectors,
           },
         },
-        // Solana RPC endpoints — fixes "No RPC configuration found" error
-        solanaClusters: [
-          {
-            name: "devnet",
-            rpcUrl: rpcUrl,
-          },
-          {
-            name: "mainnet-beta",
-            rpcUrl: "https://api.mainnet-beta.solana.com",
-          },
-        ],
+        // Plugin: provides default Privy-hosted Solana RPC endpoints
+        // for all chains (mainnet, devnet, testnet).
+        // Fixes "No RPC configuration found for chain solana:mainnet"
+        plugins: [defaultSolanaRpcsPlugin()],
       }}
     >
       {children}
