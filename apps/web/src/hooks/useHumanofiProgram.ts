@@ -23,14 +23,16 @@ export const PROGRAM_ID = new PublicKey(idl.address);
  * Returns { program, connection, walletAddress, connected }
  */
 export function useHumanofiProgram() {
-  const { user, authenticated } = usePrivy();
+  const { authenticated } = usePrivy();
   const { wallets, ready } = useWallets();
 
-  const walletAddress = useMemo(() => {
-    // Get wallet address from Privy user object
-    const addr = (user as { wallet?: { address?: string } } | null)?.wallet?.address || null;
-    return addr;
-  }, [user]);
+  // Use the first available Solana wallet (embedded or external like Phantom)
+  const activeWallet = useMemo(() => {
+    if (!ready || wallets.length === 0) return null;
+    return wallets[0]; // First connected wallet
+  }, [ready, wallets]);
+
+  const walletAddress = activeWallet?.address || null;
 
   const connection = useMemo(() => {
     const rpcUrl =
@@ -40,32 +42,36 @@ export function useHumanofiProgram() {
   }, []);
 
   const { program, publicKey } = useMemo(() => {
-    if (!walletAddress || !authenticated || !ready || wallets.length === 0) {
-      return { program: null, publicKey: null };
+    if (!activeWallet || !authenticated || !ready) {
+      // Still create a read-only program for fetching bonding curve data
+      try {
+        const readOnlyProvider = new AnchorProvider(
+          connection,
+          {
+            publicKey: PublicKey.default,
+            signTransaction: async <T,>(t: T): Promise<T> => t,
+            signAllTransactions: async <T,>(t: T): Promise<T> => t,
+          } as never,
+          { commitment: "confirmed" }
+        );
+        const prog = new Program(idl as never, readOnlyProvider);
+        return { program: prog, publicKey: null };
+      } catch {
+        return { program: null, publicKey: null };
+      }
     }
 
-    // Find the matching Privy wallet
-    const privyWallet = wallets.find(w => w.address === walletAddress);
-    if (!privyWallet) {
-      return { program: null, publicKey: null };
-    }
-
-    const pubKey = new PublicKey(walletAddress);
+    const pubKey = new PublicKey(activeWallet.address);
 
     // Build an Anchor-compatible wallet adapter
     const anchorWallet = {
       publicKey: pubKey,
 
       signTransaction: async <T extends Transaction | VersionedTransaction>(tx: T): Promise<T> => {
-        // Serialize the transaction to Uint8Array
         const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false } as never);
-        
-        // Use Privy's signTransaction which expects Uint8Array
-        const { signedTransaction } = await privyWallet.signTransaction({
+        const { signedTransaction } = await activeWallet.signTransaction({
           transaction: serialized,
         });
-
-        // Deserialize back to the correct type
         if (tx instanceof VersionedTransaction) {
           return VersionedTransaction.deserialize(signedTransaction) as T;
         } else {
@@ -76,7 +82,7 @@ export function useHumanofiProgram() {
       signAllTransactions: async <T extends Transaction | VersionedTransaction>(txs: T[]): Promise<T[]> => {
         const signed = await Promise.all(txs.map(async (tx) => {
           const serialized = tx.serialize({ requireAllSignatures: false, verifySignatures: false } as never);
-          const { signedTransaction } = await privyWallet.signTransaction({
+          const { signedTransaction } = await activeWallet.signTransaction({
             transaction: serialized,
           });
           if (tx instanceof VersionedTransaction) {
@@ -100,7 +106,7 @@ export function useHumanofiProgram() {
       console.error("[useHumanofiProgram] Failed to create Anchor program:", e);
       return { program: null, publicKey: null };
     }
-  }, [walletAddress, authenticated, ready, wallets, connection]);
+  }, [activeWallet, authenticated, ready, connection]);
 
   return {
     program,
