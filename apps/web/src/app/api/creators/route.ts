@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
 
   const searchParams = request.nextUrl.searchParams;
   const category = searchParams.get("category");
+  const mint = searchParams.get("mint");
   const sortBy = searchParams.get("sort") || "activity_score";
   const limit = parseInt(searchParams.get("limit") || "50");
 
@@ -33,6 +34,10 @@ export async function GET(request: NextRequest) {
     .select("*, token_holders(count)")
     .order(sortBy, { ascending: false })
     .limit(limit);
+
+  if (mint) {
+    query = query.eq("mint_address", mint);
+  }
 
   if (category && category !== "all") {
     query = query.eq("category", category);

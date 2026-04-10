@@ -1,9 +1,9 @@
 "use client";
 
-import { use, useState, useCallback } from "react";
+import { use, useState, useCallback, useEffect } from "react";
 import Topbar from "@/components/Topbar";
 import Footer from "@/components/Footer";
-import { getPersonById } from "@/lib/mockData";
+import { getPersonById, Person } from "@/lib/mockData";
 import BondingCurveChart from "@/components/BondingCurveChart";
 import Link from "next/link";
 import Image from "next/image";
@@ -12,21 +12,33 @@ import { useHumanofi } from "@/hooks/useHumanofi";
 import { PublicKey } from "@solana/web3.js";
 import { toast } from "sonner";
 
-const MOCK_POSTS = [
-  {
-    date: "Today · 14:00",
-    text: "Just closed a position with a 34% ROI. Detailed analysis below. The market still isn't pricing in this sector correctly.",
-  },
-  {
-    date: "Yesterday · 09:30",
-    text: "If you look at the engagement metrics for Q3, we lost 12%. I restructured the team this morning. Hard decisions.",
-  },
-];
-
 // Treasury wallet (protocol fee receiver)
 const TREASURY = new PublicKey(
   process.env.NEXT_PUBLIC_TREASURY_WALLET || "11111111111111111111111111111111"
 );
+
+// ─── Types ───
+interface CreatorData {
+  mint_address: string;
+  wallet_address: string;
+  display_name: string;
+  category: string;
+  bio: string;
+  story: string;
+  offer: string;
+  avatar_url: string | null;
+  country_code: string | null;
+  socials: Record<string, string>;
+  activity_score: number;
+  token_lock_until: string;
+}
+
+interface BondingCurveData {
+  basePrice: { toNumber: () => number };
+  supplySold: { toNumber: () => number };
+  solReserve: { toNumber: () => number };
+  slope: { toNumber: () => number };
+}
 
 export default function PersonPage({
   params,
@@ -34,14 +46,126 @@ export default function PersonPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const person = getPersonById(id);
   const [activeTab, setActiveTab] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("");
 
+  // Data states
+  const [creator, setCreator] = useState<CreatorData | null>(null);
+  const [curveData, setCurveData] = useState<BondingCurveData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [posts, setPosts] = useState<{ date: string; text: string }[]>([]);
+  const [isHolder, setIsHolder] = useState(false);
+
+  // Fallback to mock data if this ID is a mock slug
+  const mockPerson = getPersonById(id) || null;
+
   // Auth & protocol
   const { authenticated, login } = usePrivy();
-  const { buyTokens, sellTokens, connected } = useHumanofi();
+  const { buyTokens, sellTokens, fetchBondingCurve, connected, walletAddress } = useHumanofi();
 
+  // ── Fetch creator data from Supabase ──
+  useEffect(() => {
+    async function fetchCreator() {
+      setLoading(true);
+      try {
+        // Try to find by mint_address first (if id looks like a Solana address)
+        const isSolanaAddress = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(id);
+        
+        if (isSolanaAddress) {
+          const res = await fetch(`/api/creators?mint=${id}`);
+          if (res.ok) {
+            const data = await res.json();
+            const found = data.creators?.find(
+              (c: CreatorData) => c.mint_address === id
+            );
+            if (found) {
+              setCreator(found);
+              // Fetch on-chain bonding curve data
+              const curve = await fetchBondingCurve(new PublicKey(found.mint_address));
+              if (curve) setCurveData(curve as unknown as BondingCurveData);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch creator:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchCreator();
+  }, [id, fetchBondingCurve]);
+
+  // ── Check if user is a holder (for Inner Circle access) ──
+  useEffect(() => {
+    async function checkHolder() {
+      if (!walletAddress || !creator?.mint_address) return;
+
+      try {
+        const res = await fetch(`/api/inner-circle/${creator.mint_address}/posts`, {
+          headers: {
+            "x-wallet-address": walletAddress,
+          },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          setIsHolder(true);
+          setPosts(
+            (data.posts || []).map((p: { content: string; created_at: string }) => ({
+              text: p.content,
+              date: new Date(p.created_at).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+            }))
+          );
+        } else {
+          setIsHolder(false);
+        }
+      } catch {
+        setIsHolder(false);
+      }
+    }
+
+    if (authenticated && connected) {
+      checkHolder();
+    }
+  }, [walletAddress, creator, authenticated, connected]);
+
+  // ── Build display data (real or mock) ──
+  const person: Person | null = creator
+    ? {
+        id: creator.mint_address,
+        name: creator.display_name,
+        tag: creator.category,
+        price: curveData
+          ? `${(curveData.basePrice.toNumber() / 1e9).toFixed(4)} SOL`
+          : "—",
+        priceNum: curveData ? curveData.basePrice.toNumber() / 1e9 : 0,
+        change: 0, // TODO: calculate from history
+        holders: 0, // TODO: from token_holders count
+        marketCap: curveData
+          ? `${((curveData.supplySold.toNumber() / 1e6) * (curveData.basePrice.toNumber() / 1e9)).toFixed(2)} SOL`
+          : "—",
+        photoUrl: creator.avatar_url || "/default-avatar.png",
+        sparkline: Array.from({ length: 12 }, () => Math.floor(Math.random() * 18) + 3),
+        bio: creator.bio,
+        story: creator.story,
+        offer: creator.offer,
+        apy: 0,
+        country: creator.country_code || "—",
+        socials: creator.socials || {},
+        activityScore: creator.activity_score || 0,
+        vestingYear: 1,
+        totalUnlocked: 0,
+        createdAt: creator.token_lock_until,
+      }
+    : mockPerson;
+
+  // ── Trade handler ──
   const handleTrade = useCallback(async () => {
     if (!authenticated) {
       login();
@@ -56,23 +180,32 @@ export default function PersonPage({
 
     if (!person) return;
 
-    // In production, mint_address would come from Supabase
-    // For now, use a placeholder — will be replaced when real tokens exist
-    const mockMint = "11111111111111111111111111111111";
+    // Get the real mint address
+    const mintAddress = creator?.mint_address;
+    if (!mintAddress) {
+      toast.error("This is a demo profile — trading not available.");
+      return;
+    }
+
+    const creatorWallet = creator?.wallet_address;
+    if (!creatorWallet) {
+      toast.error("Creator wallet not found.");
+      return;
+    }
 
     try {
       if (activeTab === "buy") {
         await buyTokens({
-          mint: new PublicKey(mockMint),
+          mint: new PublicKey(mintAddress),
           solAmount: parsedAmount,
-          creatorWallet: new PublicKey(mockMint), // Will be real creator wallet
+          creatorWallet: new PublicKey(creatorWallet),
           treasury: TREASURY,
         });
       } else {
         await sellTokens({
-          mint: new PublicKey(mockMint),
+          mint: new PublicKey(mintAddress),
           tokenAmount: parsedAmount * 1_000_000, // 6 decimals
-          creatorWallet: new PublicKey(mockMint),
+          creatorWallet: new PublicKey(creatorWallet),
           treasury: TREASURY,
         });
       }
@@ -80,8 +213,22 @@ export default function PersonPage({
     } catch {
       // Error already handled by toast in useHumanofi
     }
-  }, [authenticated, login, amount, person, activeTab, buyTokens, sellTokens]);
+  }, [authenticated, login, amount, person, creator, activeTab, buyTokens, sellTokens]);
 
+  // ── Loading state ──
+  if (loading && !mockPerson) {
+    return (
+      <>
+        <Topbar />
+        <main className="page" style={{ textAlign: "center", paddingTop: 120 }}>
+          <div style={{ fontSize: "1.2rem", fontWeight: 800 }}>Loading...</div>
+        </main>
+        <Footer />
+      </>
+    );
+  }
+
+  // ── Not found ──
   if (!person) {
     return (
       <>
@@ -103,6 +250,8 @@ export default function PersonPage({
     ? (parsedAmt / (person.priceNum || 1)).toFixed(2)
     : (parsedAmt * (person.priceNum || 0)).toFixed(4);
 
+  const isRealCreator = !!creator;
+
   return (
     <>
       <div className="halftone-bg" />
@@ -114,6 +263,22 @@ export default function PersonPage({
             ← Back to Marketplace
           </Link>
         </p>
+
+        {/* Demo badge for mock profiles */}
+        {!isRealCreator && (
+          <div style={{
+            background: "rgba(255, 200, 0, 0.15)",
+            border: "1px solid rgba(255, 200, 0, 0.3)",
+            borderRadius: 8,
+            padding: "8px 16px",
+            marginBottom: 24,
+            fontSize: "0.8rem",
+            fontWeight: 700,
+            color: "#ffc800",
+          }}>
+            ⚠ Demo profile — This is sample data. Create your own token to see real data.
+          </div>
+        )}
 
         {/* PROFILE HEADER */}
         <div className="profile-header">
@@ -127,7 +292,7 @@ export default function PersonPage({
             
             <div className="profile-header__socials">
               {Object.entries(person.socials || {}).map(([platform, handle]) => (
-                <a key={platform} href="#" className="social-link" title={handle}>
+                <a key={platform} href={handle.startsWith("http") ? handle : `https://${handle}`} target="_blank" rel="noopener noreferrer" className="social-link" title={handle}>
                   {platform} ↗
                 </a>
               ))}
@@ -161,11 +326,11 @@ export default function PersonPage({
             <section className="feed">
               <div className="feed__header">
                 <h2 className="feed__title">Inner Circle Feed</h2>
-                <div className="feed__count">2 POSTS</div>
+                <div className="feed__count">{posts.length} POSTS</div>
               </div>
 
-              {authenticated && connected ? (
-                MOCK_POSTS.map((post, i) => (
+              {isHolder && posts.length > 0 ? (
+                posts.map((post, i) => (
                   <div key={i} className="feed__post">
                     <div className="feed__post-date">{post.date}</div>
                     <div className="feed__post-text">{post.text}</div>
@@ -175,7 +340,11 @@ export default function PersonPage({
                 <div className="feed__locked">
                   <div className="feed__locked-icon">◈</div>
                   <div className="feed__locked-text">Inner Circle Locked</div>
-                  <div className="feed__locked-sub">You must hold {person.name.split(" ")[0]}&apos;s tokens to view this content.</div>
+                  <div className="feed__locked-sub">
+                    {authenticated
+                      ? `You must hold ${person.name.split(" ")[0]}'s tokens to view this content.`
+                      : "Connect your wallet and hold tokens to access."}
+                  </div>
                 </div>
               )}
             </section>
@@ -190,8 +359,8 @@ export default function PersonPage({
                 <div className="stat-card__val">{person.price}</div>
               </div>
               <div className="stat-card">
-                <div className="stat-card__lbl">Est. APY</div>
-                <div className="stat-card__val" style={{ color: "var(--up)" }}>{person.apy}%</div>
+                <div className="stat-card__lbl">Activity Score</div>
+                <div className="stat-card__val">{person.activityScore}/100</div>
               </div>
               <div className="stat-card">
                 <div className="stat-card__lbl">Market Cap</div>
@@ -205,8 +374,12 @@ export default function PersonPage({
 
             <div className="trade-widget">
               <div className="trade-widget__info">
-                <div style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase" }}>Activity Score</div>
-                <div style={{ marginLeft: "auto", fontWeight: 800 }}>{person.activityScore}/100</div>
+                <div style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase" }}>
+                  {isRealCreator ? "Trade" : "Demo Mode"}
+                </div>
+                <div style={{ marginLeft: "auto", fontWeight: 800 }}>
+                  {isRealCreator ? `${person.activityScore}/100` : "—"}
+                </div>
               </div>
 
               <div className="trade-widget__tabs">
@@ -244,11 +417,18 @@ export default function PersonPage({
 
               <button 
                 className="btn-solid" 
-                style={{ width: "100%", background: activeTab === "buy" ? "var(--accent)" : "var(--down, #e53e3e)" }}
+                style={{ 
+                  width: "100%", 
+                  background: activeTab === "buy" ? "var(--accent)" : "var(--down, #e53e3e)",
+                  opacity: isRealCreator ? 1 : 0.5,
+                }}
                 onClick={handleTrade}
+                disabled={!isRealCreator}
               >
                 {!authenticated
                   ? "Connect Wallet"
+                  : !isRealCreator
+                  ? "Demo — Create a Token First"
                   : activeTab === "buy"
                   ? "Execute Buy"
                   : "Execute Sell"
