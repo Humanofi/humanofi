@@ -13,8 +13,10 @@
 --   6. inner_circle_replies → Replies on posts
 --   7. creator_activity     → Activity log (for Activity Score)
 --
--- IMPORTANT: After running this file, also run migration_beta.sql
--- to adjust for Beta (no KYC, relaxed FK constraints).
+-- NOTE: This is the reference schema. Actual migrations are in:
+--   supabase/migrations/00001_initial_schema.sql
+--   supabase/migrations/001_profiles_and_storage.sql
+--   supabase/migrations/002_beta_adjustments.sql
 -- ========================================================
 
 -- ════════════════════════════════════════════════════════
@@ -351,8 +353,7 @@ CREATE POLICY "Service upload metadata"
 --   4. Authenticated user can query with RLS context
 --
 -- Next steps:
---   1. Run this SQL in Supabase SQL Editor
---   2. Run migration_beta.sql (drops hiuid FK, relaxes RLS for Beta)
---   3. Add SUPABASE_JWT_SECRET + PRIVY_APP_SECRET to .env.local
---   4. Verify tables exist in Table Editor
---   5. Test full flow: Connect wallet → Create token → Inner Circle
+--   1. Run migrations in order (00001 → 001 → 002)
+--   2. Add SUPABASE_JWT_SECRET + PRIVY_APP_SECRET to .env.local
+--   3. Verify tables exist in Table Editor
+--   4. Test full flow: Connect wallet → Create token → Inner Circle
