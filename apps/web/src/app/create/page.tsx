@@ -239,7 +239,7 @@ export default function CreatePage() {
       formData.append("story", story);
       formData.append("offer", offer);
       formData.append("country", country);
-      formData.append("walletAddress", walletObj?.publicKey?.toBase58() || "");
+      formData.append("walletAddress", walletAddress || "");
       formData.append("socials", JSON.stringify({
         ...(twitter && { twitter }),
         ...(linkedin && { linkedin }),
@@ -289,7 +289,7 @@ export default function CreatePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             mintAddress: result.mint.toBase58(),
-            walletAddress: walletObj?.publicKey?.toBase58(),
+            walletAddress,
             hiuid: "pending", // Will be set after KYC
             displayName: tokenName,
             category,
