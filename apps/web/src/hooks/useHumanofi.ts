@@ -58,6 +58,18 @@ function deriveRewardStatePDA(mint: PublicKey, holder: PublicKey) {
   );
 }
 
+const ENGAGEMENT_EPOCH_DURATION = 2_592_000; // 30 days in seconds
+
+function deriveEngagementRecordPDA(mint: PublicKey, holder: PublicKey) {
+  const epoch = Math.floor(Date.now() / 1000 / ENGAGEMENT_EPOCH_DURATION);
+  const epochBytes = Buffer.alloc(8);
+  epochBytes.writeBigUInt64LE(BigInt(epoch));
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("engagement"), mint.toBuffer(), holder.toBuffer(), epochBytes],
+    PROGRAM_ID
+  );
+}
+
 /**
  * useHumanofi — Master hook for all protocol interactions.
  *
@@ -232,7 +244,7 @@ export function useHumanofi() {
     [program, publicKey]
   );
 
-  // ─── CLAIM REWARDS ───
+  // ─── CLAIM REWARDS (ENGAGEMENT-GATED) ───
   const claimRewards = useCallback(
     async (mint: PublicKey) => {
       if (!program || !publicKey) {
@@ -240,8 +252,31 @@ export function useHumanofi() {
         return null;
       }
 
+      // Step 1: Sync engagement on-chain via oracle API
+      toast.loading("Syncing engagement...", { id: "engagement-sync" });
+      try {
+        const syncRes = await fetch("/api/engagement/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-wallet-address": publicKey.toBase58() },
+          body: JSON.stringify({ mint: mint.toBase58() }),
+        });
+        const syncData = await syncRes.json();
+        toast.dismiss("engagement-sync");
+
+        if (!syncRes.ok) {
+          toast.error(syncData.error || "Engagement sync failed");
+          return null;
+        }
+      } catch {
+        toast.dismiss("engagement-sync");
+        toast.error("Failed to sync engagement");
+        return null;
+      }
+
+      // Step 2: Now claim on-chain (engagement record exists)
       const [rewardPool] = deriveRewardPoolPDA(mint);
       const [holderRewardState] = deriveRewardStatePDA(mint, publicKey);
+      const [engagementRecord] = deriveEngagementRecordPDA(mint, publicKey);
 
       const holderTokenAccount = getAssociatedTokenAddressSync(
         mint,
@@ -257,6 +292,7 @@ export function useHumanofi() {
           mint,
           rewardPool,
           holderRewardState,
+          engagementRecord,
           holderTokenAccount,
           tokenProgram: TOKEN_2022_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
@@ -272,6 +308,23 @@ export function useHumanofi() {
       return txPromise;
     },
     [program, publicKey]
+  );
+
+  // ─── FETCH ENGAGEMENT STATUS ───
+  const fetchEngagement = useCallback(
+    async (mint: string) => {
+      if (!walletAddress) return null;
+      try {
+        const res = await fetch(
+          `/api/engagement/sync?wallet=${walletAddress}&mint=${mint}`
+        );
+        if (!res.ok) return null;
+        return await res.json();
+      } catch {
+        return null;
+      }
+    },
+    [walletAddress]
   );
 
   // ─── FETCH BONDING CURVE STATE ───
@@ -296,6 +349,7 @@ export function useHumanofi() {
     sellTokens,
     claimRewards,
     fetchBondingCurve,
+    fetchEngagement,
     program,
     connection,
     connected,
@@ -345,4 +399,7 @@ const ERROR_MAP: Record<number, string> = {
   6018: "Transfer blocked — trade via Humanofi only.",
   6019: "Invalid mint.",
   6020: "Token amount must be greater than zero.",
+  6021: "Engagement record expired — must be from current month.",
+  6022: "Insufficient engagement — minimum 4 actions required this month.",
+  6023: "Unauthorized oracle.",
 };

@@ -75,4 +75,14 @@ pub enum HumanofiError {
 
     #[msg("Token amount must be greater than zero")]
     ZeroAmount,
+
+    // ---- Engagement (6070-6079) ----
+    #[msg("Engagement record expired — must be from current epoch")]
+    EngagementExpired,
+
+    #[msg("Insufficient engagement — minimum actions required this month")]
+    InsufficientEngagement,
+
+    #[msg("Unauthorized: only protocol authority can record engagement")]
+    UnauthorizedOracle,
 }

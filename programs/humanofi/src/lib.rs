@@ -74,10 +74,23 @@ pub mod humanofi {
 
     /// Claim accumulated rewards from the holder fee pool.
     ///
+    /// ENGAGEMENT GATED: Holder must have >= MIN_ENGAGEMENT_ACTIONS
+    /// in the current epoch (month) to qualify. The engagement record
+    /// is written by the protocol oracle via record_engagement.
+    ///
     /// Uses reward-per-token pattern (gas-efficient, O(1)):
     /// pending = balance × (global_rpt - personal_rpt) / precision
     pub fn claim_rewards(ctx: Context<ClaimRewards>) -> Result<()> {
         instructions::claim_rewards::handler(ctx)
+    }
+
+    /// Record a holder's engagement score on-chain (ORACLE ONLY).
+    ///
+    /// Called by the API server (protocol authority) to attest
+    /// that a holder has been active in the Inner Circle this month.
+    /// The EngagementRecord PDA is then verified during claim_rewards.
+    pub fn record_engagement(ctx: Context<RecordEngagement>, actions_count: u16) -> Result<()> {
+        instructions::record_engagement::handler(ctx, actions_count)
     }
 
     /// Unlock creator tokens based on progressive vesting schedule.

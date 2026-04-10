@@ -87,3 +87,20 @@ pub const SEED_VAULT: &[u8] = b"vault";
 pub const SEED_REWARDS: &[u8] = b"rewards";
 pub const SEED_LIMITER: &[u8] = b"limiter";
 pub const SEED_REWARD_STATE: &[u8] = b"reward_state";
+pub const SEED_ENGAGEMENT: &[u8] = b"engagement";
+
+// ---- Engagement Rewards ----
+
+/// Minimum actions per epoch to qualify for reward claims
+pub const MIN_ENGAGEMENT_ACTIONS: u16 = 4;
+
+/// Epoch duration in seconds (30 days)
+pub const ENGAGEMENT_EPOCH_DURATION: i64 = 30 * 24 * 60 * 60; // 2_592_000
+
+/// Protocol authority pubkey (oracle API signer)
+/// This is the public key of the keypair used by the API to sign
+/// engagement records. Update this when deploying.
+pub const PROTOCOL_AUTHORITY: Pubkey = Pubkey::new_from_array([
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+]); // TODO: Set to actual oracle pubkey before deploy

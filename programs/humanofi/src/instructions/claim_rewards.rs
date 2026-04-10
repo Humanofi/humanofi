@@ -5,6 +5,12 @@
 // Allows holders to claim their accumulated rewards
 // from the reward pool (30% of all trading fees).
 //
+// ENGAGEMENT GATING:
+// Holders must have been active in the Inner Circle
+// this month (minimum MIN_ENGAGEMENT_ACTIONS interactions)
+// to qualify for claiming. This ensures rewards are
+// "usage incentives" not "passive dividends" (securities).
+//
 // Uses the reward-per-token pattern:
 // pending = balance * (global_rpt - personal_rpt) / PRECISION + owed
 
@@ -18,6 +24,20 @@ use crate::state::*;
 pub fn handler(ctx: Context<ClaimRewards>) -> Result<()> {
     let holder_balance = ctx.accounts.holder_token_account.amount;
     require!(holder_balance > 0, HumanofiError::ZeroHolderBalance);
+
+    // ---- Verify engagement (CONDITIONAL REWARDS) ----
+    let clock = Clock::get()?;
+    let current = current_epoch_from_timestamp(clock.unix_timestamp);
+    let engagement = &ctx.accounts.engagement_record;
+
+    require!(
+        engagement.epoch == current,
+        HumanofiError::EngagementExpired
+    );
+    require!(
+        engagement.actions_count >= MIN_ENGAGEMENT_ACTIONS,
+        HumanofiError::InsufficientEngagement
+    );
 
     // ---- Calculate pending rewards ----
     let pending = ctx.accounts.reward_pool.calculate_pending_rewards(
@@ -52,10 +72,11 @@ pub fn handler(ctx: Context<ClaimRewards>) -> Result<()> {
         .ok_or(HumanofiError::MathOverflow)?;
 
     msg!(
-        "✅ Claim | holder={} | rewards={} lamports | mint={}",
+        "✅ Claim | holder={} | rewards={} lamports | mint={} | engagement={}",
         ctx.accounts.holder.key(),
         pending,
-        ctx.accounts.mint.key()
+        ctx.accounts.mint.key(),
+        engagement.actions_count
     );
 
     Ok(())
@@ -89,6 +110,20 @@ pub struct ClaimRewards<'info> {
     )]
     pub holder_reward_state: Account<'info, HolderRewardState>,
 
+    /// Engagement record for current epoch (proves holder was active)
+    #[account(
+        seeds = [
+            SEED_ENGAGEMENT,
+            mint.key().as_ref(),
+            holder.key().as_ref(),
+            &current_epoch_from_timestamp(Clock::get()?.unix_timestamp).to_le_bytes(),
+        ],
+        bump = engagement_record.bump,
+        constraint = engagement_record.holder == holder.key() @ HumanofiError::InvalidMint,
+        constraint = engagement_record.mint == mint.key() @ HumanofiError::InvalidMint,
+    )]
+    pub engagement_record: Account<'info, EngagementRecord>,
+
     /// Holder's token account (to verify balance)
     #[account(
         associated_token::mint = mint,
@@ -103,3 +138,4 @@ pub struct ClaimRewards<'info> {
     /// System Program
     pub system_program: Program<'info, System>,
 }
+

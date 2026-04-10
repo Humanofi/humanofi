@@ -102,6 +102,15 @@ export async function POST(
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
 
+      // Track engagement for conditional rewards
+      const epoch = Math.floor(Date.now() / 1000 / 2_592_000);
+      await supabase.rpc("increment_engagement", {
+        p_wallet_address: walletAddress,
+        p_mint_address: mint,
+        p_epoch: epoch,
+        p_action_type: "reaction",
+      });
+
       return NextResponse.json({ success: true, action: "added" });
     }
   } catch (error) {
