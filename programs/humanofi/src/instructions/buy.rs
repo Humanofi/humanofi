@@ -62,21 +62,22 @@ pub fn handler(ctx: Context<Buy>, sol_amount: u64) -> Result<()> {
         .checked_sub(holder_fee)
         .ok_or(HumanofiError::FeeOverflow)?;
 
-    // ---- Calculate tokens to mint from net SOL ----
-    // We need to reverse the cost function: given SOL, how many tokens?
-    // For a linear curve: cost = base * amount + slope * (2*s*a + a²) / (2*PRECISION)
-    // For simplicity, we approximate by dividing net SOL by current price
-    // This is accurate for small purchases relative to supply
-    let current_price = ctx.accounts.bonding_curve.get_current_price()?;
-    require!(current_price > 0, HumanofiError::PriceCalculationZero);
-
-    let token_amount = (net_sol as u128)
-        .checked_mul(1_000_000) // Convert to base units (6 decimals)
-        .ok_or(HumanofiError::MathOverflow)?
-        .checked_div(current_price as u128)
-        .ok_or(HumanofiError::MathOverflow)? as u64;
+    // ---- Calculate exact tokens from net SOL using bonding curve integral ----
+    // Uses quadratic formula + forward verification (Synthetix-audited pattern)
+    // Guarantees: cost(tokens) <= net_sol < cost(tokens+1)
+    let token_amount = ctx.accounts.bonding_curve.calculate_tokens_from_sol(net_sol)?;
 
     require!(token_amount > 0, HumanofiError::PriceCalculationZero);
+
+    // ---- INVARIANT CHECK: verify actual cost never exceeds budget ----
+    // This is the final safety net — even if the math above has a bug,
+    // this check prevents the protocol from ever minting more tokens
+    // than the SOL deposited can cover.
+    let verified_cost = ctx.accounts.bonding_curve.calculate_buy_cost(token_amount)?;
+    require!(
+        verified_cost <= net_sol,
+        HumanofiError::PriceCalculationZero // cost exceeds budget = something went wrong
+    );
 
     // ---- Check purchase limits ----
     let limiter = &mut ctx.accounts.purchase_limiter;
@@ -208,11 +209,11 @@ pub fn handler(ctx: Context<Buy>, sol_amount: u64) -> Result<()> {
     }
 
     msg!(
-        "✅ Buy | buyer={} | sol={} | tokens={} | price={} | fee={}",
+        "✅ Buy | buyer={} | sol={} | tokens={} | net_sol={} | fee={}",
         ctx.accounts.buyer.key(),
         sol_amount,
         token_amount,
-        current_price,
+        net_sol,
         total_fee
     );
 

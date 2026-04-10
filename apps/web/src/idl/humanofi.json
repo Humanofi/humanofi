@@ -875,6 +875,43 @@
           }
         },
         {
+          "name": "holder_reward_state",
+          "docs": [
+            "Holder's reward state — snapshot pending rewards before balance change",
+            "(Synthetix pattern: updateReward modifier before withdraw)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              },
+              {
+                "kind": "account",
+                "path": "seller"
+              }
+            ]
+          }
+        },
+        {
           "name": "purchase_limiter",
           "docs": [
             "Purchase Limiter PDA (for exit tax check)"

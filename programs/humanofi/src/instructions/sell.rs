@@ -36,6 +36,31 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64) -> Result<()> {
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;
 
+    // ── REWARD SNAPSHOT (Synthetix pattern) ──────────────────────
+    // MUST happen BEFORE balance changes.
+    // If the seller has unclaimed rewards, snapshot them into rewards_owed
+    // so they can be claimed later even after token balance decreases.
+    {
+        let pool = &ctx.accounts.reward_pool;
+        let state = &mut ctx.accounts.holder_reward_state;
+        
+        // Initialize state if first interaction
+        if state.mint == Pubkey::default() {
+            state.mint = ctx.accounts.mint.key();
+            state.holder = ctx.accounts.seller.key();
+            state.reward_per_token_paid = pool.reward_per_token_stored;
+            state.rewards_owed = 0;
+            state.bump = ctx.bumps.holder_reward_state;
+        }
+
+        // Calculate pending rewards at current balance (before burn)
+        let pending = pool.calculate_pending_rewards(state, seller_balance)?;
+        
+        // Snapshot: save pending into owed, update paid marker
+        state.rewards_owed = pending;
+        state.reward_per_token_paid = pool.reward_per_token_stored;
+    }
+
     // ---- Calculate SOL return from bonding curve ----
     let gross_return = ctx.accounts.bonding_curve.calculate_sell_return(token_amount)?;
     require!(gross_return > 0, HumanofiError::PriceCalculationZero);
@@ -237,6 +262,17 @@ pub struct Sell<'info> {
     )]
     pub reward_pool: Account<'info, RewardPool>,
 
+    /// Holder's reward state — snapshot pending rewards before balance change
+    /// (Synthetix pattern: updateReward modifier before withdraw)
+    #[account(
+        init_if_needed,
+        payer = seller,
+        space = 8 + HolderRewardState::INIT_SPACE,
+        seeds = [SEED_REWARD_STATE, mint.key().as_ref(), seller.key().as_ref()],
+        bump,
+    )]
+    pub holder_reward_state: Account<'info, HolderRewardState>,
+
     /// Purchase Limiter PDA (for exit tax check)
     #[account(
         seeds = [SEED_LIMITER, seller.key().as_ref(), mint.key().as_ref()],
@@ -275,3 +311,4 @@ pub struct Sell<'info> {
     /// System Program
     pub system_program: Program<'info, System>,
 }
+

@@ -3,15 +3,23 @@
 // ========================================
 // Replaces the old WalletProvider with Privy for
 // embedded wallets + social login + Phantom/Solflare support.
+//
+// Uses config.solana.rpcs with @solana/kit as per Privy v3 docs.
+// Both mainnet + devnet RPCs are required by Privy.
 
 "use client";
 
 import { PrivyProvider } from "@privy-io/react-auth";
-import { toSolanaWalletConnectors, defaultSolanaRpcsPlugin } from "@privy-io/react-auth/solana";
+import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
+import { createSolanaRpc, createSolanaRpcSubscriptions } from "@solana/kit";
 
 const solanaConnectors = toSolanaWalletConnectors({
   shouldAutoConnect: true,
 });
+
+// Triton RPCs from env
+const DEVNET_RPC = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.devnet.solana.com";
+const MAINNET_RPC = process.env.NEXT_PUBLIC_SOLANA_MAINNET_RPC_URL || "https://api.mainnet-beta.solana.com";
 
 interface PrivyWalletProviderProps {
   children: React.ReactNode;
@@ -21,7 +29,6 @@ export function PrivyWalletProvider({ children }: PrivyWalletProviderProps) {
   const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
 
   if (!appId) {
-    // In development without Privy configured, render children directly
     console.warn("[Humanofi] NEXT_PUBLIC_PRIVY_APP_ID not set — running without auth");
     return <>{children}</>;
   }
@@ -47,10 +54,23 @@ export function PrivyWalletProvider({ children }: PrivyWalletProviderProps) {
             connectors: solanaConnectors,
           },
         },
-        // Plugin: provides default Privy-hosted Solana RPC endpoints
-        // for all chains (mainnet, devnet, testnet).
-        // Fixes "No RPC configuration found for chain solana:mainnet"
-        plugins: [defaultSolanaRpcsPlugin()],
+        // Privy v3: Solana RPC config via @solana/kit
+        solana: {
+          rpcs: {
+            "solana:mainnet": {
+              rpc: createSolanaRpc(MAINNET_RPC),
+              rpcSubscriptions: createSolanaRpcSubscriptions(
+                MAINNET_RPC.replace("https://", "wss://")
+              ),
+            },
+            "solana:devnet": {
+              rpc: createSolanaRpc(DEVNET_RPC),
+              rpcSubscriptions: createSolanaRpcSubscriptions(
+                DEVNET_RPC.replace("https://", "wss://")
+              ),
+            },
+          },
+        },
       }}
     >
       {children}

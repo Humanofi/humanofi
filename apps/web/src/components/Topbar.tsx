@@ -8,15 +8,15 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
-
-const NAV_ITEMS = [
-  { href: "/", label: "Explore" },
-  { href: "/leaderboard", label: "Leaderboard" },
-  { href: "/create", label: "Create" },
-];
+import { useSupabaseAuth } from "@/hooks/useSupabaseAuth";
+import { useState, useEffect } from "react";
 
 export default function Topbar() {
   const pathname = usePathname();
+
+  // Get rich profile data (creator status, hasToken, etc)
+  // Must be called unconditionally (React hooks rule)
+  const { user: humanofiUser } = useSupabaseAuth();
 
   // Try to use Privy — gracefully handle when provider is not mounted
   let privyState: {
@@ -52,6 +52,43 @@ export default function Topbar() {
     ? `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`
     : null;
 
+  // ── HYDRATION FIX ──
+  // On first render (SSR + hydration), use static nav items only.
+  // Once mounted on client, switch to dynamic items.
+  // This prevents the server/client mismatch that causes hydration errors.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // Static nav items (always the same on server + client first paint)
+  const STATIC_NAV_ITEMS = [
+    { href: "/", label: "Explore" },
+    { href: "/feed", label: "Feed" },
+    { href: "/leaderboard", label: "Leaderboard" },
+    { href: "/create", label: "Create" },
+  ];
+
+  // Dynamic nav items (only used after client mount)
+  const navItems = mounted
+    ? (() => {
+        const items = [
+          { href: "/", label: "Explore" },
+          { href: "/feed", label: "Feed" },
+          { href: "/leaderboard", label: "Leaderboard" },
+        ];
+
+        if (humanofiUser?.isCreator && humanofiUser.creator?.mint_address) {
+          items.push({
+            href: `/person/${humanofiUser.creator.mint_address}`,
+            label: "My Token",
+          });
+        } else {
+          items.push({ href: "/create", label: "Create" });
+        }
+
+        return items;
+      })()
+    : STATIC_NAV_ITEMS;
+
   return (
     <nav className="topbar">
       <Link href="/" className="topbar__logo">
@@ -67,12 +104,16 @@ export default function Topbar() {
       </Link>
 
       <div className="topbar__nav">
-        {NAV_ITEMS.map((item) => (
+        {navItems.map((item) => (
           <Link
             key={item.href}
             href={item.href}
             className={`topbar__link ${
-              pathname === item.href ? "topbar__link--active" : ""
+              pathname === item.href ||
+              (item.label === "My Token" &&
+                pathname?.startsWith("/person/"))
+                ? "topbar__link--active"
+                : ""
             }`}
           >
             {item.label}

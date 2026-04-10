@@ -411,38 +411,80 @@ function parseAnchorError(err: unknown): string {
       const code = parseInt(match[1], 16);
       return ERROR_MAP[code] || `Program error (${code})`;
     }
-    // Check for common wallet errors
-    if (msg.includes("User rejected")) return "Transaction cancelled by user.";
-    if (msg.includes("insufficient")) return "Insufficient balance.";
-    return msg.length > 120 ? msg.slice(0, 120) + "..." : msg;
+    // Extract AnchorError format: "Error Code: XXX"
+    const anchorMatch = msg.match(/Error Code: (\w+)/);
+    if (anchorMatch) {
+      const errorName = anchorMatch[1];
+      return NAMED_ERROR_MAP[errorName] || errorName;
+    }
+    // Check for common wallet/network errors
+    if (msg.includes("User rejected")) return "Transaction cancelled.";
+    if (msg.includes("insufficient") || msg.includes("no record of a prior credit")) 
+      return "Insufficient balance — Top up your wallet with SOL.";
+    if (msg.includes("Simulation failed"))
+      return extractSimError(msg);
+    if (msg.includes("blockhash")) return "Transaction expired — Please try again.";
+    return msg.length > 150 ? msg.slice(0, 150) + "..." : msg;
   }
   return "Unknown error";
 }
 
+/** Extract the most useful part from simulation error messages */
+function extractSimError(msg: string): string {
+  if (msg.includes("no record of a prior credit"))
+    return "Insufficient balance — Top up your wallet with SOL.";
+  if (msg.includes("DailyLimitExceeded"))
+    return "Daily limit reached — Try again tomorrow or reduce the amount.";
+  if (msg.includes("InsufficientSol"))
+    return "Not enough SOL in the bonding curve.";
+  // Generic simulation fail
+  const innerMatch = msg.match(/Message: (.+?)(\.|$)/);
+  if (innerMatch) return innerMatch[1];
+  return "Simulation failed — Check your balance.";
+}
+
 // Map Anchor error codes to human messages (from errors.rs)
 const ERROR_MAP: Record<number, string> = {
-  6000: "Token name must be 1-32 characters.",
-  6001: "Token symbol must be 1-10 characters.",
+  6000: "Token name must be 1–32 characters.",
+  6001: "Token symbol must be 1–10 characters.",
   6002: "Base price must be greater than zero.",
   6003: "Curve factor must be greater than zero.",
-  6004: "Bonding curve is not active.",
+  6004: "This token is no longer active.",
   6005: "Insufficient SOL for this purchase.",
-  6006: "Insufficient token balance to sell.",
-  6007: "Amount too small — price is zero.",
-  6008: "Math overflow in bonding curve.",
+  6006: "Not enough tokens to sell.",
+  6007: "Amount too small — price would be zero.",
+  6008: "Math overflow error.",
   6009: "Insufficient reserve in bonding curve.",
-  6010: "Purchase exceeds daily limit.",
+  6010: "Daily limit reached — Try again tomorrow or reduce the amount.",
   6011: "Amount must be greater than zero.",
   6012: "Creator tokens are still locked.",
-  6013: "Creator tokens already unlocked.",
-  6014: "Only the creator can unlock.",
+  6013: "Creator tokens are already unlocked.",
+  6014: "Only the creator can unlock their tokens.",
   6015: "No rewards available.",
-  6016: "Must hold tokens to claim rewards.",
-  6017: "Fee calculation overflow.",
-  6018: "Transfer blocked — trade via Humanofi only.",
+  6016: "You must hold tokens to claim rewards.",
+  6017: "Fee calculation error.",
+  6018: "Transfer blocked — Trade via Humanofi only.",
   6019: "Invalid mint.",
   6020: "Token amount must be greater than zero.",
-  6021: "Engagement record expired — must be from current month.",
-  6022: "Insufficient engagement — minimum 4 actions required this month.",
+  6021: "Engagement data expired.",
+  6022: "Insufficient engagement — Minimum 4 actions required this month.",
   6023: "Unauthorized oracle.",
+  6024: "Initial liquidity too high.",
+  6025: "Invalid treasury.",
+  6026: "Invalid epoch.",
 };
+
+// Map Anchor error names for "Error Code: XXX" format
+const NAMED_ERROR_MAP: Record<string, string> = {
+  DailyLimitExceeded: "Daily limit reached — Try again tomorrow or reduce the amount.",
+  InsufficientSol: "Insufficient SOL for this purchase.",
+  InsufficientTokenBalance: "Not enough tokens to sell.",
+  InsufficientReserve: "Insufficient reserve in bonding curve.",
+  CurveNotActive: "This token is no longer active.",
+  MathOverflow: "Math overflow error.",
+  InvalidTreasury: "Invalid treasury.",
+  InvalidEpoch: "Invalid epoch.",
+  ExcessiveInitialLiquidity: "Initial liquidity too high.",
+};
+
+

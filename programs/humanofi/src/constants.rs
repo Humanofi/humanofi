@@ -55,16 +55,16 @@ pub const VESTING_YEAR_4_PLUS_MAX_BPS: u64 = 2000; // 20%
 /// Seconds in one year (for vesting period calculation)
 pub const SECONDS_PER_YEAR: i64 = 365 * 24 * 60 * 60;
 
-// ---- Purchase Limits ----
+// ---- Purchase Limits (in lamports) ----
 
-/// Maximum USD per day — Week 1 (first 7 days)
-pub const WEEK1_MAX_USD_PER_DAY: u64 = 50;
+/// Maximum SOL per day — Week 1 (first 7 days): 1 SOL
+pub const WEEK1_MAX_LAMPORTS_PER_DAY: u64 = 1_000_000_000;
 
-/// Maximum USD per day — Month 1 (days 8-30)
-pub const MONTH1_MAX_USD_PER_DAY: u64 = 200;
+/// Maximum SOL per day — Month 1 (days 8-30): 5 SOL
+pub const MONTH1_MAX_LAMPORTS_PER_DAY: u64 = 5_000_000_000;
 
-/// Maximum USD per day — After month 1
-pub const DEFAULT_MAX_USD_PER_DAY: u64 = 1000;
+/// Maximum SOL per day — After month 1: 20 SOL
+pub const DEFAULT_MAX_LAMPORTS_PER_DAY: u64 = 20_000_000_000;
 
 /// Seconds in one day (for rolling window)
 pub const SECONDS_PER_DAY: i64 = 86_400;
@@ -92,10 +92,10 @@ pub const SEED_ENGAGEMENT: &[u8] = b"engagement";
 // ---- Initial Liquidity ----
 
 /// Minimum SOL a creator must inject into the bonding curve at creation.
-/// ~$5 in SOL (0.03 SOL ≈ $5 at ~$170/SOL). Gives token a non-zero starting value.
+/// 0.03 SOL — Gives the token a non-zero starting value.
 pub const MIN_INITIAL_LIQUIDITY: u64 = 30_000_000; // 0.03 SOL = 30M lamports
 
-/// Maximum initial liquidity to prevent price manipulation (~$1700 ≈ 10 SOL)
+/// Maximum initial liquidity to prevent price manipulation (10 SOL)
 pub const MAX_INITIAL_LIQUIDITY: u64 = 10_000_000_000; // 10 SOL
 
 // ---- Treasury ----

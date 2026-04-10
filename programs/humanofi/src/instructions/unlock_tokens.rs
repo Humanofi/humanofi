@@ -19,7 +19,7 @@
 
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{
-    thaw_account, Mint, ThawAccount, TokenAccount, TokenInterface,
+    freeze_account, thaw_account, FreezeAccount, Mint, ThawAccount, TokenAccount, TokenInterface,
 };
 
 use crate::constants::*;
@@ -69,21 +69,27 @@ pub fn handler(ctx: Context<UnlockTokens>, amount_to_unlock: u64) -> Result<()> 
         ))?;
     }
 
-    // Note: We DON'T re-freeze after unlock.
-    // The creator can now sell unlocked tokens through the bonding curve.
-    // They can't transfer them externally because the sell instruction
-    // handles the thaw/burn/freeze cycle, and direct transfers
-    // still fail because only frozen accounts exist for other holders.
-    //
-    // After unlock, if the creator wants to sell, they use the sell
-    // instruction which will work on their thawed account.
-
-    // ---- Update vault ----
+    // ---- Update vault BEFORE re-freezing ----
+    // (moved up so the re-freeze happens after state update)
     let vault = &mut ctx.accounts.creator_vault;
     vault.total_unlocked = vault
         .total_unlocked
         .checked_add(amount_to_unlock)
         .ok_or(HumanofiError::MathOverflow)?;
+
+    // ---- Re-freeze creator's account ----
+    // CRITICAL: Without this, the creator could transfer tokens via
+    // standard SPL transfer to another wallet, bypassing the bonding curve.
+    // The sell instruction handles its own thaw/burn/freeze cycle.
+    freeze_account(CpiContext::new_with_signer(
+        ctx.accounts.token_program.to_account_info(),
+        FreezeAccount {
+            account: ctx.accounts.creator_token_account.to_account_info(),
+            mint: ctx.accounts.mint.to_account_info(),
+            authority: ctx.accounts.bonding_curve.to_account_info(),
+        },
+        signer_seeds,
+    ))?;
 
     let vesting_year = vault.get_vesting_year(now);
     let cumulative_max = vault.get_cumulative_max_unlockable(now)?;

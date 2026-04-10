@@ -129,6 +129,8 @@ CREATE TABLE IF NOT EXISTS inner_circle_posts (
   creator_mint    TEXT NOT NULL REFERENCES creator_tokens(mint_address) ON DELETE CASCADE,
   content         TEXT NOT NULL,                                 -- Post text content
   image_urls      TEXT[] DEFAULT '{}',                           -- Array of image URLs
+  post_type       TEXT NOT NULL DEFAULT 'text',                  -- 'text', 'event', 'announcement', 'poll'
+  metadata        JSONB DEFAULT '{}',                            -- Specific data (event dates, poll options...)
   created_at      TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   updated_at      TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
@@ -149,8 +151,8 @@ CREATE TABLE IF NOT EXISTS inner_circle_reactions (
   emoji           TEXT NOT NULL CHECK (emoji IN ('🔥', '💡', '🙏', '🚀', '❤️', '👀')),
   created_at      TIMESTAMPTZ DEFAULT NOW() NOT NULL,
 
-  -- One reaction per emoji per user per post
-  UNIQUE(post_id, wallet_address, emoji)
+  -- One reaction per user per post (can change emoji, but only 1)
+  UNIQUE(post_id, wallet_address)
 );
 
 -- Indexes

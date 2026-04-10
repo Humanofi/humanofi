@@ -93,7 +93,22 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ posts: posts || [], isCreator });
+  // Fetch the current user's votes and rsvps for these posts
+  const postIds = posts?.map((p) => p.id) || [];
+  let userVotes: Record<string, number> = {};
+  let userRsvps: Record<string, string> = {};
+
+  if (postIds.length > 0) {
+    const [{ data: votes }, { data: rsvps }] = await Promise.all([
+      supabase.from("poll_votes").select("post_id, option_index").in("post_id", postIds).eq("wallet_address", walletAddress),
+      supabase.from("event_rsvps").select("post_id, status").in("post_id", postIds).eq("wallet_address", walletAddress)
+    ]);
+
+    if (votes) votes.forEach(v => userVotes[v.post_id] = v.option_index);
+    if (rsvps) rsvps.forEach(r => userRsvps[r.post_id] = r.status);
+  }
+
+  return NextResponse.json({ posts: posts || [], isCreator, userVotes, userRsvps });
 }
 
 /**
@@ -132,7 +147,7 @@ export async function POST(
   }
 
   try {
-    const { content, imageUrls } = await request.json();
+    const { content, imageUrls, mediaUrls, post_type, metadata } = await request.json();
 
     if (!content || content.trim().length === 0) {
       return NextResponse.json(
@@ -148,6 +163,9 @@ export async function POST(
         creator_mint: mint,
         content: content.trim(),
         image_urls: imageUrls || [],
+        media_urls: mediaUrls || [],
+        post_type: post_type || 'text',
+        metadata: metadata || {}
       })
       .select()
       .single();

@@ -16,8 +16,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <PrivyWalletProvider>
       <AuthSyncProvider>
-        {children}
-        <Toaster
+        <>
+          {children}
+          <Toaster
           position="bottom-right"
           richColors
           toastOptions={{
@@ -28,7 +29,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
               fontWeight: 700,
             },
           }}
-        />
+          />
+        </>
       </AuthSyncProvider>
     </PrivyWalletProvider>
   );

@@ -71,16 +71,24 @@ export async function POST(request: NextRequest) {
     }
 
     // If Privy is configured, verify the access token
+    // On verification failure: in dev/devnet, proceed with wallet-only auth
+    // In production, this should be a hard fail
     let verifiedUserId: string | null = null;
     if (PRIVY_APP_ID && accessToken) {
       const verified = await verifyPrivyToken(accessToken);
       if (!verified) {
-        return NextResponse.json(
-          { error: "Invalid Privy token" },
-          { status: 401 }
-        );
+        const isDev = process.env.NODE_ENV === "development" || !process.env.NODE_ENV;
+        if (isDev) {
+          console.warn("[Auth] Privy token verification failed — proceeding with wallet-only auth (dev mode)");
+        } else {
+          return NextResponse.json(
+            { error: "Invalid Privy token" },
+            { status: 401 }
+          );
+        }
+      } else {
+        verifiedUserId = verified.userId;
       }
-      verifiedUserId = verified.userId;
     }
 
     // Upsert user profile in Supabase

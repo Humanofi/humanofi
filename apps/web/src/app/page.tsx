@@ -8,6 +8,7 @@ import { getAllPersons } from "@/lib/data";
 import { CATEGORIES } from "@/lib/mockData";
 import type { Person } from "@/lib/mockData";
 import Image from "next/image";
+import TrendingNow from "@/components/public-feed/TrendingNow";
 
 const CATEGORY_MAP: Record<string, string[]> = {
   All: [],
@@ -121,6 +122,9 @@ export default function ExplorePage() {
           </div>
         </div>
       </section>
+
+      {/* Trending Now */}
+      <TrendingNow />
 
       <main className="page" id="marketplace">
         <div className="page__header" style={{ marginBottom: 24 }}>

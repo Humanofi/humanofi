@@ -8,6 +8,52 @@ import { createServerClient } from "@/lib/supabase/client";
 import { verifyRequest } from "@/lib/auth/verifyRequest";
 
 /**
+ * GET /api/inner-circle/[mint]/reply
+ * Fetch replies for a post.
+ */
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ mint: string }> }
+) {
+  const { mint } = await params;
+  const supabase = createServerClient();
+  if (!supabase) {
+    return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+  }
+
+  const auth = await verifyRequest(request);
+  if (!auth.authenticated || !auth.walletAddress) {
+    return NextResponse.json({ error: auth.error || "Authentication required" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const postId = searchParams.get("postId");
+  if (!postId) {
+    return NextResponse.json({ error: "postId is required" }, { status: 400 });
+  }
+
+  try {
+    const { data: replies, error } = await supabase
+      .from("inner_circle_replies")
+      .select(`
+        *,
+        profiles!inner_circle_replies_wallet_address_fkey(display_name, avatar_url)
+      `)
+      .eq("post_id", postId)
+      .order("created_at", { ascending: true }) // Oldest first to feel like a chat
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ replies: replies || [] });
+  } catch (error) {
+    console.error("Fetch relies error:", error);
+    return NextResponse.json({ error: "Failed to fetch replies" }, { status: 500 });
+  }
+}
+
+/**
  * POST /api/inner-circle/[mint]/reply
  * Reply to an inner circle post (holders + creator).
  */

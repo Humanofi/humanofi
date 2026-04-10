@@ -7,7 +7,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/client";
 import { verifyRequest } from "@/lib/auth/verifyRequest";
 
-const VALID_REACTIONS = ["🔥", "💡", "🙏", "🚀", "❤️", "👀"];
+const VALID_REACTIONS = ["🔥", "💡", "🙏", "🚀", "❤️", "👀", "😅", "😫", "😱", "🤌"];
 
 /**
  * POST /api/inner-circle/[mint]/react

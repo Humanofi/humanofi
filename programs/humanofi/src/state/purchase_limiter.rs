@@ -3,6 +3,7 @@
 // ========================================
 //
 // Enforces progressive buy limits per wallet per token.
+// Limits are in SOL (lamports) — no USD conversion needed.
 // Also tracks the first purchase timestamp for exit tax eligibility.
 //
 // Seeds: ["limiter", wallet_pubkey, mint_pubkey]
@@ -40,24 +41,18 @@ impl PurchaseLimiter {
     /// Get the maximum daily spend in lamports based on how long
     /// since the bonding curve was created.
     ///
-    /// Week 1:   max $50/day  → ~0.33 SOL at $150
-    /// Month 1:  max $200/day → ~1.33 SOL at $150
-    /// After:    max $1000/day → ~6.67 SOL at $150
-    ///
-    /// Note: This uses a fixed SOL/USD approximation for now.
-    /// TODO: Integrate Pyth oracle for live pricing.
+    /// Week 1:   max 1 SOL/day
+    /// Month 1:  max 5 SOL/day
+    /// After:    max 20 SOL/day
     pub fn get_daily_limit_lamports(&self, now: i64) -> u64 {
         let age = now.saturating_sub(self.curve_created_at);
 
-        // Convert USD limits to approximate lamports (assuming ~$150/SOL)
-        let sol_per_usd: u64 = 6_666_667; // 1 SOL / 150 = 0.006667 SOL = 6_666_667 lamports
-
         if age < SECONDS_PER_WEEK {
-            WEEK1_MAX_USD_PER_DAY * sol_per_usd
+            WEEK1_MAX_LAMPORTS_PER_DAY
         } else if age < SECONDS_PER_MONTH {
-            MONTH1_MAX_USD_PER_DAY * sol_per_usd
+            MONTH1_MAX_LAMPORTS_PER_DAY
         } else {
-            DEFAULT_MAX_USD_PER_DAY * sol_per_usd
+            DEFAULT_MAX_LAMPORTS_PER_DAY
         }
     }
 
@@ -80,6 +75,18 @@ impl PurchaseLimiter {
 
         self.spent_today_lamports = new_total;
         Ok(())
+    }
+
+    /// Get remaining daily budget in lamports
+    pub fn remaining_budget(&self, now: i64) -> u64 {
+        let daily_limit = self.get_daily_limit_lamports(now);
+
+        // If day window expired, full budget available
+        if now.saturating_sub(self.day_window_start) >= SECONDS_PER_DAY {
+            return daily_limit;
+        }
+
+        daily_limit.saturating_sub(self.spent_today_lamports)
     }
 
     /// Check if a sell is subject to exit tax (sold within 90 days of first purchase).
