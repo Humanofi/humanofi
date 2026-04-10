@@ -22,7 +22,7 @@ export async function GET(
     return NextResponse.json({ error: "Database not configured" }, { status: 503 });
   }
 
-  // Get wallet address from auth header (simplified — in production use Supabase auth)
+  // Get wallet address from auth header
   const walletAddress = request.headers.get("x-wallet-address");
 
   if (!walletAddress) {
@@ -32,7 +32,9 @@ export async function GET(
     );
   }
 
-  // Check if user is the creator or holds tokens
+  // ── ACCESS CHECK: On-chain first, Supabase cache as fallback ──
+
+  // 1. Check if user is the creator (fast DB check)
   const { data: creator } = await supabase
     .from("creator_tokens")
     .select("wallet_address")
@@ -43,16 +45,27 @@ export async function GET(
   const isCreator = !!creator;
 
   if (!isCreator) {
-    // Check if user holds tokens
-    const { data: holding } = await supabase
-      .from("token_holders")
-      .select("balance")
-      .eq("wallet_address", walletAddress)
-      .eq("mint_address", mint)
-      .gt("balance", 0)
-      .single();
+    // 2. Verify token holdings ON-CHAIN (source of truth)
+    let hasAccess = false;
 
-    if (!holding) {
+    try {
+      const { verifyTokenHolder } = await import("@/lib/solana/verify");
+      const result = await verifyTokenHolder(walletAddress, mint);
+      hasAccess = result.isHolder;
+    } catch (err) {
+      console.warn("[InnerCircle] On-chain verification failed, falling back to cache:", err);
+      // 3. Fallback to Supabase cache if RPC fails
+      const { data: holding } = await supabase
+        .from("token_holders")
+        .select("balance")
+        .eq("wallet_address", walletAddress)
+        .eq("mint_address", mint)
+        .gt("balance", 0)
+        .single();
+      hasAccess = !!holding;
+    }
+
+    if (!hasAccess) {
       return NextResponse.json(
         {
           error: "You must hold tokens to access the Inner Circle",

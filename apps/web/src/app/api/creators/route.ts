@@ -3,9 +3,15 @@
 // ========================================
 // GET  /api/creators       → List all creator tokens
 // POST /api/creators       → Register new creator (after token creation)
+//
+// SECURITY: POST verifies on-chain that:
+//   1. The mint exists (Token-2022)
+//   2. The mint's authority is the Humanofi bonding curve PDA
+//   3. The wallet is the on-chain creator of the token
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/client";
+import { verifyHumanofiToken } from "@/lib/solana/verify";
 
 /**
  * GET /api/creators
@@ -45,11 +51,12 @@ export async function GET(request: NextRequest) {
  * POST /api/creators
  * Register a new creator profile after on-chain token creation.
  *
- * Beta Devnet: KYC (hiuid) is optional.
- * When KYC is implemented, the flow will be:
- *   1. User completes KYC → gets hiuid
- *   2. hiuid is passed here → we verify it exists in verified_identities
- *   3. Only then can they create a token
+ * THIS ENDPOINT VERIFIES ON-CHAIN:
+ *   1. Mint exists + is Token-2022
+ *   2. Mint authority = Humanofi bonding curve PDA
+ *   3. BondingCurve.creator = wallet address
+ *
+ * Only after these 3 checks pass does it insert into Supabase.
  */
 export async function POST(request: NextRequest) {
   const supabase = createServerClient();
@@ -80,31 +87,68 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ══════════════════════════════════════════════
+    // ON-CHAIN VERIFICATION (Source of Truth)
+    // ══════════════════════════════════════════════
+    // This is the critical security check:
+    // - Verifies the mint exists on Solana (Token-2022)
+    // - Verifies mint authority = our bonding curve PDA (it's a Humanofi token)
+    // - Verifies bondingCurve.creator == walletAddress (this wallet created it)
+    console.log(`[Creators API] Verifying on-chain: mint=${mintAddress}, wallet=${walletAddress}`);
+
+    const verification = await verifyHumanofiToken(mintAddress, walletAddress);
+
+    if (!verification.valid) {
+      console.error(`[Creators API] On-chain verification FAILED: ${verification.error}`);
+      return NextResponse.json(
+        { error: `On-chain verification failed: ${verification.error}` },
+        { status: 403 }
+      );
+    }
+
+    console.log(`[Creators API] On-chain verification PASSED ✅ Creator=${verification.creator}`);
+
+    // ══════════════════════════════════════════════
+    // DUPLICATE CHECK
+    // ══════════════════════════════════════════════
     // Check if this wallet already has a token
-    const { data: existing } = await supabase
+    const { data: existingByWallet } = await supabase
       .from("creator_tokens")
       .select("id")
       .eq("wallet_address", walletAddress)
       .single();
 
-    if (existing) {
+    if (existingByWallet) {
       return NextResponse.json(
         { error: "This wallet already has a token." },
         { status: 409 }
       );
     }
 
-    // Calculate token lock date (1 year from now)
+    // Also check if this mint is already registered
+    const { data: existingByMint } = await supabase
+      .from("creator_tokens")
+      .select("id")
+      .eq("mint_address", mintAddress)
+      .single();
+
+    if (existingByMint) {
+      return NextResponse.json(
+        { error: "This token is already registered." },
+        { status: 409 }
+      );
+    }
+
+    // ══════════════════════════════════════════════
+    // INSERT (Only after on-chain verification)
+    // ══════════════════════════════════════════════
     const lockUntil = new Date();
     lockUntil.setFullYear(lockUntil.getFullYear() + 1);
 
-    // Insert creator token record
-    // hiuid is set to wallet address as temporary identifier (Beta)
-    // Will be replaced by real KYC hiuid in production
     const { data, error } = await supabase.from("creator_tokens").insert({
       mint_address: mintAddress,
       wallet_address: walletAddress,
-      hiuid: walletAddress, // Beta: use wallet as temp hiuid
+      hiuid: walletAddress, // Beta: use wallet as temp hiuid — will be KYC hiuid in prod
       display_name: displayName,
       category,
       bio: bio || "",
@@ -123,8 +167,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: "Creator profile registered",
+      message: "Creator profile registered (on-chain verified ✅)",
       creator: data,
+      verification: {
+        mint: verification.mint,
+        creator: verification.creator,
+        bondingCurve: verification.bondingCurve,
+      },
     });
   } catch (error) {
     console.error("Creator registration error:", error);
