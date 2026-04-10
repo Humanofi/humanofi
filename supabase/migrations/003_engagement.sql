@@ -10,8 +10,9 @@
 --
 -- Changes:
 --   1. Create holder_engagement table
---   2. Create engagement tracking function
---   3. RLS policies for service access
+--   2. Create holder_checkins table (cooldown tracking)
+--   3. Create engagement tracking function
+--   4. RLS policies for service access
 -- ========================================================
 
 
@@ -30,6 +31,7 @@ CREATE TABLE IF NOT EXISTS holder_engagement (
     reactions_count INT DEFAULT 0 NOT NULL,       -- emoji reactions on posts
     replies_count   INT DEFAULT 0 NOT NULL,       -- replies on posts
     votes_count     INT DEFAULT 0 NOT NULL,       -- poll votes (V2)
+    checkins_count  INT DEFAULT 0 NOT NULL,       -- manual check-ins
     total_actions   INT DEFAULT 0 NOT NULL,       -- sum of all above
     synced_onchain  BOOLEAN DEFAULT FALSE,        -- has been written to Solana?
     synced_at       TIMESTAMPTZ,                  -- when it was synced
@@ -121,14 +123,51 @@ BEGIN
         WHERE wallet_address = p_wallet_address
           AND mint_address = p_mint_address
           AND epoch = p_epoch;
+    ELSIF p_action_type = 'checkin' THEN
+        UPDATE holder_engagement
+        SET checkins_count = checkins_count + 1,
+            total_actions = total_actions + 1,
+            synced_onchain = FALSE
+        WHERE wallet_address = p_wallet_address
+          AND mint_address = p_mint_address
+          AND epoch = p_epoch;
     END IF;
 END;
 $$ LANGUAGE plpgsql;
 
 
 -- ════════════════════════════════════════════════════════
+-- 3. HOLDER CHECK-INS TABLE
+-- ════════════════════════════════════════════════════════
+-- Tracks individual check-in timestamps for cooldown.
+-- Holders can check in once per 24h to prove activity,
+-- even if the creator hasn't posted anything.
+
+CREATE TABLE IF NOT EXISTS holder_checkins (
+    id              UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    wallet_address  TEXT NOT NULL,
+    mint_address    TEXT NOT NULL,
+    created_at      TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_checkins_wallet_mint
+    ON holder_checkins(wallet_address, mint_address, created_at DESC);
+
+ALTER TABLE holder_checkins ENABLE ROW LEVEL SECURITY;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies WHERE tablename = 'holder_checkins' AND policyname = 'service_manage_checkins'
+  ) THEN
+    CREATE POLICY "service_manage_checkins" ON holder_checkins
+      FOR ALL USING (true);
+  END IF;
+END $$;
+
+
+-- ════════════════════════════════════════════════════════
 -- DONE — Migration 003: Engagement Tracking
 -- ════════════════════════════════════════════════════════
--- New table: holder_engagement
+-- New tables: holder_engagement, holder_checkins
 -- New function: increment_engagement()
 -- All statements are idempotent (safe to re-run)

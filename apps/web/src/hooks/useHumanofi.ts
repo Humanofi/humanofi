@@ -327,6 +327,42 @@ export function useHumanofi() {
     [walletAddress]
   );
 
+  // ─── CHECK-IN (engagement fallback if creator is inactive) ───
+  const checkIn = useCallback(
+    async (mint: string) => {
+      if (!walletAddress) {
+        toast.error("Connect your wallet first.");
+        return null;
+      }
+
+      try {
+        const res = await fetch(`/api/inner-circle/${mint}/checkin`, {
+          method: "POST",
+          headers: { "x-wallet-address": walletAddress },
+        });
+        const data = await res.json();
+
+        if (res.status === 429) {
+          const next = new Date(data.nextAvailable);
+          toast.info(`Already checked in. Next: ${next.toLocaleString()}`);
+          return null;
+        }
+
+        if (!res.ok) {
+          toast.error(data.error || "Check-in failed");
+          return null;
+        }
+
+        toast.success("✅ Check-in recorded!");
+        return data;
+      } catch {
+        toast.error("Check-in failed");
+        return null;
+      }
+    },
+    [walletAddress]
+  );
+
   // ─── FETCH BONDING CURVE STATE ───
   const fetchBondingCurve = useCallback(
     async (mint: PublicKey) => {
@@ -348,6 +384,7 @@ export function useHumanofi() {
     buyTokens,
     sellTokens,
     claimRewards,
+    checkIn,
     fetchBondingCurve,
     fetchEngagement,
     program,
