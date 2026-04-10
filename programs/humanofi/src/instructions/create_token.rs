@@ -1,13 +1,15 @@
 // ========================================
-// Humanofi — Create Token (Token-2022)
+// Humanofi — Create Token (Token-2022 + Metadata)
 // ========================================
 //
 // Creates a new personal token with:
-// - Token-2022 Mint (freeze_authority = bonding_curve PDA)
+// - Token-2022 Mint with MetadataPointer extension
+// - Token Metadata (name, symbol, uri — visible in wallets)
 // - BondingCurve PDA initialized
 // - RewardPool PDA initialized
 // - CreatorVault PDA initialized
 // - Creator's allocation minted and FROZEN
+// - Initial liquidity deposited in bonding curve
 //
 // The freeze_authority mechanism ensures tokens can
 // only be traded through the Humanofi program.
@@ -18,7 +20,8 @@ use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{
-        freeze_account, mint_to, FreezeAccount, Mint, MintTo, TokenAccount, TokenInterface,
+        freeze_account, mint_to, token_metadata_initialize, FreezeAccount, Mint, MintTo,
+        TokenAccount, TokenInterface, TokenMetadataInitialize,
     },
 };
 
@@ -26,20 +29,22 @@ use crate::constants::*;
 use crate::errors::HumanofiError;
 use crate::state::*;
 
-/// Creates a new personal token with all associated PDAs.
+/// Creates a new personal token with all associated PDAs + on-chain metadata.
 ///
 /// # Flow
-/// 1. Validate inputs (name, symbol, prices)
-/// 2. Initialize Token-2022 Mint with bonding_curve PDA as authority
-/// 3. Initialize BondingCurve, RewardPool, CreatorVault PDAs
+/// 1. Validate inputs (name, symbol, prices, liquidity)
+/// 2. Initialize Token-2022 Mint with MetadataPointer extension
+/// 3. Initialize on-chain metadata (name, symbol, uri)
 /// 4. Transfer initial liquidity SOL to bonding curve reserve
-/// 5. Create creator's token account (ATA)
-/// 6. Mint creator's share to their ATA
-/// 7. Freeze creator's ATA (tokens locked)
+/// 5. Initialize BondingCurve, RewardPool, CreatorVault PDAs
+/// 6. Create creator's token account (ATA)
+/// 7. Mint creator's share to their ATA
+/// 8. Freeze creator's ATA (tokens locked)
 pub fn handler(
     ctx: Context<CreateToken>,
-    _name: String,
-    _symbol: String,
+    name: String,
+    symbol: String,
+    uri: String,
     base_price: u64,
     slope: u64,
     initial_liquidity: u64,
@@ -49,13 +54,37 @@ pub fn handler(
     require!(slope > 0, HumanofiError::InvalidCurveFactor);
     require!(initial_liquidity >= MIN_INITIAL_LIQUIDITY, HumanofiError::InsufficientInitialLiquidity);
     require!(initial_liquidity <= MAX_INITIAL_LIQUIDITY, HumanofiError::ExcessiveInitialLiquidity);
+    require!(!name.is_empty() && name.len() <= 32, HumanofiError::InvalidTokenName);
+    require!(!symbol.is_empty() && symbol.len() <= 10, HumanofiError::InvalidTokenSymbol);
 
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;
     let curve_bump = ctx.bumps.bonding_curve;
 
+    // ---- Initialize on-chain metadata (Token-2022 Metadata Extension) ----
+    // This makes name, symbol, and image visible in Phantom, Solflare, etc.
+    let mint_key = ctx.accounts.mint.key();
+    let seeds = &[SEED_CURVE, mint_key.as_ref(), &[curve_bump]];
+    let signer_seeds = &[&seeds[..]];
+
+    token_metadata_initialize(
+        CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            TokenMetadataInitialize {
+                program_id: ctx.accounts.token_program.to_account_info(),
+                mint: ctx.accounts.mint.to_account_info(),
+                metadata: ctx.accounts.mint.to_account_info(), // metadata stored IN the mint
+                mint_authority: ctx.accounts.bonding_curve.to_account_info(),
+                update_authority: ctx.accounts.bonding_curve.to_account_info(),
+            },
+            signer_seeds,
+        ),
+        name.clone(),
+        symbol.clone(),
+        uri,
+    )?;
+
     // ---- Transfer initial liquidity: creator → bonding curve PDA ----
-    // Must happen BEFORE we take &mut on bonding_curve (borrow rules)
     if initial_liquidity > 0 {
         anchor_lang::system_program::transfer(
             CpiContext::new(
@@ -100,10 +129,6 @@ pub fn handler(
     pool.bump = ctx.bumps.reward_pool;
 
     // ---- Mint creator's share to their ATA ----
-    let mint_key = ctx.accounts.mint.key();
-    let seeds = &[SEED_CURVE, mint_key.as_ref(), &[curve.bump]];
-    let signer_seeds = &[&seeds[..]];
-
     mint_to(
         CpiContext::new_with_signer(
             ctx.accounts.token_program.to_account_info(),
@@ -129,11 +154,11 @@ pub fn handler(
     ))?;
 
     msg!(
-        "✅ Token created | mint={} | creator={} | base_price={} | slope={} | initial_liquidity={}",
+        "Token created | mint={} | creator={} | name={} | symbol={} | initial_liquidity={}",
         ctx.accounts.mint.key(),
         ctx.accounts.creator.key(),
-        base_price,
-        slope,
+        name,
+        symbol,
         initial_liquidity
     );
 
@@ -141,14 +166,16 @@ pub fn handler(
 }
 
 #[derive(Accounts)]
+#[instruction(name: String, symbol: String, uri: String)]
 pub struct CreateToken<'info> {
     /// The creator who is launching their personal token.
     /// Pays for all account creation.
     #[account(mut)]
     pub creator: Signer<'info>,
 
-    /// The Token-2022 Mint.
+    /// The Token-2022 Mint with MetadataPointer extension.
     /// mint_authority and freeze_authority = bonding_curve PDA.
+    /// The metadata pointer points to the mint itself (embedded metadata).
     #[account(
         init,
         payer = creator,
@@ -156,6 +183,8 @@ pub struct CreateToken<'info> {
         mint::authority = bonding_curve,
         mint::freeze_authority = bonding_curve,
         mint::token_program = token_program,
+        extensions::metadata_pointer::authority = bonding_curve,
+        extensions::metadata_pointer::metadata_address = mint,
     )]
     pub mint: Box<InterfaceAccount<'info, Mint>>,
 

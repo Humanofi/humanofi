@@ -463,7 +463,8 @@
         "- CreatorVault PDA (12-month lock tracker)",
         "- RewardPool PDA (holder fee accumulator)",
         "- Creator's ATA (minted + frozen)",
-        "- Initial SOL liquidity injected into bonding curve reserve"
+        "- Initial SOL liquidity injected into bonding curve reserve",
+        "- On-chain metadata (name, symbol, image URI)"
       ],
       "discriminator": [
         84,
@@ -488,8 +489,9 @@
         {
           "name": "mint",
           "docs": [
-            "The Token-2022 Mint.",
-            "mint_authority and freeze_authority = bonding_curve PDA."
+            "The Token-2022 Mint with MetadataPointer extension.",
+            "mint_authority and freeze_authority = bonding_curve PDA.",
+            "The metadata pointer points to the mint itself (embedded metadata)."
           ],
           "writable": true,
           "signer": true
@@ -661,6 +663,10 @@
         },
         {
           "name": "symbol",
+          "type": "string"
+        },
+        {
+          "name": "uri",
           "type": "string"
         },
         {

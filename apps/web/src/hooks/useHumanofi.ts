@@ -86,6 +86,7 @@ export function useHumanofi() {
     async (params: {
       name: string;
       symbol: string;
+      uri: string; // metadata JSON URL (contains image, etc.)
       basePrice: number; // in lamports
       slope: number;
       initialLiquidity: number; // in lamports
@@ -112,6 +113,7 @@ export function useHumanofi() {
         .createToken(
           params.name,
           params.symbol,
+          params.uri,
           new BN(params.basePrice),
           new BN(params.slope),
           new BN(params.initialLiquidity)

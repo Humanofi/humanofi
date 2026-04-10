@@ -244,6 +244,7 @@ export default function CreatePage() {
       const result = await createToken({
         name: tokenName,
         symbol: tokenSymbol.toUpperCase(),
+        uri: metadataUrl,
         basePrice: DEFAULT_BASE_PRICE,
         slope: DEFAULT_SLOPE,
         initialLiquidity: Math.floor((initialLiquidityUSD / SOL_PRICE_USD) * LAMPORTS_PER_SOL_CONST),

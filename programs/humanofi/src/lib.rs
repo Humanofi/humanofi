@@ -39,15 +39,17 @@ pub mod humanofi {
     /// - RewardPool PDA (holder fee accumulator)
     /// - Creator's ATA (minted + frozen)
     /// - Initial SOL liquidity injected into bonding curve reserve
+    /// - On-chain metadata (name, symbol, image URI)
     pub fn create_token(
         ctx: Context<CreateToken>,
         name: String,
         symbol: String,
+        uri: String,
         base_price: u64,
         slope: u64,
         initial_liquidity: u64,
     ) -> Result<()> {
-        instructions::create_token::handler(ctx, name, symbol, base_price, slope, initial_liquidity)
+        instructions::create_token::handler(ctx, name, symbol, uri, base_price, slope, initial_liquidity)
     }
 
     /// Buy tokens from the bonding curve.
