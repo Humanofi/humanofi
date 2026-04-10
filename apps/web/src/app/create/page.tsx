@@ -211,26 +211,27 @@ export default function CreatePage() {
       // ── STEP 1: Upload avatar + create metadata ──
       toast.info("Uploading your photo...");
 
+      // Build FormData with the actual file (no base64!)
+      const formData = new FormData();
+      formData.append("avatar", avatarFile!);
+      formData.append("tokenName", tokenName);
+      formData.append("tokenSymbol", tokenSymbol.toUpperCase());
+      formData.append("category", category);
+      formData.append("bio", bio);
+      formData.append("story", story);
+      formData.append("offer", offer);
+      formData.append("country", country);
+      formData.append("walletAddress", walletObj?.publicKey?.toBase58() || "");
+      formData.append("socials", JSON.stringify({
+        ...(twitter && { twitter }),
+        ...(linkedin && { linkedin }),
+        ...(website && { website }),
+        ...(instagram && { instagram }),
+      }));
+
       const uploadResponse = await fetch("/api/upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          avatarBase64: avatarPreview,
-          tokenName,
-          tokenSymbol: tokenSymbol.toUpperCase(),
-          category,
-          bio,
-          story,
-          offer,
-          country,
-          walletAddress: walletObj?.publicKey?.toBase58(),
-          socials: {
-            ...(twitter && { twitter }),
-            ...(linkedin && { linkedin }),
-            ...(website && { website }),
-            ...(instagram && { instagram }),
-          },
-        }),
+        body: formData,
       });
 
       if (!uploadResponse.ok) {

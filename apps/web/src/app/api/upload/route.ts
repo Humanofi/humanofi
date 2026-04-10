@@ -7,7 +7,7 @@
 // and creates token metadata JSON (Metaplex standard).
 //
 // Flow:
-//   1. Receives avatar (base64) + token metadata
+//   1. Receives avatar (File via FormData) + token metadata
 //   2. Uploads avatar to Supabase Storage (bucket: avatars)
 //   3. Creates metadata JSON (Metaplex token standard)
 //   4. Uploads metadata JSON to Supabase Storage (bucket: metadata)
@@ -16,8 +16,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/client";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-
 export async function POST(request: NextRequest) {
   const supabase = createServerClient();
   if (!supabase) {
@@ -25,40 +23,36 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const {
-      avatarBase64,   // "data:image/png;base64,..." or "data:image/jpeg;base64,..."
-      tokenName,
-      tokenSymbol,
-      category,
-      bio,
-      story,
-      offer,
-      country,
-      socials,
-      walletAddress,
-    } = await request.json();
+    const formData = await request.formData();
 
-    if (!avatarBase64 || !tokenName || !tokenSymbol || !walletAddress) {
+    const avatarFile = formData.get("avatar") as File | null;
+    const tokenName = formData.get("tokenName") as string;
+    const tokenSymbol = formData.get("tokenSymbol") as string;
+    const category = formData.get("category") as string;
+    const bio = formData.get("bio") as string;
+    const story = formData.get("story") as string;
+    const offer = formData.get("offer") as string;
+    const country = formData.get("country") as string;
+    const walletAddress = formData.get("walletAddress") as string;
+    const socialsRaw = formData.get("socials") as string;
+    const socials = socialsRaw ? JSON.parse(socialsRaw) : {};
+
+    if (!avatarFile || !tokenName || !tokenSymbol || !walletAddress) {
       return NextResponse.json(
-        { error: "avatarBase64, tokenName, tokenSymbol, and walletAddress are required" },
+        { error: "avatar, tokenName, tokenSymbol, and walletAddress are required" },
         { status: 400 }
       );
     }
 
-    // ── 1. Parse and upload avatar ──
+    // ── 1. Upload avatar ──
 
-    // Extract MIME type and base64 data
-    const mimeMatch = avatarBase64.match(/^data:(image\/\w+);base64,(.+)$/);
-    if (!mimeMatch) {
+    const mimeType = avatarFile.type;
+    if (!mimeType.startsWith("image/")) {
       return NextResponse.json({ error: "Invalid avatar format" }, { status: 400 });
     }
 
-    const mimeType = mimeMatch[1]; // "image/png", "image/jpeg", etc.
-    const base64Data = mimeMatch[2];
     const extension = mimeType.split("/")[1]; // "png", "jpeg", etc.
-
-    // Convert base64 to buffer
-    const avatarBuffer = Buffer.from(base64Data, "base64");
+    const avatarBuffer = Buffer.from(await avatarFile.arrayBuffer());
 
     // Check size (max 5MB)
     if (avatarBuffer.length > 5 * 1024 * 1024) {
