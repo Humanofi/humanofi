@@ -1,0 +1,24 @@
+Business Source License 1.1
+
+License parameter:
+
+Change Date: 2028-04-10
+Change License: Apache License, Version 2.0
+
+Additional Use Grant:
+You may read, study, and test the software locally or on development networks (devnet/testnet) for educational and evaluation purposes. You may not deploy this software or any derivative works to a mainnet blockchain network or operate a commercial service based on this software prior to the Change Date without explicit written permission from the licensor.
+
+The Licensor hereby grants you the right to copy, modify, create derivative works, redistribute, and make non-production use of the Licensed Work.
+
+Licensor: Humanofi Protocol
+
+Licensed Work:
+The Humanofi protocol source code, including smart contracts (Anchor/Solana) and the web application (Next.js).
+
+Terms:
+1. The Licensor grants you a non-exclusive, royalty-free, worldwide license to use the Licensed Work under the terms and conditions outlined herein.
+2. Any use for production environments or commercial purposes requires additional permission.
+3. This license will automatically convert to the Change License on the Change Date.
+4. ANY USE IN VIOLATION OF THESE TERMS MAY BE SUBJECT TO LEGAL ACTION.
+
+Please contact humanofi for commercial licensing inquiries.

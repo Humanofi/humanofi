@@ -1,0 +1,1470 @@
+{
+  "address": "C88xL1xsuSi4g8yXDY3MtZUKiAcH1RTs9eQSLVpm4YiR",
+  "metadata": {
+    "name": "humanofi",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Humanofi Protocol — The first market where humans are the asset"
+  },
+  "instructions": [
+    {
+      "name": "buy",
+      "docs": [
+        "Buy tokens from the bonding curve.",
+        "",
+        "- SOL → calculate tokens via bonding curve",
+        "- Deduct 2% fee (50% creator / 30% holders / 20% treasury)",
+        "- Mint tokens to buyer's ATA",
+        "- Freeze buyer's ATA",
+        "- Enforce purchase limits (progressive daily caps)"
+      ],
+      "discriminator": [
+        102,
+        6,
+        61,
+        18,
+        1,
+        218,
+        235,
+        234
+      ],
+      "accounts": [
+        {
+          "name": "buyer",
+          "docs": [
+            "The buyer"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mint",
+          "docs": [
+            "The Token-2022 Mint"
+          ],
+          "writable": true,
+          "relations": [
+            "bonding_curve"
+          ]
+        },
+        {
+          "name": "bonding_curve",
+          "docs": [
+            "Bonding Curve PDA (holds SOL reserve + is mint/freeze authority)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  117,
+                  114,
+                  118,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "reward_pool",
+          "docs": [
+            "Reward Pool PDA"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "purchase_limiter",
+          "docs": [
+            "Purchase Limiter PDA (init_if_needed for first-time buyers)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  109,
+                  105,
+                  116,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "buyer"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "buyer_token_account",
+          "docs": [
+            "Buyer's Associated Token Account (init_if_needed for first buy)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "buyer"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "creator_wallet",
+          "docs": [
+            "Creator's wallet (receives 50% of fees)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "treasury",
+          "docs": [
+            "Protocol treasury wallet (receives 20% of fees)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token-2022 Program"
+          ]
+        },
+        {
+          "name": "associated_token_program",
+          "docs": [
+            "Associated Token Program"
+          ],
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System Program"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "sol_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "claim_rewards",
+      "docs": [
+        "Claim accumulated rewards from the holder fee pool.",
+        "",
+        "Uses reward-per-token pattern (gas-efficient, O(1)):",
+        "pending = balance × (global_rpt - personal_rpt) / precision"
+      ],
+      "discriminator": [
+        4,
+        144,
+        132,
+        71,
+        116,
+        23,
+        151,
+        80
+      ],
+      "accounts": [
+        {
+          "name": "holder",
+          "docs": [
+            "The holder claiming rewards"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mint",
+          "docs": [
+            "The Token-2022 Mint"
+          ],
+          "relations": [
+            "reward_pool"
+          ]
+        },
+        {
+          "name": "reward_pool",
+          "docs": [
+            "Reward Pool PDA (SOL is stored as lamports here)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "holder_reward_state",
+          "docs": [
+            "Holder's reward state (init_if_needed for first claim)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  95,
+                  115,
+                  116,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              },
+              {
+                "kind": "account",
+                "path": "holder"
+              }
+            ]
+          }
+        },
+        {
+          "name": "holder_token_account",
+          "docs": [
+            "Holder's token account (to verify balance)"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "holder"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token-2022 Program"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System Program"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_token",
+      "docs": [
+        "Creates a new personal token with Token-2022.",
+        "",
+        "Initializes:",
+        "- Token-2022 Mint (freeze_authority = bonding_curve PDA)",
+        "- BondingCurve PDA (price engine + SOL reserve)",
+        "- CreatorVault PDA (12-month lock tracker)",
+        "- RewardPool PDA (holder fee accumulator)",
+        "- Creator's ATA (minted + frozen)"
+      ],
+      "discriminator": [
+        84,
+        52,
+        204,
+        228,
+        24,
+        140,
+        234,
+        75
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "docs": [
+            "The creator who is launching their personal token.",
+            "Pays for all account creation."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mint",
+          "docs": [
+            "The Token-2022 Mint.",
+            "mint_authority and freeze_authority = bonding_curve PDA."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "bonding_curve",
+          "docs": [
+            "Bonding Curve PDA — manages the token's market.",
+            "Also serves as mint_authority and freeze_authority."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  117,
+                  114,
+                  118,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator_vault",
+          "docs": [
+            "Creator Vault PDA — tracks the locked token allocation."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "reward_pool",
+          "docs": [
+            "Reward Pool PDA — accumulates holder fees."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator_token_account",
+          "docs": [
+            "Creator's Associated Token Account for this mint.",
+            "Created automatically. Will be frozen after minting."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token-2022 program"
+          ]
+        },
+        {
+          "name": "associated_token_program",
+          "docs": [
+            "Associated Token Program (for creating ATAs)"
+          ],
+          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System Program"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "symbol",
+          "type": "string"
+        },
+        {
+          "name": "base_price",
+          "type": "u64"
+        },
+        {
+          "name": "slope",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "sell",
+      "docs": [
+        "Sell tokens back to the bonding curve.",
+        "",
+        "- Thaw seller's ATA",
+        "- Burn tokens",
+        "- Calculate SOL return via bonding curve",
+        "- Apply exit tax (10% if sold < 90 days)",
+        "- Deduct 2% fee (50/30/20 split)",
+        "- Transfer SOL to seller",
+        "- Re-freeze ATA if balance remains"
+      ],
+      "discriminator": [
+        51,
+        230,
+        133,
+        164,
+        1,
+        127,
+        131,
+        173
+      ],
+      "accounts": [
+        {
+          "name": "seller",
+          "docs": [
+            "The seller"
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "mint",
+          "docs": [
+            "The Token-2022 Mint"
+          ],
+          "writable": true,
+          "relations": [
+            "bonding_curve"
+          ]
+        },
+        {
+          "name": "bonding_curve",
+          "docs": [
+            "Bonding Curve PDA (holds SOL reserve)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  117,
+                  114,
+                  118,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "reward_pool",
+          "docs": [
+            "Reward Pool PDA"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  119,
+                  97,
+                  114,
+                  100,
+                  115
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "purchase_limiter",
+          "docs": [
+            "Purchase Limiter PDA (for exit tax check)"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  108,
+                  105,
+                  109,
+                  105,
+                  116,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "seller"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "seller_token_account",
+          "docs": [
+            "Seller's token account (will be thawed, burned, re-frozen)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "seller"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "creator_wallet",
+          "docs": [
+            "Creator's wallet (receives 50% of fees)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "treasury",
+          "docs": [
+            "Protocol treasury"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token-2022 Program"
+          ]
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System Program"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "token_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "unlock_tokens",
+      "docs": [
+        "Unlock creator tokens based on progressive vesting schedule.",
+        "",
+        "- Year 1: 0% — full lock, zero liquidity",
+        "- Year 2: max 10% of original allocation",
+        "- Year 3: max 10% additional (20% cumulative)",
+        "- Year 4+: max 20% per year",
+        "- Year 7+: 100% cumulative max",
+        "",
+        "Creator can NEVER dump their position. Skin in the game forever."
+      ],
+      "discriminator": [
+        233,
+        35,
+        95,
+        159,
+        37,
+        185,
+        47,
+        88
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "docs": [
+            "The creator unlocking their tokens"
+          ],
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "creator_vault"
+          ]
+        },
+        {
+          "name": "mint",
+          "docs": [
+            "The Token-2022 Mint"
+          ],
+          "relations": [
+            "bonding_curve",
+            "creator_vault"
+          ]
+        },
+        {
+          "name": "bonding_curve",
+          "docs": [
+            "Bonding Curve PDA (freeze authority)"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  117,
+                  114,
+                  118,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator_vault",
+          "docs": [
+            "Creator Vault PDA (tracks vesting schedule)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator_token_account",
+          "docs": [
+            "Creator's frozen token account"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "Token-2022 Program"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_to_unlock",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "BondingCurve",
+      "discriminator": [
+        23,
+        183,
+        248,
+        55,
+        96,
+        216,
+        172,
+        96
+      ]
+    },
+    {
+      "name": "CreatorVault",
+      "discriminator": [
+        200,
+        135,
+        38,
+        98,
+        35,
+        236,
+        238,
+        12
+      ]
+    },
+    {
+      "name": "HolderRewardState",
+      "discriminator": [
+        115,
+        218,
+        10,
+        143,
+        211,
+        77,
+        178,
+        35
+      ]
+    },
+    {
+      "name": "PurchaseLimiter",
+      "discriminator": [
+        47,
+        145,
+        4,
+        132,
+        166,
+        89,
+        68,
+        119
+      ]
+    },
+    {
+      "name": "RewardPool",
+      "discriminator": [
+        134,
+        121,
+        197,
+        211,
+        133,
+        154,
+        82,
+        32
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidTokenName",
+      "msg": "Token name must be between 1 and 32 characters"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidTokenSymbol",
+      "msg": "Token symbol must be between 1 and 10 characters"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidBasePrice",
+      "msg": "Base price must be greater than zero"
+    },
+    {
+      "code": 6003,
+      "name": "InvalidCurveFactor",
+      "msg": "Curve factor must be greater than zero"
+    },
+    {
+      "code": 6004,
+      "name": "CurveNotActive",
+      "msg": "Bonding curve is not active"
+    },
+    {
+      "code": 6005,
+      "name": "InsufficientSolAmount",
+      "msg": "Insufficient SOL for this purchase"
+    },
+    {
+      "code": 6006,
+      "name": "InsufficientTokenBalance",
+      "msg": "Insufficient token balance to sell"
+    },
+    {
+      "code": 6007,
+      "name": "PriceCalculationZero",
+      "msg": "Calculated price is zero — amount too small"
+    },
+    {
+      "code": 6008,
+      "name": "MathOverflow",
+      "msg": "Math overflow in bonding curve calculation"
+    },
+    {
+      "code": 6009,
+      "name": "InsufficientReserve",
+      "msg": "Insufficient reserve in bonding curve"
+    },
+    {
+      "code": 6010,
+      "name": "DailyLimitExceeded",
+      "msg": "Purchase exceeds daily limit for this period"
+    },
+    {
+      "code": 6011,
+      "name": "ZeroPurchaseAmount",
+      "msg": "Purchase amount must be greater than zero"
+    },
+    {
+      "code": 6012,
+      "name": "TokensStillLocked",
+      "msg": "Creator tokens are still locked"
+    },
+    {
+      "code": 6013,
+      "name": "TokensAlreadyUnlocked",
+      "msg": "Creator tokens have already been unlocked"
+    },
+    {
+      "code": 6014,
+      "name": "UnauthorizedUnlock",
+      "msg": "Only the creator can unlock their tokens"
+    },
+    {
+      "code": 6015,
+      "name": "NoRewardsToClaim",
+      "msg": "No rewards available to claim"
+    },
+    {
+      "code": 6016,
+      "name": "ZeroHolderBalance",
+      "msg": "Holder must have a positive token balance to claim rewards"
+    },
+    {
+      "code": 6017,
+      "name": "FeeOverflow",
+      "msg": "Fee calculation overflow"
+    },
+    {
+      "code": 6018,
+      "name": "UnauthorizedTransfer",
+      "msg": "Unauthorized: transfer blocked — tokens can only be traded via Humanofi"
+    },
+    {
+      "code": 6019,
+      "name": "InvalidMint",
+      "msg": "Invalid mint for this operation"
+    },
+    {
+      "code": 6020,
+      "name": "ZeroAmount",
+      "msg": "Token amount must be greater than zero"
+    }
+  ],
+  "types": [
+    {
+      "name": "BondingCurve",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "docs": [
+              "The Token-2022 mint this curve manages"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "docs": [
+              "The creator who launched this token"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "base_price",
+            "docs": [
+              "Base price in lamports per token (at supply = 0)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "slope",
+            "docs": [
+              "Slope factor for the linear bonding curve",
+              "Higher = steeper price increase"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "supply_sold",
+            "docs": [
+              "Number of tokens currently in circulation (base units, 6 decimals)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "sol_reserve",
+            "docs": [
+              "Total SOL deposited in the curve (tracked separately from account lamports)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "created_at",
+            "docs": [
+              "Timestamp of token creation"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "is_active",
+            "docs": [
+              "Whether the curve is active (can be deactivated by governance)"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CreatorVault",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "docs": [
+              "The Token-2022 mint"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "docs": [
+              "The creator's wallet address"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "original_allocation",
+            "docs": [
+              "Original amount allocated (never changes — used for % calculations)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_unlocked",
+            "docs": [
+              "Total amount already unlocked/sold over time"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "created_at",
+            "docs": [
+              "Unix timestamp when the vault was created (start of vesting)"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "HolderRewardState",
+      "docs": [
+        "Per-holder state for tracking claimed rewards.",
+        "Seeds: [\"reward_state\", mint_pubkey, holder_pubkey]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "docs": [
+              "The mint this state belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "holder",
+            "docs": [
+              "The holder's wallet"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "reward_per_token_paid",
+            "docs": [
+              "The reward_per_token value at last claim"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "rewards_owed",
+            "docs": [
+              "Unclaimed rewards (lamports)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PurchaseLimiter",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "wallet",
+            "docs": [
+              "The buyer's wallet"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "mint",
+            "docs": [
+              "The token mint"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "spent_today_lamports",
+            "docs": [
+              "Amount spent today in lamports (rolling 24h window)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "day_window_start",
+            "docs": [
+              "Start of the current day window (unix timestamp)"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "first_purchase_at",
+            "docs": [
+              "Timestamp of the very first purchase (for exit tax)"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "curve_created_at",
+            "docs": [
+              "Timestamp of the bonding curve creation (for period calculation)"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RewardPool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "docs": [
+              "The Token-2022 mint this pool belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "reward_per_token_stored",
+            "docs": [
+              "Cumulative reward per token stored (scaled by 10^18)",
+              "This increases every time fees are added to the pool"
+            ],
+            "type": "u128"
+          },
+          {
+            "name": "total_accumulated",
+            "docs": [
+              "Total SOL accumulated in the pool (lamports)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_distributed",
+            "docs": [
+              "Total SOL distributed to holders (lamports)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "last_updated_at",
+            "docs": [
+              "Last time the pool was updated"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "@humanofi/sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Client SDK for interacting with the Humanofi Anchor program",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "lint": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.30.1",
+    "@solana/web3.js": "^1.98.0",
+    "@solana/spl-token": "^0.4.0",
+    "@humanofi/types": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "types": ["mocha", "chai", "node"],
+    "typeRoots": ["./node_modules/@types"],
+    "lib": ["es2015"],
+    "module": "commonjs",
+    "target": "es6",
+    "rootDir": ".",
+    "outDir": "./tests-compiled",
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "noImplicitAny": false
+  },
+  "include": ["tests/**/*.ts", "target/types/**/*.ts"],
+  "exclude": ["node_modules", "references", "apps", "programs", "packages"]
+}

@@ -1,0 +1,95 @@
+// ========================================
+// Humanofi — Program Entry Point
+// ========================================
+//
+// The first market where humans are the asset.
+//
+// Architecture:
+//   Token-2022 Mint — freeze_authority = bonding_curve PDA
+//   → All token accounts are FROZEN by default
+//   → Only the program (via CPI) can thaw/freeze
+//   → Tokens cannot be transferred on Jupiter, Raydium, or wallet-to-wallet
+//   → Buy = mint + freeze, Sell = thaw + burn + freeze
+//
+// This ensures tokens are only tradable within Humanofi.
+// No Transfer Hook needed — freeze authority achieves the same result
+// with simpler code and fewer CPI calls.
+
+use anchor_lang::prelude::*;
+
+pub mod constants;
+pub mod errors;
+pub mod instructions;
+pub mod state;
+
+use instructions::*;
+
+declare_id!("C88xL1xsuSi4g8yXDY3MtZUKiAcH1RTs9eQSLVpm4YiR");
+
+#[program]
+pub mod humanofi {
+    use super::*;
+
+    /// Creates a new personal token with Token-2022.
+    ///
+    /// Initializes:
+    /// - Token-2022 Mint (freeze_authority = bonding_curve PDA)
+    /// - BondingCurve PDA (price engine + SOL reserve)
+    /// - CreatorVault PDA (12-month lock tracker)
+    /// - RewardPool PDA (holder fee accumulator)
+    /// - Creator's ATA (minted + frozen)
+    pub fn create_token(
+        ctx: Context<CreateToken>,
+        name: String,
+        symbol: String,
+        base_price: u64,
+        slope: u64,
+    ) -> Result<()> {
+        instructions::create_token::handler(ctx, name, symbol, base_price, slope)
+    }
+
+    /// Buy tokens from the bonding curve.
+    ///
+    /// - SOL → calculate tokens via bonding curve
+    /// - Deduct 2% fee (50% creator / 30% holders / 20% treasury)
+    /// - Mint tokens to buyer's ATA
+    /// - Freeze buyer's ATA
+    /// - Enforce purchase limits (progressive daily caps)
+    pub fn buy(ctx: Context<Buy>, sol_amount: u64) -> Result<()> {
+        instructions::buy::handler(ctx, sol_amount)
+    }
+
+    /// Sell tokens back to the bonding curve.
+    ///
+    /// - Thaw seller's ATA
+    /// - Burn tokens
+    /// - Calculate SOL return via bonding curve
+    /// - Apply exit tax (10% if sold < 90 days)
+    /// - Deduct 2% fee (50/30/20 split)
+    /// - Transfer SOL to seller
+    /// - Re-freeze ATA if balance remains
+    pub fn sell(ctx: Context<Sell>, token_amount: u64) -> Result<()> {
+        instructions::sell::handler(ctx, token_amount)
+    }
+
+    /// Claim accumulated rewards from the holder fee pool.
+    ///
+    /// Uses reward-per-token pattern (gas-efficient, O(1)):
+    /// pending = balance × (global_rpt - personal_rpt) / precision
+    pub fn claim_rewards(ctx: Context<ClaimRewards>) -> Result<()> {
+        instructions::claim_rewards::handler(ctx)
+    }
+
+    /// Unlock creator tokens based on progressive vesting schedule.
+    ///
+    /// - Year 1: 0% — full lock, zero liquidity
+    /// - Year 2: max 10% of original allocation
+    /// - Year 3: max 10% additional (20% cumulative)
+    /// - Year 4+: max 20% per year
+    /// - Year 7+: 100% cumulative max
+    ///
+    /// Creator can NEVER dump their position. Skin in the game forever.
+    pub fn unlock_tokens(ctx: Context<UnlockTokens>, amount_to_unlock: u64) -> Result<()> {
+        instructions::unlock_tokens::handler(ctx, amount_to_unlock)
+    }
+}

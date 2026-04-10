@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "programs/humanofi",
+]
+exclude = [
+    "references",
+    "programs/meteora-dbc-reference",
+]
+resolver = "2"
+
+[profile.release]
+overflow-checks = true
+

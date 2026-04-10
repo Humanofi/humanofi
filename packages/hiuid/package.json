@@ -1,0 +1,16 @@
+{
+  "name": "@humanofi/hiuid",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HIUID generator — Humanofi Unique Identity hash",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "node --test src/__tests__/hiuid.test.ts",
+    "lint": "tsc --noEmit",
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
