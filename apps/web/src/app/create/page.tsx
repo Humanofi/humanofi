@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect, useDeferredValue } from "react";
 import Topbar from "@/components/Topbar";
 import Footer from "@/components/Footer";
 import { usePrivy } from "@privy-io/react-auth";
@@ -139,6 +139,14 @@ export default function CreatePage() {
 
   const { createToken } = useHumanofi(walletObj);
   const [launchStep, setLaunchStep] = useState(0); // 0=idle, 1=uploading, 2=creating, 3=registering, 4=done
+
+  // Deferred values for the preview card — keeps form inputs snappy
+  const deferredName = useDeferredValue(tokenName);
+  const deferredSymbol = useDeferredValue(tokenSymbol);
+  const deferredBio = useDeferredValue(bio);
+  const deferredCategory = useDeferredValue(category);
+  const deferredCountry = useDeferredValue(country);
+  const deferredAvatar = useDeferredValue(avatarPreview);
 
   // Handle avatar upload
   const handleAvatarChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -708,7 +716,7 @@ export default function CreatePage() {
               </div>
             </div>
 
-            {/* Right: Live Preview Card */}
+            {/* Right: Live Preview Card (uses deferred values for perf) */}
             <div style={{ position: "sticky", top: 100 }}>
               <div style={{ fontSize: "0.72rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 12, color: "var(--text-muted)" }}>
                 Live Preview
@@ -722,19 +730,19 @@ export default function CreatePage() {
                 <div style={{
                   width: "100%",
                   height: 220,
-                  background: avatarPreview ? `url(${avatarPreview}) center/cover` : "linear-gradient(135deg, #f0f0f0, #e0e0e0)",
+                  background: deferredAvatar ? `url(${deferredAvatar}) center/cover` : "linear-gradient(135deg, #f0f0f0, #e0e0e0)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
                 }}>
-                  {!avatarPreview && (
+                  {!deferredAvatar && (
                     <div style={{ fontSize: "3rem", opacity: 0.3 }}>◈</div>
                   )}
                 </div>
 
                 {/* Info */}
                 <div style={{ padding: 20 }}>
-                  {category && (
+                  {deferredCategory && (
                     <div style={{
                       display: "inline-block",
                       padding: "3px 10px",
@@ -744,17 +752,17 @@ export default function CreatePage() {
                       textTransform: "uppercase",
                       marginBottom: 12,
                     }}>
-                      {CATEGORIES.find((c) => c.value === category)?.emoji} {category}
+                      {CATEGORIES.find((c) => c.value === deferredCategory)?.emoji} {deferredCategory}
                     </div>
                   )}
 
                   <div style={{ fontSize: "1.1rem", fontWeight: 800, marginBottom: 4 }}>
-                    {tokenName || "Your Name"}
+                    {deferredName || "Your Name"}
                   </div>
 
-                  {tokenSymbol && (
+                  {deferredSymbol && (
                     <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--accent)", marginBottom: 12 }}>
-                      ${tokenSymbol}
+                      ${deferredSymbol}
                     </div>
                   )}
 
@@ -767,7 +775,7 @@ export default function CreatePage() {
                     WebkitBoxOrient: "vertical",
                     overflow: "hidden",
                   }}>
-                    {bio || "Your bio will appear here..."}
+                    {deferredBio || "Your bio will appear here..."}
                   </div>
 
                   {/* Socials preview */}
@@ -780,9 +788,9 @@ export default function CreatePage() {
                     </div>
                   )}
 
-                  {country && (
+                  {deferredCountry && (
                     <div style={{ fontSize: "0.7rem", color: "var(--text-muted)", marginTop: 8 }}>
-                      📍 {COUNTRIES.find((c) => c.code === country)?.name}
+                      📍 {COUNTRIES.find((c) => c.code === deferredCountry)?.name}
                     </div>
                   )}
                 </div>
