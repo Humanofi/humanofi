@@ -4,7 +4,7 @@ import { useState, useCallback, useRef, useMemo, useEffect, useDeferredValue } f
 import Topbar from "@/components/Topbar";
 import Footer from "@/components/Footer";
 import { LivePreviewCard } from "@/components/LivePreviewCard";
-import { usePrivy } from "@privy-io/react-auth";
+import { usePrivy, useWallets } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
 import { PublicKey } from "@solana/web3.js";
 import { toast } from "sonner";
@@ -123,17 +123,35 @@ export default function CreatePage() {
 
   // Privy auth
   const { authenticated, login, user } = usePrivy();
+  const { wallets } = useWallets();
   const walletAddress = (user as { wallet?: { address?: string } } | null)?.wallet?.address || null;
 
-  // Memoize wallet object to prevent re-renders
+  // Get the real Privy wallet with signing capabilities
   const walletObj = useMemo(() => {
-    if (!walletAddress) return null;
+    if (!walletAddress || wallets.length === 0) return null;
+
+    // Find the matching wallet from Privy
+    const privyWallet = wallets.find(w => w.address === walletAddress);
+    if (!privyWallet) return null;
+
     try {
-      return { publicKey: new PublicKey(walletAddress) };
+      return {
+        publicKey: new PublicKey(walletAddress),
+        signTransaction: async (tx: never) => {
+          const signed = await privyWallet.signTransaction({ transaction: tx as never });
+          return signed as never;
+        },
+        signAllTransactions: async (txs: never[]) => {
+          const signed = await Promise.all(
+            txs.map(tx => privyWallet.signTransaction({ transaction: tx as never }))
+          );
+          return signed as never[];
+        },
+      };
     } catch {
       return null;
     }
-  }, [walletAddress]);
+  }, [walletAddress, wallets]);
 
   // Auto-switch to form when authenticated (in useEffect, not during render!)
   useEffect(() => {
