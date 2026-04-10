@@ -157,7 +157,7 @@ export default function CreatePage() {
   const deferredCategoryEmoji = CATEGORY_EMOJI_MAP.get(deferredCategory) || "";
   const deferredCountryName = COUNTRY_NAME_MAP.get(deferredCountry) || "";
 
-  // Handle avatar upload
+  // Handle avatar selection — use objectURL for instant lag-free preview
   const handleAvatarChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -172,11 +172,15 @@ export default function CreatePage() {
       return;
     }
 
+    // Revoke previous objectURL to prevent memory leak
+    if (avatarPreview && avatarPreview.startsWith("blob:")) {
+      URL.revokeObjectURL(avatarPreview);
+    }
+
     setAvatarFile(file);
-    const reader = new FileReader();
-    reader.onload = (ev) => setAvatarPreview(ev.target?.result as string);
-    reader.readAsDataURL(file);
-  }, []);
+    // createObjectURL returns a tiny blob: URL (not multi-MB base64!)
+    setAvatarPreview(URL.createObjectURL(file));
+  }, [avatarPreview]);
 
   const handleLaunch = useCallback(async () => {
     if (!tokenName || tokenName.length < 2 || tokenName.length > 32) {
