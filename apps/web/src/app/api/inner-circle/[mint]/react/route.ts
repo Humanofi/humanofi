@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/client";
+import { verifyRequest } from "@/lib/auth/verifyRequest";
 
 const VALID_REACTIONS = ["🔥", "💡", "🙏", "🚀", "❤️", "👀"];
 
@@ -22,10 +23,11 @@ export async function POST(
     return NextResponse.json({ error: "Database not configured" }, { status: 503 });
   }
 
-  const walletAddress = request.headers.get("x-wallet-address");
-  if (!walletAddress) {
-    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  const auth = await verifyRequest(request);
+  if (!auth.authenticated || !auth.walletAddress) {
+    return NextResponse.json({ error: auth.error || "Authentication required" }, { status: 401 });
   }
+  const walletAddress = auth.walletAddress;
 
   // Verify user is holder or creator
   const { data: creator } = await supabase
