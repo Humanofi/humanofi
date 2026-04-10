@@ -48,6 +48,7 @@ pub fn handler(
     require!(base_price > 0, HumanofiError::InvalidBasePrice);
     require!(slope > 0, HumanofiError::InvalidCurveFactor);
     require!(initial_liquidity >= MIN_INITIAL_LIQUIDITY, HumanofiError::InsufficientInitialLiquidity);
+    require!(initial_liquidity <= MAX_INITIAL_LIQUIDITY, HumanofiError::ExcessiveInitialLiquidity);
 
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;

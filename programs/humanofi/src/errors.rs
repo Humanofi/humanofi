@@ -89,4 +89,14 @@ pub enum HumanofiError {
     // ---- Initial Liquidity (6080-6089) ----
     #[msg("Initial liquidity below minimum — inject more SOL to give your token value")]
     InsufficientInitialLiquidity,
+
+    #[msg("Initial liquidity exceeds maximum")]
+    ExcessiveInitialLiquidity,
+
+    // ---- Treasury / Oracle (6090-6099) ----
+    #[msg("Invalid treasury wallet — must match protocol treasury")]
+    InvalidTreasury,
+
+    #[msg("Invalid epoch — must match current epoch")]
+    InvalidEpoch,
 }

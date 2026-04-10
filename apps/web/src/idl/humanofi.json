@@ -1367,6 +1367,21 @@
       "code": 6024,
       "name": "InsufficientInitialLiquidity",
       "msg": "Initial liquidity below minimum — inject more SOL to give your token value"
+    },
+    {
+      "code": 6025,
+      "name": "ExcessiveInitialLiquidity",
+      "msg": "Initial liquidity exceeds maximum"
+    },
+    {
+      "code": 6026,
+      "name": "InvalidTreasury",
+      "msg": "Invalid treasury wallet — must match protocol treasury"
+    },
+    {
+      "code": 6027,
+      "name": "InvalidEpoch",
+      "msg": "Invalid epoch — must match current epoch"
     }
   ],
   "types": [

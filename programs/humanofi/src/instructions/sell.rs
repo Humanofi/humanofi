@@ -262,8 +262,11 @@ pub struct Sell<'info> {
     pub creator_wallet: UncheckedAccount<'info>,
 
     /// Protocol treasury
-    /// CHECK: Known multisig address
-    #[account(mut)]
+    /// CHECK: Validated against hardcoded TREASURY_WALLET constant
+    #[account(
+        mut,
+        constraint = treasury.key() == TREASURY_WALLET @ HumanofiError::InvalidTreasury
+    )]
     pub treasury: UncheckedAccount<'info>,
 
     /// Token-2022 Program

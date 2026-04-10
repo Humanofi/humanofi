@@ -48,13 +48,19 @@ pub fn handler(ctx: Context<ClaimRewards>, epoch: u64) -> Result<()> {
     require!(pending > 0, HumanofiError::NoRewardsToClaim);
 
     // ---- Transfer SOL from reward pool PDA to holder ----
+    // Ensure we never drain the PDA below rent-exemption
     let pool_info = ctx.accounts.reward_pool.to_account_info();
-    **pool_info.try_borrow_mut_lamports()? -= pending;
+    let rent = Rent::get()?.minimum_balance(pool_info.data_len());
+    let available = pool_info.lamports().saturating_sub(rent);
+    let actual_payout = std::cmp::min(pending, available);
+    require!(actual_payout > 0, HumanofiError::NoRewardsToClaim);
+
+    **pool_info.try_borrow_mut_lamports()? -= actual_payout;
     **ctx
         .accounts
         .holder
         .to_account_info()
-        .try_borrow_mut_lamports()? += pending;
+        .try_borrow_mut_lamports()? += actual_payout;
 
     // ---- Update holder's reward state ----
     let state = &mut ctx.accounts.holder_reward_state;
@@ -68,13 +74,13 @@ pub fn handler(ctx: Context<ClaimRewards>, epoch: u64) -> Result<()> {
     let pool = &mut ctx.accounts.reward_pool;
     pool.total_distributed = pool
         .total_distributed
-        .checked_add(pending)
+        .checked_add(actual_payout)
         .ok_or(HumanofiError::MathOverflow)?;
 
     msg!(
         "✅ Claim | holder={} | rewards={} lamports | mint={} | engagement={}",
         ctx.accounts.holder.key(),
-        pending,
+        actual_payout,
         ctx.accounts.mint.key(),
         engagement.actions_count
     );

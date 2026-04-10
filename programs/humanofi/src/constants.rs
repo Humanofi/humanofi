@@ -95,6 +95,18 @@ pub const SEED_ENGAGEMENT: &[u8] = b"engagement";
 /// ~$5 in SOL (0.03 SOL ≈ $5 at ~$170/SOL). Gives token a non-zero starting value.
 pub const MIN_INITIAL_LIQUIDITY: u64 = 30_000_000; // 0.03 SOL = 30M lamports
 
+/// Maximum initial liquidity to prevent price manipulation (~$1700 ≈ 10 SOL)
+pub const MAX_INITIAL_LIQUIDITY: u64 = 10_000_000_000; // 10 SOL
+
+// ---- Treasury ----
+
+/// Protocol treasury wallet (receives 20% of fees).
+/// Pubkey: 6Jiop19yLzazX6vig4i4jKMRXRjFJumTWBZNgU2cAodM
+pub const TREASURY_WALLET: Pubkey = Pubkey::new_from_array([
+    78, 212, 148, 109, 151, 133, 91, 234, 175, 199, 198, 69, 217, 119, 90, 107,
+    114, 0, 59, 119, 164, 109, 203, 109, 23, 150, 2, 88, 102, 171, 22, 44,
+]);
+
 // ---- Engagement Rewards ----
 
 /// Minimum actions per epoch to qualify for reward claims

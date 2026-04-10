@@ -25,6 +25,8 @@ pub fn handler(ctx: Context<RecordEngagement>, actions_count: u16, epoch: u64) -
     );
 
     let clock = Clock::get()?;
+    let current = current_epoch_from_timestamp(clock.unix_timestamp);
+    require!(epoch == current, HumanofiError::InvalidEpoch);
 
     let record = &mut ctx.accounts.engagement_record;
     record.mint = ctx.accounts.mint.key();
