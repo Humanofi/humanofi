@@ -165,10 +165,11 @@ export async function createInnerCirclePost(
 
 function mapCreatorToPerson(row: Record<string, unknown>): Person {
   const name = (row.display_name as string) || "Unknown";
-  const slug = name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+  // Use mint_address as ID so /person/[id] can find real creators
+  const id = (row.mint_address as string) || name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
 
   return {
-    id: slug,
+    id,
     name,
     tag: capitalize((row.category as string) || "other"),
     price: "$0.00", // Will be read from on-chain bonding curve
