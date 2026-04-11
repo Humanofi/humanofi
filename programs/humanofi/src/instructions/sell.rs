@@ -75,48 +75,41 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64) -> Result<()> {
     let gross_return = ctx.accounts.bonding_curve.calculate_sell_return(token_amount)?;
     require!(gross_return > 0, HumanofiError::PriceCalculationZero);
 
-    // ---- Calculate fees ----
-    let total_fee = gross_return
-        .checked_mul(TOTAL_FEE_BPS)
-        .ok_or(HumanofiError::FeeOverflow)?
-        .checked_div(BPS_DENOMINATOR)
-        .ok_or(HumanofiError::FeeOverflow)?;
+    // ---- Calculate fees (ceiling division — always rounds UP) ----
+    let total_fee = crate::utils::ceil_div_u64(
+        gross_return.checked_mul(TOTAL_FEE_BPS).ok_or(HumanofiError::FeeOverflow)?,
+        BPS_DENOMINATOR,
+    );
 
     // ---- Calculate exit tax (if applicable) ----
     let exit_tax = if ctx.accounts.purchase_limiter.is_exit_tax_eligible(now) {
-        gross_return
-            .checked_mul(EXIT_TAX_BPS)
-            .ok_or(HumanofiError::FeeOverflow)?
-            .checked_div(BPS_DENOMINATOR)
-            .ok_or(HumanofiError::FeeOverflow)?
+        crate::utils::ceil_div_u64(
+            gross_return.checked_mul(EXIT_TAX_BPS).ok_or(HumanofiError::FeeOverflow)?,
+            BPS_DENOMINATOR,
+        )
     } else {
         0
     };
 
-    let creator_fee = total_fee
-        .checked_mul(CREATOR_FEE_SHARE_BPS)
-        .ok_or(HumanofiError::FeeOverflow)?
-        .checked_div(BPS_DENOMINATOR)
-        .ok_or(HumanofiError::FeeOverflow)?;
+    let creator_fee = crate::utils::ceil_div_u64(
+        total_fee.checked_mul(CREATOR_FEE_SHARE_BPS).ok_or(HumanofiError::FeeOverflow)?,
+        BPS_DENOMINATOR,
+    );
 
-    let holder_fee = total_fee
-        .checked_mul(HOLDER_FEE_SHARE_BPS)
-        .ok_or(HumanofiError::FeeOverflow)?
-        .checked_div(BPS_DENOMINATOR)
-        .ok_or(HumanofiError::FeeOverflow)?
-        // Exit tax goes to holders too
-        .checked_add(exit_tax)
-        .ok_or(HumanofiError::FeeOverflow)?;
+    let holder_fee = crate::utils::ceil_div_u64(
+        total_fee.checked_mul(HOLDER_FEE_SHARE_BPS).ok_or(HumanofiError::FeeOverflow)?,
+        BPS_DENOMINATOR,
+    )
+    // Exit tax goes to holders too
+    .checked_add(exit_tax)
+    .ok_or(HumanofiError::FeeOverflow)?;
 
+    // Treasury gets the remainder — ensures total splits exactly equal total_fee
     let treasury_fee = total_fee
-        .checked_sub(creator_fee)
-        .ok_or(HumanofiError::FeeOverflow)?
-        .checked_sub(
-            holder_fee
-                .checked_sub(exit_tax)
-                .ok_or(HumanofiError::FeeOverflow)?,
-        )
-        .ok_or(HumanofiError::FeeOverflow)?;
+        .saturating_sub(creator_fee)
+        .saturating_sub(
+            holder_fee.saturating_sub(exit_tax)
+        );
 
     let net_return = gross_return
         .checked_sub(total_fee)

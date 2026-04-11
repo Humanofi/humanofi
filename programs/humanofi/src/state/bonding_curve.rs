@@ -58,7 +58,7 @@ impl BondingCurve {
             .checked_add(slope_component)
             .ok_or(HumanofiError::MathOverflow)?;
 
-        Ok(price as u64)
+        u64::try_from(price).map_err(|_| HumanofiError::MathOverflow.into())
     }
 
     /// Calculate the SOL cost to buy `token_amount` tokens at current supply.
@@ -94,7 +94,7 @@ impl BondingCurve {
             .checked_add(slope_cost)
             .ok_or(HumanofiError::MathOverflow)?;
 
-        Ok(total as u64)
+        u64::try_from(total).map_err(|_| HumanofiError::MathOverflow.into())
     }
 
     /// Calculate the SOL returned when selling `token_amount` tokens.
@@ -136,9 +136,11 @@ impl BondingCurve {
             .ok_or(HumanofiError::MathOverflow)?;
 
         // Never return more than the reserve
-        let total = std::cmp::min(total as u64, self.sol_reserve);
+        let total_u64 = u64::try_from(total)
+            .map_err(|_| HumanofiError::MathOverflow)?;
+        let total_capped = std::cmp::min(total_u64, self.sol_reserve);
 
-        Ok(total)
+        Ok(total_capped)
     }
 
     /// Calculate the exact number of tokens buyable for a given SOL amount.
@@ -173,7 +175,7 @@ impl BondingCurve {
                 .ok_or(HumanofiError::MathOverflow)?
                 .checked_div(b)
                 .ok_or(HumanofiError::MathOverflow)?;
-            return Ok(tokens as u64);
+            return u64::try_from(tokens).map_err(|_| HumanofiError::MathOverflow.into());
         }
 
         // ── Quadratic formula ──
@@ -222,9 +224,11 @@ impl BondingCurve {
             .checked_mul(m)
             .ok_or(HumanofiError::MathOverflow)?;
 
-        let mut tokens = numerator
-            .checked_div(denominator)
-            .ok_or(HumanofiError::MathOverflow)? as u64;
+        let mut tokens = u64::try_from(
+            numerator
+                .checked_div(denominator)
+                .ok_or(HumanofiError::MathOverflow)?
+        ).map_err(|_| HumanofiError::MathOverflow)?;
 
         if tokens == 0 {
             // Quadratic rounded down to 0 — check if at least 1 token is affordable
@@ -282,7 +286,7 @@ impl BondingCurve {
             .checked_add(slope_cost)
             .ok_or(HumanofiError::MathOverflow)?;
 
-        Ok(total as u64)
+        u64::try_from(total).map_err(|_| HumanofiError::MathOverflow.into())
     }
 }
 

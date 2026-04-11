@@ -43,34 +43,30 @@ pub fn handler(ctx: Context<Buy>, sol_amount: u64) -> Result<()> {
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;
 
-    // ---- Calculate fees ----
-    let total_fee = sol_amount
-        .checked_mul(TOTAL_FEE_BPS)
-        .ok_or(HumanofiError::FeeOverflow)?
-        .checked_div(BPS_DENOMINATOR)
-        .ok_or(HumanofiError::FeeOverflow)?;
+    // ---- Calculate fees (ceiling division — always rounds UP) ----
+    let total_fee = crate::utils::ceil_div_u64(
+        sol_amount.checked_mul(TOTAL_FEE_BPS).ok_or(HumanofiError::FeeOverflow)?,
+        BPS_DENOMINATOR,
+    );
 
     let net_sol = sol_amount
         .checked_sub(total_fee)
         .ok_or(HumanofiError::FeeOverflow)?;
 
-    let creator_fee = total_fee
-        .checked_mul(CREATOR_FEE_SHARE_BPS)
-        .ok_or(HumanofiError::FeeOverflow)?
-        .checked_div(BPS_DENOMINATOR)
-        .ok_or(HumanofiError::FeeOverflow)?;
+    let creator_fee = crate::utils::ceil_div_u64(
+        total_fee.checked_mul(CREATOR_FEE_SHARE_BPS).ok_or(HumanofiError::FeeOverflow)?,
+        BPS_DENOMINATOR,
+    );
 
-    let holder_fee = total_fee
-        .checked_mul(HOLDER_FEE_SHARE_BPS)
-        .ok_or(HumanofiError::FeeOverflow)?
-        .checked_div(BPS_DENOMINATOR)
-        .ok_or(HumanofiError::FeeOverflow)?;
+    let holder_fee = crate::utils::ceil_div_u64(
+        total_fee.checked_mul(HOLDER_FEE_SHARE_BPS).ok_or(HumanofiError::FeeOverflow)?,
+        BPS_DENOMINATOR,
+    );
 
+    // Treasury gets the remainder — ensures total splits exactly equal total_fee
     let treasury_fee = total_fee
-        .checked_sub(creator_fee)
-        .ok_or(HumanofiError::FeeOverflow)?
-        .checked_sub(holder_fee)
-        .ok_or(HumanofiError::FeeOverflow)?;
+        .saturating_sub(creator_fee)
+        .saturating_sub(holder_fee);
 
     // ---- Calculate exact tokens from net SOL using bonding curve integral ----
     // Uses quadratic formula + forward verification (Synthetix-audited pattern)
@@ -200,8 +196,17 @@ pub fn handler(ctx: Context<Buy>, sol_amount: u64) -> Result<()> {
         signer_seeds,
     ))?;
 
-    // ---- Update bonding curve state ----
+    // ---- Update reward pool BEFORE supply change (Synthetix pattern) ----
+    // CRITICAL: Must compute reward_per_token using supply BEFORE this buy,
+    // so the buyer doesn't receive a share of their own fees.
     let curve = &mut ctx.accounts.bonding_curve;
+    if holder_fee > 0 && curve.supply_sold > 0 {
+        ctx.accounts
+            .reward_pool
+            .update_reward_per_token(holder_fee, curve.supply_sold)?;
+    }
+
+    // ---- Update bonding curve state (AFTER reward update) ----
     curve.supply_sold = curve
         .supply_sold
         .checked_add(token_amount)
@@ -210,13 +215,6 @@ pub fn handler(ctx: Context<Buy>, sol_amount: u64) -> Result<()> {
         .sol_reserve
         .checked_add(net_sol)
         .ok_or(HumanofiError::MathOverflow)?;
-
-    // ---- Update reward pool ----
-    if holder_fee > 0 {
-        ctx.accounts
-            .reward_pool
-            .update_reward_per_token(holder_fee, curve.supply_sold)?;
-    }
 
     msg!(
         "✅ Buy | buyer={} | sol={} | tokens={} | net_sol={} | fee={}",
