@@ -4,6 +4,8 @@ import { useState, useCallback, useMemo } from "react";
 import BondingCurveChart from "@/components/BondingCurveChart";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
+import { useSolPrice } from "@/hooks/useSolPrice";
+import { formatUsd, solToUsd } from "@/lib/price";
 import { PublicKey } from "@solana/web3.js";
 import { toast } from "sonner";
 import { usePerson } from "./layout";
@@ -46,6 +48,7 @@ export default function PersonPublicPage() {
   const { creator, curveData, mockPerson, isCreator } = usePerson();
   const { authenticated, login } = usePrivy();
   const { buyTokens, sellTokens } = useHumanofi();
+  const { priceUsd: solPriceUsd } = useSolPrice();
 
   const isReal = !!creator;
 
@@ -117,6 +120,7 @@ export default function PersonPublicPage() {
             <div className="kpi-card__data">
               <div className="kpi-card__label">Token Price</div>
               <div className="kpi-card__value">{formatSol(priceNum)} SOL</div>
+              {solPriceUsd > 0 && <div className="kpi-card__sub">{formatUsd(solToUsd(priceNum, solPriceUsd))}</div>}
             </div>
           </motion.div>
 
@@ -127,6 +131,7 @@ export default function PersonPublicPage() {
             <div className="kpi-card__data">
               <div className="kpi-card__label">Market Cap</div>
               <div className="kpi-card__value">{formatSol(marketCap)} SOL</div>
+              {solPriceUsd > 0 && <div className="kpi-card__sub">{formatUsd(solToUsd(marketCap, solPriceUsd))}</div>}
             </div>
           </motion.div>
 
@@ -253,7 +258,7 @@ export default function PersonPublicPage() {
                   <input type="number" className="trade-input" placeholder="Amount to sell" value={amount} onChange={(e) => setAmount(e.target.value)} />
                   <div style={{ marginTop: 8, marginBottom: 12, fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", display: "flex", justifyContent: "space-between" }}>
                     <span>You will receive</span>
-                    <span style={{ color: "var(--text)" }}>~{(parsedAmt * priceNum).toFixed(4)} SOL</span>
+                    <span style={{ color: "var(--text)" }}>~{(parsedAmt * priceNum).toFixed(4)} SOL{solPriceUsd > 0 ? ` (${formatUsd(solToUsd(parsedAmt * priceNum, solPriceUsd))})` : ""}</span>
                   </div>
                   <button className="btn-solid" style={{ width: "100%", background: "#e53e3e" }} onClick={handleTrade}>
                     Execute Sell
@@ -330,6 +335,7 @@ export default function PersonPublicPage() {
           <div className="stat-card">
             <div className="stat-card__lbl">Price</div>
             <div className="stat-card__val">{curveData ? `${priceNum.toFixed(4)} SOL` : mockPerson?.price || "—"}</div>
+            {solPriceUsd > 0 && <div className="stat-card__sub">{formatUsd(solToUsd(priceNum, solPriceUsd))}</div>}
           </div>
           <div className="stat-card">
             <div className="stat-card__lbl">Activity Score</div>
@@ -338,6 +344,7 @@ export default function PersonPublicPage() {
           <div className="stat-card">
             <div className="stat-card__lbl">Market Cap</div>
             <div className="stat-card__val">{curveData ? `${marketCap.toFixed(2)} SOL` : mockPerson?.marketCap || "—"}</div>
+            {solPriceUsd > 0 && <div className="stat-card__sub">{formatUsd(solToUsd(marketCap, solPriceUsd))}</div>}
           </div>
           <div className="stat-card">
             <div className="stat-card__lbl">Holders</div>
@@ -378,7 +385,7 @@ export default function PersonPublicPage() {
 
           <div style={{ marginBottom: 16, fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", display: "flex", justifyContent: "space-between" }}>
             <span>You will {activeTab === "buy" ? "receive" : "get"}</span>
-            <span style={{ color: "var(--text)" }}>~{estimateReceive} {activeTab === "buy" ? "tokens" : "SOL"}</span>
+            <span style={{ color: "var(--text)" }}>~{estimateReceive} {activeTab === "buy" ? "tokens" : "SOL"}{activeTab === "sell" && solPriceUsd > 0 ? ` (${formatUsd(solToUsd(parseFloat(estimateReceive) || 0, solPriceUsd))})` : ""}</span>
           </div>
 
           <button className="btn-solid" style={{ width: "100%", background: activeTab === "buy" ? "var(--accent)" : "var(--down, #e53e3e)", opacity: isReal ? 1 : 0.5 }} onClick={handleTrade} disabled={!isReal}>

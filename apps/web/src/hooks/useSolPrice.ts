@@ -12,7 +12,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase/client";
 
 interface SolPriceState {
   /** SOL price in USD */
@@ -34,9 +34,16 @@ export function useSolPrice(): SolPriceState {
   });
 
   useEffect(() => {
+    if (!supabase) {
+      setState((prev) => ({ ...prev, loading: false }));
+      return;
+    }
+
+    const sb = supabase; // narrow for closures
+
     // 1. Fetch initial price
     const fetchPrice = async () => {
-      const { data, error } = await supabase
+      const { data, error } = await sb
         .from("oracle_prices")
         .select("price_usd, confidence, updated_at")
         .eq("id", "SOL_USD")
@@ -57,7 +64,7 @@ export function useSolPrice(): SolPriceState {
     fetchPrice();
 
     // 2. Subscribe to realtime updates
-    const channel = supabase
+    const channel = sb
       .channel("oracle-sol-price")
       .on(
         "postgres_changes",
@@ -84,7 +91,7 @@ export function useSolPrice(): SolPriceState {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      sb.removeChannel(channel);
     };
   }, []);
 

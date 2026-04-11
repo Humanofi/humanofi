@@ -216,7 +216,7 @@ export default function UnifiedFeedPage() {
                 {publicPosts.map((post) => (
                   <PublicPostCard key={post.id} post={post}
                     walletAddress={walletAddress || undefined}
-                    isOwner={!!humanofiUser?.mint_address && humanofiUser.mint_address === post.creator_mint}
+                    isOwner={!!humanofiUser?.creator?.mint_address && humanofiUser.creator.mint_address === post.creator_mint}
                     onDelete={handlePublicDelete}
                     onUpdate={handlePublicUpdate}
                     onReactionChange={handlePublicReactionChange}

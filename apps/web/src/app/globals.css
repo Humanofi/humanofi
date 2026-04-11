@@ -4137,6 +4137,14 @@ img { display: block; max-width: 100%; }
   color: var(--text);
 }
 
+.kpi-card__sub,
+.stat-card__sub {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
 /* ── Dashboard Grid ── */
 .dashboard__grid {
   display: grid;
