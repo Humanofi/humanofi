@@ -356,14 +356,14 @@ export default function PersonPublicPage() {
         {/* How it works — trust & fairness */}
         <div className="protection-widget">
           <div className="protection-widget__item">
-            <ShieldCheck size={14} weight="bold" style={{ color: tokenColor }} />
+            <ShieldCheck size={20} weight="bold" style={{ color: tokenColor, flexShrink: 0, marginTop: 2 }} />
             <div>
               <strong>Fair access for everyone</strong>
               <p>To give everyone a fair chance, each person can support up to 1 SOL/day the first week, 5 SOL/day the first month, and 20 SOL/day after. Early believers get the time they deserve.</p>
             </div>
           </div>
           <div className="protection-widget__item">
-            <Lock size={14} weight="bold" style={{ color: tokenColor }} />
+            <Lock size={20} weight="bold" style={{ color: tokenColor, flexShrink: 0, marginTop: 2 }} />
             <div>
               <strong>{displayNameShort} is committed long-term</strong>
               <p>{displayNameShort} cannot sell their own tokens: Year 1 = fully locked, then progressively over 7 years. You as a supporter can sell anytime — this commitment only applies to {displayNameShort}.</p>
@@ -371,7 +371,7 @@ export default function PersonPublicPage() {
           </div>
           {isCreator && lockUntil && (
             <div className="protection-widget__item">
-              <Timer size={14} weight="bold" style={{ color: tokenColor }} />
+              <Timer size={20} weight="bold" style={{ color: tokenColor, flexShrink: 0, marginTop: 2 }} />
               <div>
                 <strong>Your lock progress</strong>
                 <div className="protection-widget__bar">
@@ -382,7 +382,7 @@ export default function PersonPublicPage() {
             </div>
           )}
           <div className="protection-widget__item">
-            <ShieldCheck size={14} weight="bold" style={{ color: tokenColor }} />
+            <ShieldCheck size={20} weight="bold" style={{ color: tokenColor, flexShrink: 0, marginTop: 2 }} />
             <div>
               <strong>A closed, trusted ecosystem</strong>
               <p>Tokens live exclusively on Humanofi. No external exchanges, no transfers between wallets. The token is the key to {displayNameShort}&apos;s world — and that access stays here.</p>
