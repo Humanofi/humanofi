@@ -381,6 +381,13 @@ export default function PersonPublicPage() {
               </div>
             </div>
           )}
+          <div className="protection-widget__item">
+            <ShieldCheck size={14} weight="bold" style={{ color: tokenColor }} />
+            <div>
+              <strong>Tokens confined to Humanofi</strong>
+              <p>Tokens can only be bought and sold on Humanofi. No external exchange, no wallet-to-wallet transfer. This ensures the token always represents real access to the creator&apos;s world.</p>
+            </div>
+          </div>
         </div>
       </div>
 
