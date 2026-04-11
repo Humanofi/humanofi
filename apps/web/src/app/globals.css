@@ -823,6 +823,13 @@ img { display: block; max-width: 100%; }
   border-color: var(--token-color, var(--accent));
   outline: none;
 }
+.trade-widget__limit-hint {
+  display: block;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
 
 .trade-widget__estimate {
   display: flex;

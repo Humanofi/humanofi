@@ -318,6 +318,9 @@ export default function PersonPublicPage() {
               {activeTab === "buy" ? "Amount in SOL" : `Amount of ${displayNameShort.toUpperCase()}`}
             </label>
             <input type="number" className="trade-input" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            {activeTab === "buy" && (
+              <span className="trade-widget__limit-hint">Max: 1 SOL/day (week 1) · 5 SOL/day (month 1) · 20 SOL/day (after)</span>
+            )}
           </div>
 
           <div className="trade-widget__estimate">
