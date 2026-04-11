@@ -356,7 +356,7 @@ export default function PersonPublicPage() {
         {/* How it works — trust & fairness */}
         <div className="protection-widget">
           <div className="protection-widget__item">
-            <ShieldCheck size={20} weight="bold" style={{ color: tokenColor, flexShrink: 0, marginTop: 2 }} />
+            <Users size={20} weight="bold" style={{ color: tokenColor, flexShrink: 0, marginTop: 2 }} />
             <div>
               <strong>Fair access for everyone</strong>
               <p>To give everyone a fair chance, each person can support up to 1 SOL/day the first week, 5 SOL/day the first month, and 20 SOL/day after. Early believers get the time they deserve.</p>
@@ -382,7 +382,7 @@ export default function PersonPublicPage() {
             </div>
           )}
           <div className="protection-widget__item">
-            <ShieldCheck size={20} weight="bold" style={{ color: tokenColor, flexShrink: 0, marginTop: 2 }} />
+            <Lightning size={20} weight="bold" style={{ color: tokenColor, flexShrink: 0, marginTop: 2 }} />
             <div>
               <strong>A closed, trusted ecosystem</strong>
               <p>Tokens live exclusively on Humanofi. No external exchanges, no transfers between wallets. The token is the key to {displayNameShort}&apos;s world — and that access stays here.</p>
