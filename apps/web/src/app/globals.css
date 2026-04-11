@@ -4849,30 +4849,65 @@ img { display: block; max-width: 100%; }
   height: 120px;
 }
 
-.dashboard__score-tips {
+/* ── Score Breakdown Bars ── */
+.dashboard__score-breakdown {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
+  margin-top: 4px;
 }
-
-.dashboard__tip {
+.dashboard__score-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
+}
+.dashboard__score-row-label {
   font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--text-muted);
-  padding: 6px 10px;
-  border: 1px solid var(--border-light);
-  transition: border-color var(--dur) var(--ease);
-}
-
-.dashboard__tip:hover {
-  border-color: var(--border);
-}
-
-.dashboard__tip span:last-child {
-  margin-left: auto;
   font-weight: 800;
-  color: #22c55e;
+  width: 80px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.dashboard__score-row-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--border-light);
+  overflow: hidden;
+}
+.dashboard__score-row-bar > div {
+  height: 100%;
+  transition: width 0.6s ease;
+}
+.dashboard__score-row-val {
+  font-size: 0.7rem;
+  font-weight: 800;
+  width: 36px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* ── IC Sidebar 24h Stats ── */
+.ic-sidebar__stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.ic-sidebar__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px;
+  border: 1px solid var(--border-light);
+}
+.ic-sidebar__stat-val {
+  font-size: 1.1rem;
+  font-weight: 900;
+}
+.ic-sidebar__stat-lbl {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }

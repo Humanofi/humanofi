@@ -5,7 +5,6 @@ import { usePerson } from "../layout";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
-import { useStreak } from "@/hooks/useStreak";
 import PostCard, { PostData } from "@/components/inner-circle/PostCard";
 import PostComposer from "@/components/inner-circle/PostComposer";
 import PresenceSidebar from "@/components/inner-circle/PresenceSidebar";
@@ -25,16 +24,13 @@ export default function InnerCirclePage() {
   const [showArchived, setShowArchived] = useState(false);
   const [holderBalance, setHolderBalance] = useState(0);
 
+  const [stats24h, setStats24h] = useState<{ views: number; reactions: number; posts: number }>({ views: 0, reactions: 0, posts: 0 });
+
   const { onlineUsers, onlineCount, liveReactions, sendReaction, consumeReaction } =
     useRealtimeChannel(
       isHolder || isCreator ? creator?.mint_address || null : null,
       walletAddress || null
     );
-
-  const { streak, recordActivity } = useStreak(
-    creator?.mint_address || null,
-    walletAddress || null
-  );
 
   // Fetch posts + reactions
   const fetchPosts = useCallback(async () => {
@@ -99,6 +95,21 @@ export default function InnerCirclePage() {
     if (!layoutLoading) fetchPosts();
   }, [layoutLoading, fetchPosts]);
 
+  // Fetch 24h stats
+  useEffect(() => {
+    if (!creator?.mint_address || (!isHolder && !isCreator)) return;
+    const fetchStats = async () => {
+      try {
+        const res = await fetch(`/api/inner-circle/${creator.mint_address}/stats24h`);
+        if (res.ok) {
+          const data = await res.json();
+          setStats24h(data);
+        }
+      } catch { /* silent */ }
+    };
+    fetchStats();
+  }, [creator?.mint_address, isHolder, isCreator]);
+
   // Reaction change handler (local optimistic update)
   const handleReactionChange = useCallback(
     (postId: string, reactions: Record<string, number>, userReactions: string[]) => {
@@ -109,10 +120,9 @@ export default function InnerCirclePage() {
       const lastEmoji = userReactions[userReactions.length - 1];
       if (lastEmoji) {
         sendReaction(lastEmoji, postId);
-        recordActivity();
       }
     },
-    [sendReaction, recordActivity]
+    [sendReaction]
   );
 
   // Poll vote
@@ -126,14 +136,13 @@ export default function InnerCirclePage() {
       });
       if (res.ok) {
         setUserVotes((prev) => ({ ...prev, [postId]: optionIndex }));
-        recordActivity();
         toast.success("Vote recorded!");
         fetchPosts();
       } else {
         toast.error((await res.json()).error || "Failed to vote");
       }
     },
-    [creator?.mint_address, walletAddress, recordActivity, fetchPosts]
+    [creator?.mint_address, walletAddress, fetchPosts]
   );
 
   // Event RSVP
@@ -147,11 +156,10 @@ export default function InnerCirclePage() {
       });
       if (res.ok) {
         setUserRsvps((prev) => ({ ...prev, [postId]: status }));
-        recordActivity();
         toast.success(status === "going" ? "You're going!" : "Marked as interested");
       }
     },
-    [creator?.mint_address, walletAddress, recordActivity]
+    [creator?.mint_address, walletAddress]
   );
 
   // Delete post
@@ -213,7 +221,7 @@ export default function InnerCirclePage() {
         <PresenceSidebar
           onlineCount={onlineCount}
           onlineUsers={onlineUsers}
-          streak={streak}
+          stats24h={stats24h}
           nextEvent={nextEvent ? { title: (nextEvent.metadata.event_title as string) || nextEvent.content, date: nextEvent.metadata.event_date as string } : null}
         />
 

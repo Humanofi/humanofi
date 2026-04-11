@@ -37,6 +37,9 @@ export interface CreatorData {
   socials: Record<string, string>;
   activity_score: number;
   activity_status: string;
+  regularity_score: number;
+  engagement_score: number;
+  retention_score: number;
   token_lock_until: string;
   subtitle: string;
   youtube_url: string;

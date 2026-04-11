@@ -1,28 +1,24 @@
 "use client";
 
-import { BADGE_LABELS } from "@/hooks/useStreak";
-import type { StreakData } from "@/hooks/useStreak";
 import type { OnlineUser } from "@/hooks/useRealtimeChannel";
 
 interface PresenceSidebarProps {
   onlineCount: number;
   onlineUsers: OnlineUser[];
-  streak: StreakData;
   nextEvent?: { title: string; date: string } | null;
   isLive?: boolean;
   onJoinLive?: () => void;
+  stats24h?: { views: number; reactions: number; posts: number };
 }
 
 export default function PresenceSidebar({
   onlineCount,
   onlineUsers,
-  streak,
   nextEvent,
   isLive,
   onJoinLive,
+  stats24h,
 }: PresenceSidebarProps) {
-  const badgeInfo = BADGE_LABELS[streak.badge] || BADGE_LABELS.none;
-
   return (
     <div className="ic-sidebar">
       {/* Online now */}
@@ -44,6 +40,27 @@ export default function PresenceSidebar({
           )}
         </div>
       </div>
+
+      {/* 24h Stats */}
+      {stats24h && (
+        <div className="ic-sidebar__section">
+          <div className="ic-sidebar__section-title">📊 Last 24h</div>
+          <div className="ic-sidebar__stats-grid">
+            <div className="ic-sidebar__stat">
+              <span className="ic-sidebar__stat-val">{stats24h.views}</span>
+              <span className="ic-sidebar__stat-lbl">Views</span>
+            </div>
+            <div className="ic-sidebar__stat">
+              <span className="ic-sidebar__stat-val">{stats24h.reactions}</span>
+              <span className="ic-sidebar__stat-lbl">Reactions</span>
+            </div>
+            <div className="ic-sidebar__stat">
+              <span className="ic-sidebar__stat-val">{stats24h.posts}</span>
+              <span className="ic-sidebar__stat-lbl">Posts</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Live indicator */}
       {isLive && (
@@ -73,34 +90,6 @@ export default function PresenceSidebar({
           </div>
         </div>
       )}
-
-      {/* Streak */}
-      <div className="ic-sidebar__section">
-        <div className="ic-sidebar__section-title">🔥 Your Streak</div>
-        <div className="ic-sidebar__streak">
-          <div className="ic-sidebar__streak-count">
-            {streak.currentStreak} day{streak.currentStreak !== 1 ? "s" : ""}
-          </div>
-          {streak.isActiveToday && (
-            <div className="ic-sidebar__streak-active">✓ Active today</div>
-          )}
-          {!streak.isActiveToday && streak.currentStreak > 0 && (
-            <div className="ic-sidebar__streak-warning">⚠ React to keep your streak!</div>
-          )}
-        </div>
-      </div>
-
-      {/* Badge */}
-      <div className="ic-sidebar__section">
-        <div className="ic-sidebar__section-title">🏆 Your Badge</div>
-        <div className="ic-sidebar__badge">
-          <span className="ic-sidebar__badge-emoji">{badgeInfo.emoji}</span>
-          <span className="ic-sidebar__badge-label">{badgeInfo.label}</span>
-        </div>
-        {streak.longestStreak > streak.currentStreak && (
-          <div className="ic-sidebar__best">Best: {streak.longestStreak} days</div>
-        )}
-      </div>
     </div>
   );
 }

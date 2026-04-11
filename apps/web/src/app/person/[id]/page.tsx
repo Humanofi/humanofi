@@ -14,7 +14,7 @@ import { motion } from "framer-motion";
 import Image from "next/image";
 import {
   TrendUp, TrendDown, Users, Coin, ChartLineUp, Lock, LockOpen,
-  Timer, Fire, CurrencyDollar, Wallet, ShieldCheck, ArrowRight,
+  Timer, Fire, CurrencyDollar, Wallet, ShieldCheck,
   YoutubeLogo, Images, Lightning, Heartbeat,
 } from "@phosphor-icons/react";
 
@@ -263,21 +263,27 @@ export default function PersonPublicPage() {
                   <text x="60" y="72" textAnchor="middle" fontSize="10" fontWeight="700" fill="var(--text-muted)">/ 100</text>
                 </svg>
               </div>
-              <div className="dashboard__score-tips">
-                <div className="dashboard__tip">
-                  <span>Post regularly</span>
-                  <ArrowRight size={10} />
-                  <span>Boosts regularity</span>
+              <div className="dashboard__score-breakdown">
+                <div className="dashboard__score-row">
+                  <span className="dashboard__score-row-label">Regularity</span>
+                  <div className="dashboard__score-row-bar">
+                    <div style={{ width: `${((creator?.regularity_score || 0) / 30) * 100}%`, background: "#3b82f6" }} />
+                  </div>
+                  <span className="dashboard__score-row-val">{creator?.regularity_score || 0}/30</span>
                 </div>
-                <div className="dashboard__tip">
-                  <span>Answer questions</span>
-                  <ArrowRight size={10} />
-                  <span>Boosts quality</span>
+                <div className="dashboard__score-row">
+                  <span className="dashboard__score-row-label">Engagement</span>
+                  <div className="dashboard__score-row-bar">
+                    <div style={{ width: `${((creator?.engagement_score || 0) / 40) * 100}%`, background: "#22c55e" }} />
+                  </div>
+                  <span className="dashboard__score-row-val">{creator?.engagement_score || 0}/40</span>
                 </div>
-                <div className="dashboard__tip">
-                  <span>Host events</span>
-                  <ArrowRight size={10} />
-                  <span>Boosts engagement</span>
+                <div className="dashboard__score-row">
+                  <span className="dashboard__score-row-label">Retention</span>
+                  <div className="dashboard__score-row-bar">
+                    <div style={{ width: `${((creator?.retention_score || 0) / 30) * 100}%`, background: "#f59e0b" }} />
+                  </div>
+                  <span className="dashboard__score-row-val">{creator?.retention_score || 0}/30</span>
                 </div>
               </div>
             </section>
