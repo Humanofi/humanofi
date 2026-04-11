@@ -575,7 +575,13 @@ ALTER TABLE creator_tokens
 -- 5. SCHEDULE: every hour
 -- ══════════════════════════════════════════
 
-SELECT cron.unschedule('update_activity_scores');
+DO $$
+BEGIN
+  PERFORM cron.unschedule('update_activity_scores');
+EXCEPTION WHEN OTHERS THEN
+  -- Job doesn't exist yet, that's fine
+  NULL;
+END $$;
 
 SELECT cron.schedule(
     'update_activity_scores',
