@@ -11,7 +11,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
 interface SolPriceState {
@@ -32,6 +32,8 @@ export function useSolPrice(): SolPriceState {
     updatedAt: null,
     loading: true,
   });
+
+  const channelId = useId();
 
   useEffect(() => {
     if (!supabase) {
@@ -63,9 +65,9 @@ export function useSolPrice(): SolPriceState {
 
     fetchPrice();
 
-    // 2. Subscribe to realtime updates
+    // 2. Subscribe to realtime updates (unique channel per instance)
     const channel = sb
-      .channel("oracle-sol-price")
+      .channel(`oracle-sol-price-${channelId}`)
       .on(
         "postgres_changes",
         {
@@ -93,7 +95,7 @@ export function useSolPrice(): SolPriceState {
     return () => {
       sb.removeChannel(channel);
     };
-  }, []);
+  }, [channelId]);
 
   return state;
 }
