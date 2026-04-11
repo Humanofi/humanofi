@@ -60,7 +60,6 @@ export default function PersonCard({
           </div>
           <SparklineChart
             mintAddress={mintAddress}
-            fallbackData={sparkline}
             change={change}
           />
         </div>

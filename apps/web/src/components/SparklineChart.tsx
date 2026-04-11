@@ -2,7 +2,7 @@
 // Humanofi — SparklineChart (Mini Chart for Cards)
 // ========================================
 // Fetches real price history from Supabase for card sparklines.
-// Falls back to prop data if no real data available.
+// Shows flat line if no real data available.
 
 "use client";
 
@@ -11,7 +11,6 @@ import { supabase } from "@/lib/supabase/client";
 
 interface SparklineChartProps {
   mintAddress?: string;
-  fallbackData: number[];
   change: number;
   width?: number;
   height?: number;
@@ -19,13 +18,13 @@ interface SparklineChartProps {
 
 export default function SparklineChart({
   mintAddress,
-  fallbackData,
   change,
   width = 100,
   height = 30,
 }: SparklineChartProps) {
-  const [points, setPoints] = useState<number[]>(fallbackData);
+  const [points, setPoints] = useState<number[]>([10, 10, 10, 10, 10]);
   const [realChange, setRealChange] = useState<number>(change);
+  const [hasData, setHasData] = useState(false);
 
   useEffect(() => {
     if (!mintAddress || !supabase) return;
@@ -34,28 +33,31 @@ export default function SparklineChart({
       const sb = supabase;
       if (!sb) return;
 
-      const { data, error } = await sb
-        .from("price_snapshots")
-        .select("price_sol")
-        .eq("mint_address", mintAddress)
-        .order("created_at", { ascending: true })
-        .limit(20);
+      try {
+        const { data, error } = await sb
+          .from("price_snapshots")
+          .select("price_sol")
+          .eq("mint_address", mintAddress)
+          .order("created_at", { ascending: true })
+          .limit(20);
 
-      if (!error && data && data.length >= 3) {
-        const prices = data.map((d) => d.price_sol);
-        const min = Math.min(...prices);
-        const max = Math.max(...prices);
-        const range = max - min || 1;
-        // Normalize to 0-20 like mock sparkline
-        const normalized = prices.map((p) => ((p - min) / range) * 18 + 1);
-        setPoints(normalized);
+        if (!error && data && data.length >= 2) {
+          const prices = data.map((d) => d.price_sol);
+          const min = Math.min(...prices);
+          const max = Math.max(...prices);
+          const range = max - min || 1;
+          const normalized = prices.map((p) => ((p - min) / range) * 18 + 1);
+          setPoints(normalized);
+          setHasData(true);
 
-        // Calculate real change
-        const first = prices[0];
-        const last = prices[prices.length - 1];
-        if (first > 0) {
-          setRealChange(parseFloat(((last - first) / first * 100).toFixed(1)));
+          const first = prices[0];
+          const last = prices[prices.length - 1];
+          if (first > 0) {
+            setRealChange(parseFloat(((last - first) / first * 100).toFixed(1)));
+          }
         }
+      } catch {
+        // Keep flat line
       }
     };
 
@@ -74,7 +76,9 @@ export default function SparklineChart({
     return `${acc} ${i === 0 ? "M" : "L"} ${x},${y}`;
   }, "");
 
-  const strokeColor = realChange >= 0 ? "var(--up)" : "var(--down)";
+  const strokeColor = hasData
+    ? (realChange >= 0 ? "var(--up)" : "var(--down)")
+    : "rgba(150, 150, 150, 0.3)";
 
   return (
     <svg width={width} height={height} className="card__sparkline" viewBox={`0 -5 ${width} ${height + 10}`}>
