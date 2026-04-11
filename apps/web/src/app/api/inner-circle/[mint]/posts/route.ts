@@ -105,8 +105,18 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // Fetch the current user's votes and rsvps for these posts
+  // ── Increment view_count for loaded posts (1 batch UPDATE) ──
+  // Lightweight: no new table, no INSERT per view, 1 atomic query.
+  // Not deduplicated per session — good enough for a dashboard metric.
   const postIds = posts?.map((p) => p.id) || [];
+  if (postIds.length > 0 && !isCreator) {
+    // Fire-and-forget: don't block the response
+    Promise.resolve(
+      supabase.rpc("increment_view_counts", { post_ids: postIds })
+    ).catch(() => {});
+  }
+
+  // Fetch the current user's votes and rsvps for these posts
   let userVotes: Record<string, number> = {};
   let userRsvps: Record<string, string> = {};
 

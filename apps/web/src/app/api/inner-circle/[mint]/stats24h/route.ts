@@ -6,9 +6,12 @@ import { createServerClient } from "@/lib/supabase/client";
  * 
  * Returns aggregated stats for the last 24 hours:
  *   - reactions: inner circle + public post reactions
- *   - posts: inner circle + public posts
- *   - views: not tracked (would require a dedicated table + write-heavy system).
- *            We use total reaction count as a proxy for engagement.
+ *   - posts: inner circle + public posts  
+ *   - views: sum of view_count on posts created by this creator (last 24h visitors)
+ * 
+ * Strategy for reactions: since reaction tables don't have creator_mint,
+ * we first get the creator's post IDs, then count reactions on those posts.
+ * This is 2 small queries instead of a broken JOIN.
  */
 export async function GET(
   _request: NextRequest,
@@ -17,58 +20,57 @@ export async function GET(
   const { mint } = await params;
   const supabase = createServerClient();
   if (!supabase) {
-    return NextResponse.json({ reactions: 0, posts: 0 });
+    return NextResponse.json({ reactions: 0, posts: 0, views: 0 });
   }
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-  // ── Inner Circle posts in last 24h ──
-  const { count: icPostCount } = await supabase
+  // ── 1. Inner Circle posts (last 24h + all post IDs for reactions) ──
+  const { data: icPosts } = await supabase
     .from("inner_circle_posts")
-    .select("*", { count: "exact", head: true })
-    .eq("creator_mint", mint)
-    .gte("created_at", since);
+    .select("id, created_at, view_count")
+    .eq("creator_mint", mint);
 
-  // ── Public posts in last 24h ──
-  const { count: pubPostCount } = await supabase
+  const icPostIds = (icPosts || []).map(p => p.id);
+  const icPostsLast24h = (icPosts || []).filter(p => p.created_at >= since).length;
+  
+  // Sum all view_count for this creator's posts
+  const totalViews = (icPosts || []).reduce((sum, p) => sum + (p.view_count || 0), 0);
+
+  // ── 2. Public posts (last 24h + all post IDs for reactions) ──
+  const { data: pubPosts } = await supabase
     .from("public_posts")
-    .select("*", { count: "exact", head: true })
-    .eq("creator_mint", mint)
-    .gte("created_at", since);
+    .select("id, created_at")
+    .eq("creator_mint", mint);
 
-  // ── Inner Circle reactions in last 24h ──
-  // inner_circle_reactions doesn't have creator_mint, so we join via posts
-  const { data: icReactionData } = await supabase
-    .from("inner_circle_reactions")
-    .select("id, post_id, inner_circle_posts!inner(creator_mint)")
-    .gte("created_at", since);
+  const pubPostIds = (pubPosts || []).map(p => p.id);
+  const pubPostsLast24h = (pubPosts || []).filter(p => p.created_at >= since).length;
 
-  // Filter reactions belonging to this creator's posts
+  // ── 3. IC reactions on this creator's posts (last 24h) ──
   let icReactionCount = 0;
-  if (icReactionData) {
-    icReactionCount = icReactionData.filter((r: any) => {
-      const post = r.inner_circle_posts;
-      return post && post.creator_mint === mint;
-    }).length;
+  if (icPostIds.length > 0) {
+    const { count } = await supabase
+      .from("inner_circle_reactions")
+      .select("*", { count: "exact", head: true })
+      .in("post_id", icPostIds)
+      .gte("created_at", since);
+    icReactionCount = count || 0;
   }
 
-  // ── Public post reactions in last 24h ──
-  // public_post_reactions also doesn't have creator_mint, join via public_posts
-  const { data: pubReactionData } = await supabase
-    .from("public_post_reactions")
-    .select("id, post_id, public_posts!inner(creator_mint)")
-    .gte("created_at", since);
-
+  // ── 4. Public reactions on this creator's posts (last 24h) ──
   let pubReactionCount = 0;
-  if (pubReactionData) {
-    pubReactionCount = pubReactionData.filter((r: any) => {
-      const post = r.public_posts;
-      return post && post.creator_mint === mint;
-    }).length;
+  if (pubPostIds.length > 0) {
+    const { count } = await supabase
+      .from("public_post_reactions")
+      .select("*", { count: "exact", head: true })
+      .in("post_id", pubPostIds)
+      .gte("created_at", since);
+    pubReactionCount = count || 0;
   }
 
   return NextResponse.json({
     reactions: icReactionCount + pubReactionCount,
-    posts: (icPostCount || 0) + (pubPostCount || 0),
+    posts: icPostsLast24h + pubPostsLast24h,
+    views: totalViews,
   });
 }
