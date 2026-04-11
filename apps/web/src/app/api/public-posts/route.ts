@@ -188,6 +188,12 @@ export async function POST(request: NextRequest) {
 
     if (error) return NextResponse.json({ error: "Failed to create post" }, { status: 500 });
 
+    // Log creator activity (for Activity Score)
+    await supabase.from("creator_activity").insert({
+      creator_mint: creator.mint_address,
+      action_type: "public_post",
+    });
+
     return NextResponse.json({ post: newPost }, { status: 201 });
   } catch (error) {
     console.error("Public post error:", error);

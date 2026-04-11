@@ -187,9 +187,12 @@ export async function POST(
     }
 
     // Log creator activity (for Activity Score)
+    const activityType = post_type === 'event' ? 'event' 
+      : post_type === 'poll' ? 'poll' 
+      : 'post';
     await supabase.from("creator_activity").insert({
       creator_mint: mint,
-      action_type: "post",
+      action_type: activityType,
     });
 
     return NextResponse.json({ success: true, post });

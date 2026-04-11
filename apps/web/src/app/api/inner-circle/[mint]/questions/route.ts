@@ -145,6 +145,13 @@ export async function POST(
         .single();
 
       if (error) throw error;
+
+      // Log creator activity (for Activity Score)
+      await supabase.from("creator_activity").insert({
+        creator_mint: mint,
+        action_type: "question_reply",
+      });
+
       return NextResponse.json({ question: data });
     }
 

@@ -133,6 +133,12 @@ export async function POST(
         p_epoch: epoch,
         p_action_type: "reply",
       });
+    } else {
+      // Log creator reply activity (for Activity Score)
+      await supabase.from("creator_activity").insert({
+        creator_mint: mint,
+        action_type: "reply",
+      });
     }
 
     return NextResponse.json({ success: true, reply });
