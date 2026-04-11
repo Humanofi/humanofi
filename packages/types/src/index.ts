@@ -1,5 +1,5 @@
 // ========================================
-// Humanofi — Shared Types
+// Humanofi — Shared Types (v2 — Human Curve™)
 // ========================================
 // All TypeScript types shared across the monorepo.
 
@@ -8,26 +8,44 @@ import { PublicKey } from "@solana/web3.js";
 // ---- Protocol Constants ----
 
 export const PROTOCOL_CONSTANTS = {
-  /** Total transaction fee in basis points (2%) */
-  TOTAL_FEE_BPS: 200,
-  /** Creator's share of fees (50%) */
-  CREATOR_FEE_SHARE_BPS: 5000,
-  /** Holders' reward pool share (30%) */
-  HOLDER_FEE_SHARE_BPS: 3000,
-  /** Protocol treasury share (20%) */
-  TREASURY_FEE_SHARE_BPS: 2000,
-  /** Exit tax rate in basis points (10%) */
-  EXIT_TAX_BPS: 1000,
-  /** Exit tax window in seconds (90 days) */
-  EXIT_TAX_WINDOW: 90 * 24 * 60 * 60,
-  /** Creator token lock duration (12 months) */
+  /** Total transaction fee in basis points (6%) */
+  TOTAL_FEE_BPS: 600,
+  /** Creator's fee share: 2% of total tx */
+  FEE_CREATOR_BPS: 200,
+  /** Holders' reward pool: 2% of total tx */
+  FEE_HOLDERS_BPS: 200,
+  /** Protocol treasury: 1% of total tx */
+  FEE_PROTOCOL_BPS: 100,
+  /** k-deepening (stays in curve): 1% of total tx */
+  FEE_DEPTH_BPS: 100,
+  /** Total Merit allocation: 14% = 12.6% creator + 1.4% protocol */
+  ALPHA_TOTAL_BPS: 1_400,
+  /** Creator Merit Reward: 12.6% of tokens produced */
+  ALPHA_CREATOR_BPS: 1_260,
+  /** Protocol Merit Fee: 1.4% of tokens produced */
+  ALPHA_PROTOCOL_BPS: 140,
+  /** Depth multiplier: x₀ = 21 × V */
+  DEPTH_TOTAL_MULTIPLIER: 21,
+  /** Depth ratio: D = 20 × V (mathematical parameter, not real SOL) */
+  DEPTH_RATIO: 20,
+  /** Initial y₀ = 1,000,000 tokens (in whole tokens) */
+  INITIAL_Y_TOKENS: 1_000_000,
+  /** Creator token lock duration: Year 1 = 0% sellable */
   CREATOR_LOCK_DURATION: 365 * 24 * 60 * 60,
+  /** Creator sell cooldown (30 days between sells) */
+  CREATOR_SELL_COOLDOWN: 30 * 24 * 60 * 60,
+  /** Smart Sell Limiter: max 5% price impact per creator sell (500 BPS) */
+  SELL_IMPACT_BPS: 500,
+  /** Price Stabilizer threshold: 2% deviation from TWAP */
+  STABILIZER_THRESHOLD_BPS: 200,
+  /** Price Stabilizer max sell: 50% of protocol tokens */
+  STABILIZER_MAX_SELL_PCT: 50,
   /** Token decimals */
   TOKEN_DECIMALS: 6,
-  /** Total initial supply */
-  CREATOR_TOKEN_SUPPLY: 1_000_000_000,
-  /** Token creation cost in USD */
-  CREATION_COST_USD: 10,
+  /** Minimum initial liquidity (0.03 SOL) */
+  MIN_INITIAL_LIQUIDITY: 30_000_000,
+  /** Maximum initial liquidity (100 SOL) */
+  MAX_INITIAL_LIQUIDITY: 100_000_000_000,
 } as const;
 
 // ---- Identity (HIUID) ----
@@ -78,7 +96,8 @@ export interface CreatorProfile extends CreatorToken {
   holdersCount: number;
   marketCap: number;
   currentPrice: number;
-  supplySold: number;
+  supplyPublic: number;
+  supplyCreator: number;
   solReserve: number;
   activityStatus: ActivityStatus;
 }
@@ -135,15 +154,31 @@ export interface InnerCircleReaction {
   createdAt: Date;
 }
 
-// ---- Bonding Curve ----
+// ---- Bonding Curve (Human Curve™) ----
 
 export interface BondingCurveState {
   mint: string;
   creator: string;
-  basePrice: number;
-  curveFactor: number;
-  supplySold: number;
+  /** Total curve reserve x (lamports) = sol_reserve + depth_parameter */
+  x: bigint;
+  /** Token reserve counter y (base units) */
+  y: bigint;
+  /** Invariant k = x · y (evolves via k-deepening) */
+  k: bigint;
+  /** Public tokens in circulation (holders) */
+  supplyPublic: number;
+  /** Creator tokens accumulated via Merit Reward (12.6%) */
+  supplyCreator: number;
+  /** Protocol tokens accumulated via Merit Fee (1.4%) */
+  supplyProtocol: number;
+  /** Real SOL in vault (lamports). INVARIANT: sol_reserve = x − depth_parameter */
   solReserve: number;
+  /** Depth Parameter D = 20 × V (mathematical, not real SOL, never withdrawable) */
+  depthParameter: number;
+  /** EMA TWAP price (scaled) */
+  twapPrice: bigint;
+  /** Number of trades processed */
+  tradeCount: number;
   createdAt: Date;
   isActive: boolean;
 }
@@ -171,15 +206,6 @@ export interface ClaimableRewards {
   lastClaimedAt: Date | null;
 }
 
-// ---- Purchase Limits ----
-
-export interface PurchaseLimit {
-  period: string;
-  maxUsdPerDay: number;
-  spentTodayUsd: number;
-  remainingUsd: number;
-}
-
 // ---- Leaderboard ----
 
 export interface LeaderboardEntry {
@@ -192,7 +218,7 @@ export interface LeaderboardEntry {
 
 // ---- Webhooks (Helius) ----
 
-export type HeliusEventType = "transfer" | "mint" | "burn" | "unlock";
+export type HeliusEventType = "transfer" | "mint" | "burn";
 
 export interface HeliusWebhookPayload {
   type: HeliusEventType;

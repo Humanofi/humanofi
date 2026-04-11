@@ -13,8 +13,6 @@ const TREASURY = new PublicKey(
   process.env.NEXT_PUBLIC_TREASURY_WALLET || "11111111111111111111111111111111"
 );
 
-const DEFAULT_BASE_PRICE = 10_000;
-const DEFAULT_SLOPE = 1_000;
 const SOL_PRICE_USD = 170; // Approximate SOL/USD for display
 const LAMPORTS_PER_SOL_CONST = 1_000_000_000;
 
@@ -245,8 +243,6 @@ export default function CreatePage() {
         name: tokenName,
         symbol: tokenSymbol.toUpperCase(),
         uri: metadataUrl,
-        basePrice: DEFAULT_BASE_PRICE,
-        slope: DEFAULT_SLOPE,
         initialLiquidity: Math.floor((initialLiquidityUSD / SOL_PRICE_USD) * LAMPORTS_PER_SOL_CONST),
         treasury: TREASURY,
       });

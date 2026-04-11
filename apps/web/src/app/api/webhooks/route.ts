@@ -175,11 +175,8 @@ async function processEvent(supabase: any, event: any) {
         }
       }
 
-      // If we couldn't extract price, use a simple supply-based estimate
-      if (priceSol === 0 && holderCount) {
-        // Base price + slope * approximate supply
-        priceSol = 0.0001 + (holderCount * 0.00001);
-      }
+      // If we couldn't extract price from account data, skip snapshot
+      // (the on-chain bonding curve has x/y for accurate pricing)
 
       if (priceSol > 0) {
         await supabase.from("price_snapshots").insert({

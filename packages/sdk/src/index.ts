@@ -1,5 +1,5 @@
 // ========================================
-// Humanofi SDK — Client for the Anchor Program
+// Humanofi SDK — Client for the Anchor Program (v2 — Human Curve™)
 // ========================================
 
 import { Program, AnchorProvider, BN } from "@coral-xyz/anchor";
@@ -7,7 +7,6 @@ import {
   PublicKey,
   Keypair,
   SystemProgram,
-  SYSVAR_RENT_PUBKEY,
   LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
 import {
@@ -23,30 +22,31 @@ const SEED_REWARDS = Buffer.from("rewards");
 const SEED_LIMITER = Buffer.from("limiter");
 const SEED_REWARD_STATE = Buffer.from("reward_state");
 
+// Token-2022 program ID
+const TOKEN_2022_PROGRAM_ID = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
+
 export interface CreateTokenParams {
   name: string;
   symbol: string;
   uri: string;
-  basePrice: number;
-  curveFactor: number;
+  initialLiquidity: number; // in lamports
 }
 
 export interface BuyParams {
   mint: PublicKey;
-  solAmount: number;
+  solAmount: number;         // in lamports
+  minTokensOut?: number;     // slippage protection (0 = no check)
   treasury: PublicKey;
 }
 
 export interface SellParams {
   mint: PublicKey;
-  tokenAmount: number;
+  tokenAmount: number;       // in base units (with decimals)
+  minSolOut?: number;        // slippage protection (0 = no check)
+  treasury: PublicKey;
 }
 
 export interface ClaimRewardsParams {
-  mint: PublicKey;
-}
-
-export interface UnlockTokensParams {
   mint: PublicKey;
 }
 
@@ -54,6 +54,7 @@ export interface UnlockTokensParams {
  * HumanofiClient — High-level SDK for interacting with the Humanofi program.
  *
  * Wraps the Anchor program with typed methods for all instructions.
+ * V2: Human Curve™ (x·y=k), no unlock_tokens, slippage protection.
  */
 export class HumanofiClient {
   private program: Program;
@@ -62,15 +63,11 @@ export class HumanofiClient {
   constructor(provider: AnchorProvider, programId?: PublicKey) {
     this.provider = provider;
     // Program will be initialized with the IDL after build
-    // For now, this is a placeholder structure
     this.program = null as any;
   }
 
   // ---- PDA Derivation ----
 
-  /**
-   * Derive the BondingCurve PDA for a given mint.
-   */
   static deriveBondingCurve(
     mint: PublicKey,
     programId: PublicKey
@@ -81,9 +78,6 @@ export class HumanofiClient {
     );
   }
 
-  /**
-   * Derive the CreatorVault PDA for a given mint.
-   */
   static deriveCreatorVault(
     mint: PublicKey,
     programId: PublicKey
@@ -94,9 +88,6 @@ export class HumanofiClient {
     );
   }
 
-  /**
-   * Derive the RewardPool PDA for a given mint.
-   */
   static deriveRewardPool(
     mint: PublicKey,
     programId: PublicKey
@@ -107,9 +98,6 @@ export class HumanofiClient {
     );
   }
 
-  /**
-   * Derive the PurchaseLimiter PDA for a given wallet + mint.
-   */
   static derivePurchaseLimiter(
     wallet: PublicKey,
     mint: PublicKey,
@@ -121,9 +109,6 @@ export class HumanofiClient {
     );
   }
 
-  /**
-   * Derive the HolderRewardState PDA for a given mint + holder.
-   */
   static deriveHolderRewardState(
     mint: PublicKey,
     holder: PublicKey,
@@ -138,7 +123,10 @@ export class HumanofiClient {
   // ---- Instructions ----
 
   /**
-   * Create a new personal token with bonding curve.
+   * Create a new personal token with the Human Curve™.
+   *
+   * No tokens are minted at creation. The creator earns tokens
+   * progressively via the Merit Reward (14%) on each buy.
    */
   async createToken(params: CreateTokenParams) {
     const mint = Keypair.generate();
@@ -156,30 +144,23 @@ export class HumanofiClient {
       mint.publicKey,
       this.program.programId
     );
-    const creatorTokenAccount = await getAssociatedTokenAddress(
-      mint.publicKey,
-      creator
-    );
 
     const tx = await this.program.methods
       .createToken(
         params.name,
         params.symbol,
         params.uri,
-        new BN(params.basePrice),
-        new BN(params.curveFactor)
+        new BN(params.initialLiquidity)
       )
       .accounts({
         creator,
         mint: mint.publicKey,
-        creatorTokenAccount,
         bondingCurve,
         creatorVault,
         rewardPool,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-        rent: SYSVAR_RENT_PUBKEY,
+        systemProgram: SystemProgram.programId,
       })
       .signers([mint])
       .rpc();
@@ -188,7 +169,11 @@ export class HumanofiClient {
   }
 
   /**
-   * Buy tokens from the bonding curve.
+   * Buy tokens from the Human Curve™.
+   *
+   * - SOL → curve (94%) + fees (6%)
+   * - Mint buyer tokens + creator Merit Reward
+   * - Slippage protection via minTokensOut
    */
   async buy(params: BuyParams) {
     const buyer = this.provider.wallet.publicKey;
@@ -208,7 +193,9 @@ export class HumanofiClient {
     );
     const buyerTokenAccount = await getAssociatedTokenAddress(
       params.mint,
-      buyer
+      buyer,
+      false,
+      TOKEN_2022_PROGRAM_ID
     );
 
     // Fetch bonding curve to get creator
@@ -216,8 +203,19 @@ export class HumanofiClient {
       bondingCurve
     );
 
+    // Creator's ATA for Merit Reward
+    const creatorTokenAccount = await getAssociatedTokenAddress(
+      params.mint,
+      (curveData as any).creator,
+      false,
+      TOKEN_2022_PROGRAM_ID
+    );
+
     const tx = await this.program.methods
-      .buy(new BN(params.solAmount))
+      .buy(
+        new BN(params.solAmount),
+        new BN(params.minTokensOut || 0)
+      )
       .accounts({
         buyer,
         mint: params.mint,
@@ -225,11 +223,12 @@ export class HumanofiClient {
         rewardPool,
         purchaseLimiter,
         buyerTokenAccount,
-        creatorWallet: curveData.creator,
+        creatorTokenAccount,
+        creatorWallet: (curveData as any).creator,
         treasury: params.treasury,
-        systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+        systemProgram: SystemProgram.programId,
       })
       .rpc();
 
@@ -237,7 +236,11 @@ export class HumanofiClient {
   }
 
   /**
-   * Sell tokens back to the bonding curve.
+   * Sell tokens back via the Human Curve™.
+   *
+   * - Burns tokens, returns SOL minus fees
+   * - If creator: enforces Year 1 lock + Smart Sell Limiter + 30d cooldown
+   * - Slippage protection via minSolOut
    */
   async sell(params: SellParams) {
     const seller = this.provider.wallet.publicKey;
@@ -250,31 +253,50 @@ export class HumanofiClient {
       params.mint,
       this.program.programId
     );
-    const [purchaseLimiter] = HumanofiClient.derivePurchaseLimiter(
-      seller,
+    const [holderRewardState] = HumanofiClient.deriveHolderRewardState(
       params.mint,
+      seller,
       this.program.programId
     );
     const sellerTokenAccount = await getAssociatedTokenAddress(
       params.mint,
-      seller
+      seller,
+      false,
+      TOKEN_2022_PROGRAM_ID
     );
 
     const curveData = await this.program.account.bondingCurve.fetch(
       bondingCurve
     );
 
+    // Check if seller is creator → include creator_vault
+    const isCreator = seller.equals((curveData as any).creator);
+    const remainingAccounts: any[] = [];
+
+    let creatorVault: PublicKey | null = null;
+    if (isCreator) {
+      [creatorVault] = HumanofiClient.deriveCreatorVault(
+        params.mint,
+        this.program.programId
+      );
+    }
+
     const tx = await this.program.methods
-      .sell(new BN(params.tokenAmount))
+      .sell(
+        new BN(params.tokenAmount),
+        new BN(params.minSolOut || 0)
+      )
       .accounts({
         seller,
         mint: params.mint,
         bondingCurve,
         rewardPool,
-        purchaseLimiter,
+        holderRewardState,
+        creatorVault: creatorVault, // null if not creator → Anchor handles optional
         sellerTokenAccount,
-        creatorWallet: curveData.creator,
-        tokenProgram: TOKEN_PROGRAM_ID,
+        creatorWallet: (curveData as any).creator,
+        treasury: params.treasury,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
       })
       .rpc();
@@ -284,6 +306,7 @@ export class HumanofiClient {
 
   /**
    * Claim accumulated rewards from the reward pool.
+   * Engagement-gated: holder must have >= MIN_ENGAGEMENT_ACTIONS.
    */
   async claimRewards(params: ClaimRewardsParams) {
     const holder = this.provider.wallet.publicKey;
@@ -299,7 +322,9 @@ export class HumanofiClient {
     );
     const holderTokenAccount = await getAssociatedTokenAddress(
       params.mint,
-      holder
+      holder,
+      false,
+      TOKEN_2022_PROGRAM_ID
     );
 
     const tx = await this.program.methods
@@ -311,42 +336,7 @@ export class HumanofiClient {
         holderRewardState,
         holderTokenAccount,
         systemProgram: SystemProgram.programId,
-        tokenProgram: TOKEN_PROGRAM_ID,
-      })
-      .rpc();
-
-    return { txSignature: tx };
-  }
-
-  /**
-   * Unlock creator tokens after 12-month lock.
-   */
-  async unlockTokens(params: UnlockTokensParams) {
-    const creator = this.provider.wallet.publicKey;
-
-    const [creatorVault] = HumanofiClient.deriveCreatorVault(
-      params.mint,
-      this.program.programId
-    );
-    const vaultTokenAccount = await getAssociatedTokenAddress(
-      params.mint,
-      creatorVault,
-      true // allowOwnerOffCurve for PDA
-    );
-    const creatorTokenAccount = await getAssociatedTokenAddress(
-      params.mint,
-      creator
-    );
-
-    const tx = await this.program.methods
-      .unlockTokens()
-      .accounts({
-        creator,
-        mint: params.mint,
-        creatorVault,
-        vaultTokenAccount,
-        creatorTokenAccount,
-        tokenProgram: TOKEN_PROGRAM_ID,
+        tokenProgram: TOKEN_2022_PROGRAM_ID,
       })
       .rpc();
 

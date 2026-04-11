@@ -1,15 +1,22 @@
 // ========================================
-// Humanofi — Sell Tokens
+// Humanofi — Sell Tokens (Human Curve™)
 // ========================================
 //
-// Sells tokens back to the bonding curve:
-// 1. Thaw seller's account (frozen for security)
-// 2. Burn tokens from seller
-// 3. Calculate SOL return via bonding curve
-// 4. Apply exit tax if < 90 days since first purchase
-// 5. Split fees (50/30/20)
-// 6. Transfer SOL to seller
-// 7. Re-freeze account if balance remains
+// Sell flow (matches humanofi-mathematiques.md §6):
+//   1. CPI Guard: reject bot/program calls
+//   2. If seller = creator: verify vesting + Smart Sell Limiter + cooldown
+//   3. Snapshot holder rewards (MasterChef pattern)
+//   4. Calculate sell via Human Curve (fees + k-deepening)
+//   5. Thaw seller's ATA → Burn tokens
+//   6. Distribute fees from bonding curve PDA
+//   7. Transfer net SOL to seller
+//   8. Re-freeze ATA if balance remains
+//   9. Update curve state (x, y, k, supplies)
+//
+// Creator-specific rules:
+//   - Year 1: 0% sellable (hard lock)
+//   - Year 2+: max 5% price impact per sell (Smart Sell Limiter)
+//   - 30-day cooldown between creator sells
 
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{
@@ -21,13 +28,10 @@ use crate::constants::*;
 use crate::errors::HumanofiError;
 use crate::state::*;
 
-pub fn handler(ctx: Context<Sell>, token_amount: u64) -> Result<()> {
+pub fn handler(ctx: Context<Sell>, token_amount: u64, min_sol_out: u64) -> Result<()> {
     require!(token_amount > 0, HumanofiError::ZeroAmount);
 
     // ── ANTI-BOT: Block CPI (program-to-program) calls ──
-    // Only top-level wallet transactions are allowed.
-    // This prevents MEV bots, arbitrage programs, and any
-    // automated on-chain actor from calling buy/sell.
     #[cfg(not(feature = "cpi"))]
     {
         let stack_height = anchor_lang::solana_program::instruction::get_stack_height();
@@ -46,14 +50,34 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64) -> Result<()> {
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;
 
-    // ── REWARD SNAPSHOT (Synthetix pattern) ──────────────────────
+    // ── Detect if seller is the creator ──
+    let is_creator = ctx.accounts.seller.key() == curve.creator;
+
+    // ── UNIVERSAL: Smart Sell Limiter applies to ALL sellers (S-03 fix) ──
+    // This prevents any wallet (including creator with a second wallet)
+    // from causing > 5% price impact in a single sell transaction.
+    let max_sell = curve.get_max_sell_amount()?;
+    require!(
+        token_amount <= max_sell,
+        HumanofiError::SellImpactExceeded
+    );
+
+    // ── CREATOR-SPECIFIC: Additional vesting + cooldown ──
+    if is_creator {
+        // Verify creator vault is provided
+        let vault = ctx.accounts.creator_vault.as_ref()
+            .ok_or(HumanofiError::UnauthorizedCreator)?;
+
+        // Year 1: hard lock (0% sellable)
+        vault.can_sell(now)?;
+    }
+
+    // ── REWARD SNAPSHOT (MasterChef pattern) ──
     // MUST happen BEFORE balance changes.
-    // If the seller has unclaimed rewards, snapshot them into rewards_owed
-    // so they can be claimed later even after token balance decreases.
     {
         let pool = &ctx.accounts.reward_pool;
         let state = &mut ctx.accounts.holder_reward_state;
-        
+
         // Initialize state if first interaction
         if state.mint == Pubkey::default() {
             state.mint = ctx.accounts.mint.key();
@@ -63,67 +87,25 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64) -> Result<()> {
             state.bump = ctx.bumps.holder_reward_state;
         }
 
-        // Calculate pending rewards at current balance (before burn)
+        // Calculate and snapshot pending rewards at current balance (before burn)
         let pending = pool.calculate_pending_rewards(state, seller_balance)?;
-        
-        // Snapshot: save pending into owed, update paid marker
         state.rewards_owed = pending;
         state.reward_per_token_paid = pool.reward_per_token_stored;
     }
 
-    // ---- Calculate SOL return from bonding curve ----
-    let gross_return = ctx.accounts.bonding_curve.calculate_sell_return(token_amount)?;
-    require!(gross_return > 0, HumanofiError::PriceCalculationZero);
+    // ── Calculate sell via Human Curve™ ──
+    let result = curve.calculate_sell(token_amount)?;
+    require!(result.sol_net > 0, HumanofiError::PriceCalculationZero);
 
-    // ---- Calculate fees (ceiling division — always rounds UP) ----
-    let total_fee = crate::utils::ceil_div_u64(
-        gross_return.checked_mul(TOTAL_FEE_BPS).ok_or(HumanofiError::FeeOverflow)?,
-        BPS_DENOMINATOR,
-    );
-
-    // ---- Calculate exit tax (if applicable) ----
-    let exit_tax = if ctx.accounts.purchase_limiter.is_exit_tax_eligible(now) {
-        crate::utils::ceil_div_u64(
-            gross_return.checked_mul(EXIT_TAX_BPS).ok_or(HumanofiError::FeeOverflow)?,
-            BPS_DENOMINATOR,
-        )
-    } else {
-        0
-    };
-
-    let creator_fee = crate::utils::ceil_div_u64(
-        total_fee.checked_mul(CREATOR_FEE_SHARE_BPS).ok_or(HumanofiError::FeeOverflow)?,
-        BPS_DENOMINATOR,
-    );
-
-    let holder_fee = crate::utils::ceil_div_u64(
-        total_fee.checked_mul(HOLDER_FEE_SHARE_BPS).ok_or(HumanofiError::FeeOverflow)?,
-        BPS_DENOMINATOR,
-    )
-    // Exit tax goes to holders too
-    .checked_add(exit_tax)
-    .ok_or(HumanofiError::FeeOverflow)?;
-
-    // Treasury gets the remainder — ensures total splits exactly equal total_fee
-    let treasury_fee = total_fee
-        .saturating_sub(creator_fee)
-        .saturating_sub(
-            holder_fee.saturating_sub(exit_tax)
+    // ── Slippage protection ──
+    if min_sol_out > 0 {
+        require!(
+            result.sol_net >= min_sol_out,
+            HumanofiError::SlippageExceeded
         );
+    }
 
-    let net_return = gross_return
-        .checked_sub(total_fee)
-        .ok_or(HumanofiError::FeeOverflow)?
-        .checked_sub(exit_tax)
-        .ok_or(HumanofiError::FeeOverflow)?;
-
-    // Verify curve has enough SOL
-    require!(
-        ctx.accounts.bonding_curve.sol_reserve >= gross_return,
-        HumanofiError::InsufficientReserve
-    );
-
-    // ---- Thaw seller's token account ----
+    // ── Thaw seller's token account ──
     let mint_key = ctx.accounts.mint.key();
     let curve_bump = ctx.accounts.bonding_curve.bump;
     let seeds = &[SEED_CURVE, mint_key.as_ref(), &[curve_bump]];
@@ -139,7 +121,7 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64) -> Result<()> {
         signer_seeds,
     ))?;
 
-    // ---- Burn tokens ----
+    // ── Burn tokens ──
     burn(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
@@ -152,7 +134,7 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64) -> Result<()> {
         token_amount,
     )?;
 
-    // ---- Re-freeze if seller still has tokens ----
+    // ── Re-freeze if seller still has tokens ──
     let remaining_balance = seller_balance
         .checked_sub(token_amount)
         .ok_or(HumanofiError::MathOverflow)?;
@@ -169,70 +151,62 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64) -> Result<()> {
         ))?;
     }
 
-    // ---- Transfer SOL from bonding curve PDA to seller ----
+    // ── Distribute from bonding curve PDA ──
     let curve_info = ctx.accounts.bonding_curve.to_account_info();
-    **curve_info.try_borrow_mut_lamports()? -= net_return;
-    **ctx
-        .accounts
-        .seller
-        .to_account_info()
-        .try_borrow_mut_lamports()? += net_return;
 
-    // ---- Transfer creator fee ----
-    if creator_fee > 0 {
-        **curve_info.try_borrow_mut_lamports()? -= creator_fee;
-        **ctx
-            .accounts
-            .creator_wallet
-            .to_account_info()
-            .try_borrow_mut_lamports()? += creator_fee;
+    // SOL → seller (net)
+    **curve_info.try_borrow_mut_lamports()? -= result.sol_net;
+    **ctx.accounts.seller.to_account_info().try_borrow_mut_lamports()? += result.sol_net;
+
+    // 2% → creator wallet
+    if result.fee_creator > 0 {
+        **curve_info.try_borrow_mut_lamports()? -= result.fee_creator;
+        **ctx.accounts.creator_wallet.to_account_info().try_borrow_mut_lamports()? += result.fee_creator;
     }
 
-    // ---- Transfer holder fee to reward pool ----
-    if holder_fee > 0 {
-        **curve_info.try_borrow_mut_lamports()? -= holder_fee;
-        **ctx
-            .accounts
-            .reward_pool
-            .to_account_info()
-            .try_borrow_mut_lamports()? += holder_fee;
+    // 2% → holder reward pool
+    if result.fee_holders > 0 {
+        **curve_info.try_borrow_mut_lamports()? -= result.fee_holders;
+        **ctx.accounts.reward_pool.to_account_info().try_borrow_mut_lamports()? += result.fee_holders;
     }
 
-    // ---- Transfer treasury fee ----
-    if treasury_fee > 0 {
-        **curve_info.try_borrow_mut_lamports()? -= treasury_fee;
-        **ctx
-            .accounts
-            .treasury
-            .to_account_info()
-            .try_borrow_mut_lamports()? += treasury_fee;
+    // 1% → protocol treasury
+    if result.fee_protocol > 0 {
+        **curve_info.try_borrow_mut_lamports()? -= result.fee_protocol;
+        **ctx.accounts.treasury.to_account_info().try_borrow_mut_lamports()? += result.fee_protocol;
     }
 
-    // ---- Update bonding curve state ----
+    // 1% depth stays in vault (already in x via calculate_sell)
+
+    // ── Update bonding curve state (via apply_sell, same pattern as buy.rs → apply_buy) ──
     let curve = &mut ctx.accounts.bonding_curve;
-    curve.supply_sold = curve
-        .supply_sold
-        .checked_sub(token_amount)
-        .ok_or(HumanofiError::MathOverflow)?;
-    curve.sol_reserve = curve
-        .sol_reserve
-        .checked_sub(gross_return)
-        .ok_or(HumanofiError::MathOverflow)?;
+    curve.apply_sell(&result)?;
+    curve.deduct_supply(token_amount, is_creator)?;
 
-    // ---- Update reward pool ----
-    if holder_fee > 0 && curve.supply_sold > 0 {
+    // ── Update reward pool (AFTER supply deduction for accurate RPT) ──
+    if result.fee_holders > 0 && curve.supply_public > 0 {
         ctx.accounts
             .reward_pool
-            .update_reward_per_token(holder_fee, curve.supply_sold)?;
+            .update_reward_per_token(result.fee_holders, curve.supply_public)?;
+    }
+
+    // ── Update EMA TWAP ──
+    curve.update_twap()?;
+
+    // ── Update creator vault if creator sold ──
+    if is_creator {
+        if let Some(vault) = ctx.accounts.creator_vault.as_mut() {
+            vault.record_sell(token_amount, now)?;
+        }
     }
 
     msg!(
-        "✅ Sell | seller={} | tokens={} | sol_return={} | exit_tax={} | fee={}",
+        "✅ Sell | seller={} | tokens={} | sol_net={} | is_creator={} | fee={}",
         ctx.accounts.seller.key(),
         token_amount,
-        net_return,
-        exit_tax,
-        total_fee
+        result.sol_net,
+        is_creator,
+        result.fee_creator + result.fee_holders + result.fee_protocol + result.fee_depth
     );
 
     Ok(())
@@ -262,11 +236,11 @@ pub struct Sell<'info> {
         mut,
         seeds = [SEED_REWARDS, mint.key().as_ref()],
         bump = reward_pool.bump,
+        has_one = mint,
     )]
     pub reward_pool: Account<'info, RewardPool>,
 
     /// Holder's reward state — snapshot pending rewards before balance change
-    /// (Synthetix pattern: updateReward modifier before withdraw)
     #[account(
         init_if_needed,
         payer = seller,
@@ -276,12 +250,16 @@ pub struct Sell<'info> {
     )]
     pub holder_reward_state: Account<'info, HolderRewardState>,
 
-    /// Purchase Limiter PDA (for exit tax check)
+    /// Creator Vault PDA — OPTIONAL. Only needed when seller = creator.
+    /// Used to verify vesting and enforce sell cooldown.
+    /// has_one = mint provides defense-in-depth (seeds already validate).
     #[account(
-        seeds = [SEED_LIMITER, seller.key().as_ref(), mint.key().as_ref()],
-        bump = purchase_limiter.bump,
+        mut,
+        seeds = [SEED_VAULT, mint.key().as_ref()],
+        bump,
+        has_one = mint,
     )]
-    pub purchase_limiter: Account<'info, PurchaseLimiter>,
+    pub creator_vault: Option<Account<'info, CreatorVault>>,
 
     /// Seller's token account (will be thawed, burned, re-frozen)
     #[account(
@@ -292,7 +270,7 @@ pub struct Sell<'info> {
     )]
     pub seller_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    /// Creator's wallet (receives 50% of fees)
+    /// Creator's wallet (receives 2% of fees)
     /// CHECK: validated via bonding_curve.creator
     #[account(
         mut,
@@ -314,4 +292,3 @@ pub struct Sell<'info> {
     /// System Program
     pub system_program: Program<'info, System>,
 }
-

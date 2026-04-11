@@ -1,15 +1,15 @@
 // ========================================
-// Humanofi — Integration Tests
+// Humanofi — Integration Tests (v2 — Human Curve™)
 // ========================================
 //
 // Tests the full lifecycle:
-// 1. Create a personal token
-// 2. Buy tokens from the bonding curve
-// 3. Sell tokens back
+// 1. Create a personal token (Human Curve™ initialization)
+// 2. Buy tokens from the bonding curve (Merit Reward distribution)
+// 3. Sell tokens back (with k-deepening)
 // 4. Token confinement (frozen accounts)
-// 5. Creator vesting lock
-// 6. Claim holder rewards
-// 7. Fee distribution verification
+// 5. Creator sell restriction (Year 1 lock)
+// 6. Fee distribution verification (6% = 2+2+1+1)
+// 7. Slippage protection
 //
 // Run: anchor test
 
@@ -50,10 +50,7 @@ describe("humanofi", () => {
   let buyerAta: PublicKey;
 
   // ---- Constants ----
-  const BASE_PRICE = new anchor.BN(1_000_000); // 1M lamports = 0.001 SOL
-  const SLOPE = new anchor.BN(100); // slope factor
-  // 100M tokens × 10^6 decimals
-  const EXPECTED_CREATOR_SUPPLY = "100000000000000";
+  const INITIAL_LIQUIDITY = new anchor.BN(0.1 * LAMPORTS_PER_SOL); // 0.1 SOL
 
   before(async () => {
     // Airdrop SOL to creator, buyer, and treasury
@@ -107,18 +104,17 @@ describe("humanofi", () => {
   });
 
   // =============================================
-  // TEST 1: Create Token
+  // TEST 1: Create Token (Human Curve™)
   // =============================================
-  it("✅ Crée un token personnel avec tous les PDAs", async () => {
+  it("✅ Creates a personal token with Human Curve™", async () => {
     const tx = await program.methods
-      .createToken("Alice", "ALICE", BASE_PRICE, SLOPE)
+      .createToken("Alice", "ALICE", "https://example.com/metadata.json", INITIAL_LIQUIDITY)
       .accountsStrict({
         creator: creator.publicKey,
         mint: mint.publicKey,
         bondingCurve: bondingCurvePda,
         creatorVault: creatorVaultPda,
         rewardPool: rewardPoolPda,
-        creatorTokenAccount: creatorAta,
         tokenProgram: TOKEN_2022_PROGRAM_ID,
         associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
@@ -129,44 +125,50 @@ describe("humanofi", () => {
     console.log("    → TX:", tx);
 
     // Verify BondingCurve PDA
-    const curve = await program.account.bondingCurve.fetch(bondingCurvePda);
+    const curve = await program.account.bondingCurve.fetch(bondingCurvePda) as any;
     expect(curve.mint.toString()).to.equal(mint.publicKey.toString());
     expect(curve.creator.toString()).to.equal(creator.publicKey.toString());
-    expect(curve.basePrice.toNumber()).to.equal(BASE_PRICE.toNumber());
-    expect(curve.slope.toNumber()).to.equal(SLOPE.toNumber());
-    expect(curve.supplySold.toNumber()).to.equal(0);
-    expect(curve.solReserve.toNumber()).to.equal(0);
+
+    // x₀ = 21 × V = 21 × 0.1 SOL = 2.1 SOL
+    const expectedX = 21 * 0.1 * LAMPORTS_PER_SOL;
+    expect(curve.x.toNumber()).to.equal(expectedX);
+
+    // y₀ = 1,000,000 × 10^6 = 10^12
+    expect(curve.y.toString()).to.equal("1000000000000");
+
+    // supply starts at 0 (no pre-mint!)
+    expect(curve.supplyPublic.toNumber()).to.equal(0);
+    expect(curve.supplyCreator.toNumber()).to.equal(0);
+
+    // SOL reserve = initial liquidity
+    expect(curve.solReserve.toNumber()).to.equal(INITIAL_LIQUIDITY.toNumber());
     expect(curve.isActive).to.be.true;
 
     // Verify CreatorVault PDA
-    const vault = await program.account.creatorVault.fetch(creatorVaultPda);
+    const vault = await program.account.creatorVault.fetch(creatorVaultPda) as any;
     expect(vault.creator.toString()).to.equal(creator.publicKey.toString());
-    expect(vault.originalAllocation.toString()).to.equal(EXPECTED_CREATOR_SUPPLY);
-    expect(vault.totalUnlocked.toNumber()).to.equal(0);
+    expect(vault.totalSold.toNumber()).to.equal(0);
 
     // Verify RewardPool PDA
-    const pool = await program.account.rewardPool.fetch(rewardPoolPda);
+    const pool = await program.account.rewardPool.fetch(rewardPoolPda) as any;
     expect(pool.mint.toString()).to.equal(mint.publicKey.toString());
 
-    // Verify creator ATA has tokens
-    const creatorAccount = await provider.connection.getTokenAccountBalance(creatorAta);
-    expect(creatorAccount.value.amount).to.equal(EXPECTED_CREATOR_SUPPLY);
-
     console.log("    → BondingCurve PDA:", bondingCurvePda.toString());
-    console.log("    → CreatorVault PDA:", creatorVaultPda.toString());
-    console.log("    → Creator tokens:", creatorAccount.value.uiAmountString, "(frozen ❄️)");
+    console.log("    → x₀:", curve.x.toString(), "| y₀:", curve.y.toString());
+    console.log("    → k₀:", curve.k.toString());
+    console.log("    → No tokens minted at creation ✅");
   });
 
   // =============================================
-  // TEST 2: Buy Tokens
+  // TEST 2: Buy Tokens (Merit Reward)
   // =============================================
-  it("✅ Achète des tokens via la bonding curve", async () => {
-    const solAmount = new anchor.BN(0.2 * LAMPORTS_PER_SOL); // 0.2 SOL (~$30, under $50 daily limit)
+  it("✅ Buys tokens and distributes Merit Reward", async () => {
+    const solAmount = new anchor.BN(0.5 * LAMPORTS_PER_SOL); // 0.5 SOL
 
     const buyerBalanceBefore = await provider.connection.getBalance(buyer.publicKey);
 
     const tx = await program.methods
-      .buy(solAmount)
+      .buy(solAmount, new anchor.BN(0)) // 0 = no slippage check
       .accountsStrict({
         buyer: buyer.publicKey,
         mint: mint.publicKey,
@@ -174,6 +176,7 @@ describe("humanofi", () => {
         rewardPool: rewardPoolPda,
         purchaseLimiter: purchaseLimiterPda,
         buyerTokenAccount: buyerAta,
+        creatorTokenAccount: creatorAta,
         creatorWallet: creator.publicKey,
         treasury: treasury.publicKey,
         tokenProgram: TOKEN_2022_PROGRAM_ID,
@@ -187,44 +190,61 @@ describe("humanofi", () => {
 
     // Verify buyer received tokens
     const buyerAccount = await provider.connection.getTokenAccountBalance(buyerAta);
-    const tokenAmount = parseInt(buyerAccount.value.amount);
-    expect(tokenAmount).to.be.greaterThan(0);
+    const buyerTokens = parseInt(buyerAccount.value.amount);
+    expect(buyerTokens).to.be.greaterThan(0);
+
+    // Verify creator received Merit Reward tokens
+    const creatorAccount = await provider.connection.getTokenAccountBalance(creatorAta);
+    const creatorTokens = parseInt(creatorAccount.value.amount);
+    expect(creatorTokens).to.be.greaterThan(0);
+
+    // Merit ratio should be ~14% / ~86%
+    const totalTokens = buyerTokens + creatorTokens;
+    const meritRatio = creatorTokens / totalTokens;
+    expect(meritRatio).to.be.greaterThan(0.13);
+    expect(meritRatio).to.be.lessThan(0.15);
 
     // Verify bonding curve updated
-    const curve = await program.account.bondingCurve.fetch(bondingCurvePda);
-    expect(curve.supplySold.toNumber()).to.be.greaterThan(0);
-    expect(curve.solReserve.toNumber()).to.be.greaterThan(0);
+    const curve = await program.account.bondingCurve.fetch(bondingCurvePda) as any;
+    expect(curve.supplyPublic.toNumber()).to.equal(buyerTokens);
+    expect(curve.supplyCreator.toNumber()).to.equal(creatorTokens);
 
-    // Verify purchase limiter created
-    const limiter = await program.account.purchaseLimiter.fetch(purchaseLimiterPda);
-    expect(limiter.wallet.toString()).to.equal(buyer.publicKey.toString());
-
-    // Verify buyer spent SOL
-    const buyerBalanceAfter = await provider.connection.getBalance(buyer.publicKey);
-    expect(buyerBalanceAfter).to.be.lessThan(buyerBalanceBefore);
+    // k should have grown (k-deepening)
+    const initialK = BigInt(21) * BigInt(INITIAL_LIQUIDITY.toNumber()) * BigInt("1000000000000");
+    expect(BigInt(curve.k.toString())).to.be.greaterThan(initialK);
 
     console.log(`    → Buyer received: ${buyerAccount.value.uiAmountString} tokens (frozen ❄️)`);
-    console.log(`    → SOL spent: ${(buyerBalanceBefore - buyerBalanceAfter) / LAMPORTS_PER_SOL} SOL`);
+    console.log(`    → Creator Merit: ${creatorAccount.value.uiAmountString} tokens (frozen ❄️)`);
+    console.log(`    → Merit ratio: ${(meritRatio * 100).toFixed(1)}%`);
   });
 
   // =============================================
   // TEST 3: Sell Tokens
   // =============================================
-  it("✅ Vend des tokens contre SOL (avec exit tax)", async () => {
+  it("✅ Sells tokens with k-deepening", async () => {
     const buyerAccount = await provider.connection.getTokenAccountBalance(buyerAta);
     const currentBalance = parseInt(buyerAccount.value.amount);
     const sellAmount = new anchor.BN(Math.floor(currentBalance / 2));
 
     const buyerSolBefore = await provider.connection.getBalance(buyer.publicKey);
 
+    // Derive holder reward state PDA
+    const [holderRewardStatePda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("reward_state"), mint.publicKey.toBuffer(), buyer.publicKey.toBuffer()],
+      program.programId
+    );
+
+    const kBefore = (await program.account.bondingCurve.fetch(bondingCurvePda) as any).k.toString();
+
     const tx = await program.methods
-      .sell(sellAmount)
+      .sell(sellAmount, new anchor.BN(0)) // 0 = no slippage check
       .accountsStrict({
         seller: buyer.publicKey,
         mint: mint.publicKey,
         bondingCurve: bondingCurvePda,
         rewardPool: rewardPoolPda,
-        purchaseLimiter: purchaseLimiterPda,
+        holderRewardState: holderRewardStatePda,
+        creatorVault: null, // buyer is NOT creator → no vault needed
         sellerTokenAccount: buyerAta,
         creatorWallet: creator.publicKey,
         treasury: treasury.publicKey,
@@ -242,16 +262,19 @@ describe("humanofi", () => {
     const remaining = await provider.connection.getTokenAccountBalance(buyerAta);
     expect(parseInt(remaining.value.amount)).to.be.greaterThan(0);
 
+    // k should have grown (k-deepening on sell too)
+    const kAfter = (await program.account.bondingCurve.fetch(bondingCurvePda) as any).k.toString();
+    expect(BigInt(kAfter)).to.be.greaterThan(BigInt(kBefore));
+
     console.log(`    → Sold: ${sellAmount.toNumber()} base units`);
     console.log(`    → SOL received: ${(buyerSolAfter - buyerSolBefore) / LAMPORTS_PER_SOL} SOL`);
-    console.log(`    → Remaining: ${remaining.value.uiAmountString} tokens (frozen ❄️)`);
-    console.log(`    → Exit tax applied (< 90 days) ✅`);
+    console.log(`    → k grew: ${kBefore} → ${kAfter} ✅`);
   });
 
   // =============================================
   // TEST 4: Token Confinement (frozen)
   // =============================================
-  it("❌ Empêche le transfert direct (compte gelé)", async () => {
+  it("❌ Blocks direct transfer (account frozen)", async () => {
     try {
       const { createTransferInstruction } = await import("@solana/spl-token");
 
@@ -279,49 +302,63 @@ describe("humanofi", () => {
     } catch (err: any) {
       // Expected: account is frozen → transfer fails
       console.log("    → Transfer blocked ✅ (error:", err.message?.substring(0, 60), "...)");
-      // The error should indicate the transfer failed (frozen or simulation failure)
       expect(err.message || err.toString()).to.not.include("should have been rejected");
     }
   });
 
   // =============================================
-  // TEST 5: Creator Unlock Year 1 = locked
+  // TEST 5: Creator Sell = Blocked Year 1
   // =============================================
-  it("❌ Empêche l'unlock créateur en année 1", async () => {
+  it("❌ Blocks creator sell in Year 1", async () => {
+    // Creator has Merit Reward tokens — try to sell them
+    const creatorAccount = await provider.connection.getTokenAccountBalance(creatorAta);
+    const sellAmount = new anchor.BN(Math.floor(parseInt(creatorAccount.value.amount) / 2));
+
+    const [holderRewardStatePda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("reward_state"), mint.publicKey.toBuffer(), creator.publicKey.toBuffer()],
+      program.programId
+    );
+
     try {
       await program.methods
-        .unlockTokens(new anchor.BN(1_000_000))
+        .sell(sellAmount, new anchor.BN(0))
         .accountsStrict({
-          creator: creator.publicKey,
+          seller: creator.publicKey,
           mint: mint.publicKey,
           bondingCurve: bondingCurvePda,
-          creatorVault: creatorVaultPda,
-          creatorTokenAccount: creatorAta,
+          rewardPool: rewardPoolPda,
+          holderRewardState: holderRewardStatePda,
+          creatorVault: creatorVaultPda, // Creator MUST provide vault
+          sellerTokenAccount: creatorAta,
+          creatorWallet: creator.publicKey,
+          treasury: treasury.publicKey,
           tokenProgram: TOKEN_2022_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .signers([creator])
         .rpc();
 
-      expect.fail("Unlock should have been rejected — Year 1 = 0%!");
+      expect.fail("Creator sell should have been rejected — Year 1 locked!");
     } catch (err: any) {
-      console.log("    → Unlock blocked: Year 1 = 0% vendable ✅");
+      console.log("    → Creator sell blocked: Year 1 = 0% sellable ✅");
       const errMsg = err.message || err.toString();
-      expect(errMsg).to.include("TokensStillLocked");
+      expect(errMsg).to.include("CreatorVestingLocked");
     }
   });
 
   // =============================================
-  // TEST 6: Fee Distribution Verification
+  // TEST 6: Fee Distribution (6% = 2+2+1+1)
   // =============================================
-  it("✅ Vérifie la distribution des fees (50/30/20)", async () => {
+  it("✅ Verifies fee distribution (2% creator + 2% holders + 1% protocol + 1% depth)", async () => {
     const creatorBefore = await provider.connection.getBalance(creator.publicKey);
     const treasuryBefore = await provider.connection.getBalance(treasury.publicKey);
+    const rewardPoolBefore = await provider.connection.getBalance(rewardPoolPda);
 
-    // Buy with 0.1 SOL to generate observable fees (within daily limit)
-    const solAmount = new anchor.BN(0.1 * LAMPORTS_PER_SOL);
+    // Buy with 1 SOL to generate observable fees
+    const solAmount = new anchor.BN(1 * LAMPORTS_PER_SOL);
 
     await program.methods
-      .buy(solAmount)
+      .buy(solAmount, new anchor.BN(0))
       .accountsStrict({
         buyer: buyer.publicKey,
         mint: mint.publicKey,
@@ -329,6 +366,7 @@ describe("humanofi", () => {
         rewardPool: rewardPoolPda,
         purchaseLimiter: purchaseLimiterPda,
         buyerTokenAccount: buyerAta,
+        creatorTokenAccount: creatorAta,
         creatorWallet: creator.publicKey,
         treasury: treasury.publicKey,
         tokenProgram: TOKEN_2022_PROGRAM_ID,
@@ -340,17 +378,58 @@ describe("humanofi", () => {
 
     const creatorAfter = await provider.connection.getBalance(creator.publicKey);
     const treasuryAfter = await provider.connection.getBalance(treasury.publicKey);
+    const rewardPoolAfter = await provider.connection.getBalance(rewardPoolPda);
 
     const creatorFee = creatorAfter - creatorBefore;
     const treasuryFee = treasuryAfter - treasuryBefore;
+    const holderFee = rewardPoolAfter - rewardPoolBefore;
 
-    expect(creatorFee).to.be.greaterThan(0);
-    expect(treasuryFee).to.be.greaterThan(0);
+    // 2% creator on 1 SOL = 20M lamports
+    expect(creatorFee).to.equal(20_000_000);
+    // 1% protocol on 1 SOL = 10M lamports
+    expect(treasuryFee).to.equal(10_000_000);
+    // 2% holders on 1 SOL = 20M lamports
+    expect(holderFee).to.equal(20_000_000);
 
-    // 2% total fee on 1 SOL = 20M lamports
-    // Creator gets 50% = 10M, treasury gets 20% = 4M
-    console.log(`    → Creator fee: ${creatorFee} lamports (50% of 2%)`);
-    console.log(`    → Treasury fee: ${treasuryFee} lamports (20% of 2%)`);
-    console.log(`    → Holder pool fee: stored in RewardPool PDA (30% of 2%)`);
+    console.log(`    → Creator fee: ${creatorFee} lamports (2%)`);
+    console.log(`    → Holder pool fee: ${holderFee} lamports (2%)`);
+    console.log(`    → Treasury fee: ${treasuryFee} lamports (1%)`);
+    console.log(`    → Depth fee: stays in curve (1%) ✅`);
+  });
+
+  // =============================================
+  // TEST 7: Slippage Protection
+  // =============================================
+  it("❌ Rejects buy when slippage exceeded", async () => {
+    // Set min_tokens_out to an impossibly high value
+    const solAmount = new anchor.BN(0.1 * LAMPORTS_PER_SOL);
+    const absurdMinTokens = new anchor.BN("999999999999999"); // way too many
+
+    try {
+      await program.methods
+        .buy(solAmount, absurdMinTokens)
+        .accountsStrict({
+          buyer: buyer.publicKey,
+          mint: mint.publicKey,
+          bondingCurve: bondingCurvePda,
+          rewardPool: rewardPoolPda,
+          purchaseLimiter: purchaseLimiterPda,
+          buyerTokenAccount: buyerAta,
+          creatorTokenAccount: creatorAta,
+          creatorWallet: creator.publicKey,
+          treasury: treasury.publicKey,
+          tokenProgram: TOKEN_2022_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([buyer])
+        .rpc();
+
+      expect.fail("Buy should have been rejected — slippage exceeded!");
+    } catch (err: any) {
+      console.log("    → Slippage protection works ✅");
+      const errMsg = err.message || err.toString();
+      expect(errMsg).to.include("SlippageExceeded");
+    }
   });
 });

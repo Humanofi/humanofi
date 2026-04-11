@@ -1,5 +1,5 @@
 // ========================================
-// Humanofi — Protocol Interaction Hook
+// Humanofi — Protocol Interaction Hook (v2 — Human Curve™)
 // ========================================
 // High-level hook wrapping all Anchor instructions
 // with proper PDA derivation, error handling, and toast notifications.
@@ -40,6 +40,13 @@ function deriveCreatorVaultPDA(mint: PublicKey) {
 function deriveRewardPoolPDA(mint: PublicKey) {
   return PublicKey.findProgramAddressSync(
     [Buffer.from("rewards"), mint.toBuffer()],
+    PROGRAM_ID
+  );
+}
+
+function deriveProtocolVaultPDA(mint: PublicKey) {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("protocol_vault"), mint.toBuffer()],
     PROGRAM_ID
   );
 }
@@ -87,8 +94,6 @@ export function useHumanofi() {
       name: string;
       symbol: string;
       uri: string; // metadata JSON URL (contains image, etc.)
-      basePrice: number; // in lamports
-      slope: number;
       initialLiquidity: number; // in lamports
       treasury: PublicKey;
     }) => {
@@ -102,20 +107,11 @@ export function useHumanofi() {
       const [creatorVault] = deriveCreatorVaultPDA(mint.publicKey);
       const [rewardPool] = deriveRewardPoolPDA(mint.publicKey);
 
-      const creatorTokenAccount = getAssociatedTokenAddressSync(
-        mint.publicKey,
-        publicKey,
-        false,
-        TOKEN_2022_PROGRAM_ID
-      );
-
       const txPromise = program.methods
         .createToken(
           params.name,
           params.symbol,
           params.uri,
-          new BN(params.basePrice),
-          new BN(params.slope),
           new BN(params.initialLiquidity)
         )
         .accountsStrict({
@@ -124,7 +120,6 @@ export function useHumanofi() {
           bondingCurve,
           creatorVault,
           rewardPool,
-          creatorTokenAccount,
           tokenProgram: TOKEN_2022_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
@@ -151,6 +146,7 @@ export function useHumanofi() {
       solAmount: number; // in SOL (e.g. 0.5)
       creatorWallet: PublicKey;
       treasury: PublicKey;
+      minTokensOut?: number; // slippage protection (0 = no check)
     }) => {
       if (!program || !publicKey) {
         toast.error("Connect your wallet first.");
@@ -160,6 +156,7 @@ export function useHumanofi() {
       const lamports = Math.floor(params.solAmount * LAMPORTS_PER_SOL);
       const [bondingCurve] = deriveBondingCurvePDA(params.mint);
       const [rewardPool] = deriveRewardPoolPDA(params.mint);
+      const [protocolVault] = deriveProtocolVaultPDA(params.mint);
       const [purchaseLimiter] = derivePurchaseLimiterPDA(publicKey, params.mint);
 
       const buyerTokenAccount = getAssociatedTokenAddressSync(
@@ -169,15 +166,37 @@ export function useHumanofi() {
         TOKEN_2022_PROGRAM_ID
       );
 
+      // Creator's ATA for Merit Reward (12.6%)
+      const creatorTokenAccount = getAssociatedTokenAddressSync(
+        params.mint,
+        params.creatorWallet,
+        false,
+        TOKEN_2022_PROGRAM_ID
+      );
+
+      // Protocol's ATA for Merit Fee (1.4%) — authority = bonding_curve PDA
+      const protocolTokenAccount = getAssociatedTokenAddressSync(
+        params.mint,
+        bondingCurve,
+        true, // allowOwnerOffCurve = true (PDA is owner)
+        TOKEN_2022_PROGRAM_ID
+      );
+
       const txPromise = program.methods
-        .buy(new BN(lamports))
+        .buy(
+          new BN(lamports),
+          new BN(params.minTokensOut || 0) // slippage protection
+        )
         .accountsStrict({
           buyer: publicKey,
           mint: params.mint,
           bondingCurve,
           rewardPool,
+          protocolVault,
           purchaseLimiter,
           buyerTokenAccount,
+          creatorTokenAccount,
+          protocolTokenAccount,
           creatorWallet: params.creatorWallet,
           treasury: params.treasury,
           tokenProgram: TOKEN_2022_PROGRAM_ID,
@@ -204,6 +223,7 @@ export function useHumanofi() {
       tokenAmount: number; // raw token amount (with decimals)
       creatorWallet: PublicKey;
       treasury: PublicKey;
+      minSolOut?: number; // slippage protection (0 = no check)
     }) => {
       if (!program || !publicKey) {
         toast.error("Connect your wallet first.");
@@ -212,7 +232,7 @@ export function useHumanofi() {
 
       const [bondingCurve] = deriveBondingCurvePDA(params.mint);
       const [rewardPool] = deriveRewardPoolPDA(params.mint);
-      const [purchaseLimiter] = derivePurchaseLimiterPDA(publicKey, params.mint);
+      const [holderRewardState] = deriveRewardStatePDA(params.mint, publicKey);
 
       const sellerTokenAccount = getAssociatedTokenAddressSync(
         params.mint,
@@ -221,14 +241,22 @@ export function useHumanofi() {
         TOKEN_2022_PROGRAM_ID
       );
 
+      // Check if seller is creator → include creator_vault
+      const isCreator = publicKey.equals(params.creatorWallet);
+      const [creatorVaultPda] = deriveCreatorVaultPDA(params.mint);
+
       const txPromise = program.methods
-        .sell(new BN(params.tokenAmount))
+        .sell(
+          new BN(params.tokenAmount),
+          new BN(params.minSolOut || 0) // slippage protection
+        )
         .accountsStrict({
           seller: publicKey,
           mint: params.mint,
           bondingCurve,
           rewardPool,
-          purchaseLimiter,
+          holderRewardState,
+          creatorVault: isCreator ? creatorVaultPda : null,
           sellerTokenAccount,
           creatorWallet: params.creatorWallet,
           treasury: params.treasury,
@@ -433,51 +461,59 @@ function parseAnchorError(err: unknown): string {
 function extractSimError(msg: string): string {
   if (msg.includes("no record of a prior credit"))
     return "Insufficient balance — Top up your wallet with SOL.";
-  if (msg.includes("DailyLimitExceeded"))
-    return "Daily limit reached — Try again tomorrow or reduce the amount.";
   if (msg.includes("InsufficientSol"))
     return "Not enough SOL in the bonding curve.";
+  if (msg.includes("SlippageExceeded"))
+    return "Price moved — try again with a higher slippage tolerance.";
+  if (msg.includes("SellImpactExceeded"))
+    return "Sell would impact price too much — reduce the amount.";
+  if (msg.includes("CreatorVestingLocked"))
+    return "Your tokens are locked for Year 1.";
+  if (msg.includes("CreatorSellCooldown"))
+    return "Cooldown active — wait 30 days between sells.";
   // Generic simulation fail
   const innerMatch = msg.match(/Message: (.+?)(\.|$)/);
   if (innerMatch) return innerMatch[1];
   return "Simulation failed — Check your balance.";
 }
 
-// Map Anchor error codes to human messages (from errors.rs)
+// Map Anchor error codes to human messages
+// MUST match the EXACT order in errors.rs — Anchor assigns 6000 + enum index
 const ERROR_MAP: Record<number, string> = {
   6000: "Token name must be 1–32 characters.",
   6001: "Token symbol must be 1–10 characters.",
-  6002: "Base price must be greater than zero.",
-  6003: "Curve factor must be greater than zero.",
-  6004: "This token is no longer active.",
-  6005: "Insufficient SOL for this purchase.",
-  6006: "Not enough tokens to sell.",
-  6007: "Amount too small — price would be zero.",
-  6008: "Math overflow error.",
-  6009: "Insufficient reserve in bonding curve.",
-  6010: "Daily limit reached — Try again tomorrow or reduce the amount.",
-  6011: "Amount must be greater than zero.",
-  6012: "Creator tokens are still locked.",
-  6013: "Creator tokens are already unlocked.",
-  6014: "Only the creator can unlock their tokens.",
-  6015: "No rewards available.",
-  6016: "You must hold tokens to claim rewards.",
-  6017: "Fee calculation error.",
-  6018: "Transfer blocked — Trade via Humanofi only.",
+  6002: "This token is no longer active.",
+  6003: "Insufficient SOL for this purchase.",
+  6004: "Not enough tokens to sell.",
+  6005: "Amount too small — price would be zero.",
+  6006: "Math overflow error.",
+  6007: "Insufficient reserve in bonding curve.",
+  6008: "Pool depleted — no more tokens available.",
+  6009: "Purchase amount must be greater than zero.",
+  6010: "Creator tokens locked — Year 1 is a hard lock.",
+  6011: "Sell would impact price > 5% — reduce the amount.",
+  6012: "Cooldown active — wait 30 days between creator sells.",
+  6013: "Unauthorized — only the creator can perform this action.",
+  6014: "No rewards available to claim.",
+  6015: "You must hold tokens to claim rewards.",
+  6016: "Fee calculation error.",
+  6017: "Transfer blocked — Trade via Humanofi only.",
+  6018: "Bots not allowed — only direct wallet transactions.",
   6019: "Invalid mint.",
   6020: "Token amount must be greater than zero.",
-  6021: "Engagement data expired.",
-  6022: "Insufficient engagement — Minimum 4 actions required this month.",
+  6021: "Engagement data expired — must be from this month.",
+  6022: "Insufficient engagement — Minimum actions required this month.",
   6023: "Unauthorized oracle.",
-  6024: "Initial liquidity too high.",
-  6025: "Invalid treasury.",
-  6026: "Invalid epoch.",
+  6024: "Initial liquidity below minimum.",
+  6025: "Initial liquidity above maximum.",
+  6026: "Invalid treasury wallet.",
+  6027: "Invalid epoch.",
+  6028: "Slippage exceeded — received less than minimum.",
 };
 
 // Map Anchor error names for "Error Code: XXX" format
 const NAMED_ERROR_MAP: Record<string, string> = {
-  DailyLimitExceeded: "Daily limit reached — Try again tomorrow or reduce the amount.",
-  InsufficientSol: "Insufficient SOL for this purchase.",
+  InsufficientSolAmount: "Insufficient SOL for this purchase.",
   InsufficientTokenBalance: "Not enough tokens to sell.",
   InsufficientReserve: "Insufficient reserve in bonding curve.",
   CurveNotActive: "This token is no longer active.",
@@ -485,6 +521,19 @@ const NAMED_ERROR_MAP: Record<string, string> = {
   InvalidTreasury: "Invalid treasury.",
   InvalidEpoch: "Invalid epoch.",
   ExcessiveInitialLiquidity: "Initial liquidity too high.",
+  InsufficientInitialLiquidity: "Initial liquidity below minimum.",
+  SlippageExceeded: "Price moved — try again with higher slippage tolerance.",
+  CreatorVestingLocked: "Your tokens are locked for Year 1.",
+  SellImpactExceeded: "Sell would impact price > 5% — reduce amount.",
+  CreatorSellCooldown: "Cooldown active — wait 30 days between sells.",
+  PoolDepleted: "Pool depleted — no more tokens available.",
+  UnauthorizedCreator: "Only the creator can perform this action.",
+  CpiGuard: "Transaction blocked — bots not allowed.",
+  EngagementExpired: "Engagement data expired — sync again this month.",
+  InsufficientEngagement: "Not enough engagement this month to claim rewards.",
+  UnauthorizedOracle: "Unauthorized oracle call.",
+  ZeroAmount: "Amount must be greater than zero.",
+  ZeroPurchaseAmount: "Purchase amount must be greater than zero.",
+  PriceCalculationZero: "Amount too small — price would be zero.",
+  FeeOverflow: "Fee calculation error.",
 };
-
-

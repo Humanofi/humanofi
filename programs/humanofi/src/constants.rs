@@ -1,106 +1,120 @@
 // ========================================
 // Humanofi — Protocol Constants
 // ========================================
+//
+// The Human Curve™ — All protocol parameters in one place.
+// Every value here maps directly to the mathematical spec
+// in docs/humanofi-mathematiques.md
 
 use anchor_lang::prelude::*;
 
 // ---- Token ----
 
-/// Token decimals (standard SPL)
+/// Token decimals (standard SPL Token-2022)
 pub const TOKEN_DECIMALS: u8 = 6;
 
-/// Creator's share of initial supply (10%)
-/// Minted directly into the locked CreatorVault
-pub const CREATOR_SUPPLY_SHARE_BPS: u64 = 1000; // 10%
+/// One full token in base units (10^6)
+pub const ONE_TOKEN: u64 = 1_000_000;
 
-/// Initial supply minted to creator vault (100M with 6 decimals)
-pub const CREATOR_INITIAL_SUPPLY: u64 = 100_000_000 * 1_000_000;
+// ---- Human Curve™ ----
 
-// ---- Fees ----
+/// Depth multiplier: x₀ = (1 + DEPTH_RATIO) × V = 21 × V
+/// D = DEPTH_RATIO × V is a mathematical parameter (not real SOL)
+/// It gives the curve depth from day 1 — like Curve's A parameter.
+pub const DEPTH_TOTAL_MULTIPLIER: u64 = 21;
 
-/// Total transaction fee in basis points (2%)
-pub const TOTAL_FEE_BPS: u64 = 200;
+/// Depth ratio: D = 20 × V (the depth parameter, never withdrawable)
+pub const DEPTH_RATIO: u64 = 20;
 
-/// Creator's share of collected fees (50%)
-pub const CREATOR_FEE_SHARE_BPS: u64 = 5000;
+/// Initial token reserve: y₀ = 1,000,000 tokens (in base units with 6 decimals)
+/// All tokens in Humanofi start with this same reserve.
+/// x₀ = DEPTH_TOTAL_MULTIPLIER × V
+/// k₀ = x₀ × y₀
+pub const INITIAL_Y: u128 = 1_000_000 * 1_000_000; // 1M × 10^6 = 10^12
 
-/// Holders reward pool share of fees (30%)
-pub const HOLDER_FEE_SHARE_BPS: u64 = 3000;
+// ---- Fees (6% total) ----
 
-/// Protocol treasury share of fees (20%)
-pub const TREASURY_FEE_SHARE_BPS: u64 = 2000;
+/// Total fee in basis points (6%)
+pub const TOTAL_FEE_BPS: u64 = 600;
 
-/// Precision factor for basis points calculations
+/// Creator's share of fees: 2% of transaction volume → SOL, immediate
+pub const FEE_CREATOR_BPS: u64 = 200;
+
+/// Holders' share of fees: 2% of transaction volume → reward pool
+pub const FEE_HOLDERS_BPS: u64 = 200;
+
+/// Protocol treasury share: 1% of transaction volume
+pub const FEE_PROTOCOL_BPS: u64 = 100;
+
+/// k-Deepening share: 1% of transaction volume → stays in x (state update only)
+pub const FEE_DEPTH_BPS: u64 = 100;
+
+/// Precision for basis points calculations
 pub const BPS_DENOMINATOR: u64 = 10_000;
 
-// ---- Exit Tax ----
+// ---- Merit Reward (α = 14% total: 12.6% creator + 1.4% protocol) ----
 
-/// Exit tax rate in basis points (10%)
-pub const EXIT_TAX_BPS: u64 = 1000;
+/// Creator portion of Merit Reward: 12.6% of tokens produced
+pub const ALPHA_CREATOR_BPS: u64 = 1_260;
 
-/// Exit tax window in seconds (30 days)
-pub const EXIT_TAX_WINDOW: i64 = 30 * 24 * 60 * 60;
+/// Protocol portion of Merit Reward: 1.4% of tokens produced (→ ProtocolVault)
+pub const ALPHA_PROTOCOL_BPS: u64 = 140;
 
-// ---- Creator Vesting Schedule ----
+/// Buyer token share: 100% - α = 86%
+pub const BUYER_SHARE_BPS: u64 = 8_600;
 
-/// Year 1: 0% sellable — full lock, no exceptions
-pub const VESTING_CLIFF_DURATION: i64 = 365 * 24 * 60 * 60;
+// ---- Smart Sell Limiter ----
 
-/// Year 2-3: max 10% of total allocation per year
-pub const VESTING_YEAR_2_3_MAX_BPS: u64 = 1000; // 10%
+/// Maximum price impact per creator sell: 5%
+/// T_max = y × (1/√(1 - I) - 1) ≈ y × 0.02598
+pub const SELL_IMPACT_BPS: u64 = 500; // 5%
 
-/// Year 4+: max 20% of total allocation per year
-pub const VESTING_YEAR_4_PLUS_MAX_BPS: u64 = 2000; // 20%
+/// Cooldown between creator sells: 30 days (in seconds)
+pub const CREATOR_SELL_COOLDOWN: i64 = 30 * 24 * 60 * 60; // 2_592_000
 
-/// Seconds in one year (for vesting period calculation)
-pub const SECONDS_PER_YEAR: i64 = 365 * 24 * 60 * 60;
+/// Creator lock period: Year 1 = 0% vendable (in seconds)
+pub const CREATOR_LOCK_DURATION: i64 = 365 * 24 * 60 * 60; // 31_536_000
 
-// ---- Purchase Limits (in lamports) ----
+// ---- Price Stabilizer ----
 
-/// Maximum SOL per day — Week 1 (first 7 days): 1 SOL
-pub const WEEK1_MAX_LAMPORTS_PER_DAY: u64 = 1_000_000_000;
+/// Trigger threshold: Stabilizer activates if price deviates > ρ from TWAP
+pub const STABILIZER_THRESHOLD_BPS: u64 = 200; // 2%
 
-/// Maximum SOL per day — Month 1 (days 8-30): 5 SOL
-pub const MONTH1_MAX_LAMPORTS_PER_DAY: u64 = 5_000_000_000;
+/// Max fraction of protocol tokens sellable per stabilization: 50%
+pub const STABILIZER_MAX_SELL_PCT: u64 = 50; // 50%
 
-/// Maximum SOL per day — After month 1: 20 SOL
-pub const DEFAULT_MAX_LAMPORTS_PER_DAY: u64 = 20_000_000_000;
+/// Max price impact the Stabilizer can cause: 1%
+pub const STABILIZER_MAX_IMPACT_BPS: u64 = 100; // 1%
 
-/// Seconds in one day (for rolling window)
-pub const SECONDS_PER_DAY: i64 = 86_400;
+/// EMA smoothing factor numerator (α_ema = 20%)
+/// P_ref = (EMA_ALPHA_NUM × P_spot + (EMA_ALPHA_DEN - EMA_ALPHA_NUM) × P_ref_old) / EMA_ALPHA_DEN
+pub const EMA_ALPHA_NUM: u128 = 20;
+pub const EMA_ALPHA_DEN: u128 = 100;
 
-/// Seconds in one week
-pub const SECONDS_PER_WEEK: i64 = 7 * SECONDS_PER_DAY;
+/// Precision for TWAP/price calculations (10^18)
+pub const PRICE_PRECISION: u128 = 1_000_000_000_000_000_000;
 
-/// Seconds in 30 days
-pub const SECONDS_PER_MONTH: i64 = 30 * SECONDS_PER_DAY;
+// ---- Initial Liquidity ----
 
-// ---- Bonding Curve ----
+/// Minimum SOL a creator must inject at creation.
+/// $5 ≈ 0.03 SOL @ $170/SOL
+pub const MIN_INITIAL_LIQUIDITY: u64 = 30_000_000; // 0.03 SOL = 30M lamports
 
-/// Precision for bonding curve math (10^12)
-pub const CURVE_PRECISION: u128 = 1_000_000_000_000;
+/// Maximum initial liquidity to prevent price manipulation (10 SOL)
+pub const MAX_INITIAL_LIQUIDITY: u64 = 10_000_000_000; // 10 SOL
 
 // ---- Seeds ----
 
 pub const SEED_CURVE: &[u8] = b"curve";
 pub const SEED_VAULT: &[u8] = b"vault";
 pub const SEED_REWARDS: &[u8] = b"rewards";
-pub const SEED_LIMITER: &[u8] = b"limiter";
 pub const SEED_REWARD_STATE: &[u8] = b"reward_state";
 pub const SEED_ENGAGEMENT: &[u8] = b"engagement";
-
-// ---- Initial Liquidity ----
-
-/// Minimum SOL a creator must inject into the bonding curve at creation.
-/// 0.03 SOL — Gives the token a non-zero starting value.
-pub const MIN_INITIAL_LIQUIDITY: u64 = 30_000_000; // 0.03 SOL = 30M lamports
-
-/// Maximum initial liquidity to prevent price manipulation (10 SOL)
-pub const MAX_INITIAL_LIQUIDITY: u64 = 10_000_000_000; // 10 SOL
+pub const SEED_PROTOCOL_VAULT: &[u8] = b"protocol_vault";
 
 // ---- Treasury ----
 
-/// Protocol treasury wallet (receives 20% of fees).
+/// Protocol treasury wallet (receives 1% of fees).
 /// Pubkey: 6Jiop19yLzazX6vig4i4jKMRXRjFJumTWBZNgU2cAodM
 pub const TREASURY_WALLET: Pubkey = Pubkey::new_from_array([
     78, 212, 148, 109, 151, 133, 91, 234, 175, 199, 198, 69, 217, 119, 90, 107,

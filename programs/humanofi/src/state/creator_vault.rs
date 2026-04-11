@@ -2,16 +2,15 @@
 // Humanofi — Creator Vault PDA
 // ========================================
 //
-// Progressive vesting schedule for creator tokens:
+// Simplified vesting + Smart Sell Limiter tracker:
 //
-// Year 1    : 0% sellable. Full lock, no exceptions.
-// Year 2    : max 10% of original allocation sellable
-// Year 3    : max 10% additional (20% cumulative max)
-// Year 4+   : max 20% per year
+//   Year 1      : 0% sellable. Full lock, no exceptions.
+//   Year 2+     : Creator can sell via bonding curve, BUT:
+//                 → Max 5% price impact per sell (Smart Sell Limiter)
+//                 → 30-day cooldown between sells
 //
-// The creator can NEVER dump their entire position.
-// Even after 5 years, they still hold a majority.
-// Their long-term interest is structurally aligned with holders.
+// The creator's tokens arrive progressively via the Merit Reward
+// mechanism (12.6% Merit Reward on each buy). Protocol gets 1.4%.
 //
 // Seeds: ["vault", mint_pubkey]
 
@@ -28,82 +27,58 @@ pub struct CreatorVault {
     /// The creator's wallet address
     pub creator: Pubkey,
 
-    /// Original amount allocated (never changes — used for % calculations)
-    pub original_allocation: u64,
-
-    /// Total amount already unlocked/sold over time
-    pub total_unlocked: u64,
-
     /// Unix timestamp when the vault was created (start of vesting)
     pub created_at: i64,
+
+    /// Unix timestamp of the creator's last sell (for cooldown enforcement)
+    pub last_sell_at: i64,
+
+    /// Total tokens the creator has sold lifetime
+    pub total_sold: u64,
 
     /// PDA bump seed
     pub bump: u8,
 }
 
 impl CreatorVault {
-    /// Calculate the cumulative maximum tokens that can be unlocked
-    /// at the current timestamp, based on the progressive vesting schedule.
+    /// Check if the creator can sell right now.
     ///
-    /// Year 1 : 0%
-    /// Year 2 : 10%
-    /// Year 3 : 20%
-    /// Year 4 : 40%
-    /// Year 5 : 60%
-    /// Year 6 : 80%
-    /// Year 7+: 100%
-    pub fn get_cumulative_max_unlockable(&self, now: i64) -> Result<u64> {
+    /// Rules:
+    ///   1. Year 1: 0% – hard lock, no exceptions
+    ///   2. Year 2+: allowed, but must respect 30-day cooldown
+    pub fn can_sell(&self, now: i64) -> Result<()> {
         let elapsed = now.saturating_sub(self.created_at);
 
-        // Year 1: nothing
-        if elapsed < VESTING_CLIFF_DURATION {
-            return Ok(0);
+        // Year 1: hard lock
+        require!(
+            elapsed >= CREATOR_LOCK_DURATION,
+            HumanofiError::CreatorVestingLocked
+        );
+
+        // 30-day cooldown between sells
+        if self.last_sell_at > 0 {
+            let since_last = now.saturating_sub(self.last_sell_at);
+            require!(
+                since_last >= CREATOR_SELL_COOLDOWN,
+                HumanofiError::CreatorSellCooldown
+            );
         }
 
-        // How many full years have passed since creation
-        let years_elapsed = (elapsed / SECONDS_PER_YEAR) as u64;
-
-        // Calculate cumulative percentage in basis points
-        let cumulative_bps = match years_elapsed {
-            0 => 0,                                          // Year 1: 0%
-            1 => VESTING_YEAR_2_3_MAX_BPS,                   // Year 2: 10%
-            2 => VESTING_YEAR_2_3_MAX_BPS * 2,               // Year 3: 20%
-            y => {
-                // Year 2-3: 20% total, then 20% per additional year
-                let base = VESTING_YEAR_2_3_MAX_BPS * 2;     // 20% for years 2-3
-                let extra_years = y.saturating_sub(2);
-                let extra = extra_years
-                    .checked_mul(VESTING_YEAR_4_PLUS_MAX_BPS)
-                    .ok_or(HumanofiError::MathOverflow)?;
-                let total = base
-                    .checked_add(extra)
-                    .ok_or(HumanofiError::MathOverflow)?;
-                // Cap at 100%
-                std::cmp::min(total, BPS_DENOMINATOR)
-            }
-        };
-
-        // Convert percentage to token amount
-        let max_tokens = (self.original_allocation as u128)
-            .checked_mul(cumulative_bps as u128)
-            .ok_or(HumanofiError::MathOverflow)?
-            .checked_div(BPS_DENOMINATOR as u128)
-            .ok_or(HumanofiError::MathOverflow)? as u64;
-
-        Ok(max_tokens)
+        Ok(())
     }
 
-    /// Calculate how many tokens the creator can unlock RIGHT NOW,
-    /// taking into account what they've already unlocked.
-    pub fn get_currently_unlockable(&self, now: i64) -> Result<u64> {
-        let max = self.get_cumulative_max_unlockable(now)?;
-        let available = max.saturating_sub(self.total_unlocked);
-        Ok(available)
+    /// Record a creator sell and update the cooldown timestamp
+    pub fn record_sell(&mut self, amount: u64, now: i64) -> Result<()> {
+        self.last_sell_at = now;
+        self.total_sold = self.total_sold
+            .checked_add(amount)
+            .ok_or(HumanofiError::MathOverflow)?;
+        Ok(())
     }
 
-    /// Get the current vesting status as a human-readable string.
-    pub fn get_vesting_year(&self, now: i64) -> u64 {
+    /// Calculate years elapsed since creation
+    pub fn years_elapsed(&self, now: i64) -> u64 {
         let elapsed = now.saturating_sub(self.created_at);
-        ((elapsed / SECONDS_PER_YEAR) + 1) as u64
+        (elapsed / (365 * 24 * 60 * 60)) as u64
     }
 }

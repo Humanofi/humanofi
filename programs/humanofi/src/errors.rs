@@ -13,12 +13,6 @@ pub enum HumanofiError {
     #[msg("Token symbol must be between 1 and 10 characters")]
     InvalidTokenSymbol,
 
-    #[msg("Base price must be greater than zero")]
-    InvalidBasePrice,
-
-    #[msg("Curve factor must be greater than zero")]
-    InvalidCurveFactor,
-
     // ---- Bonding Curve (6010-6019) ----
     #[msg("Bonding curve is not active")]
     CurveNotActive,
@@ -38,22 +32,25 @@ pub enum HumanofiError {
     #[msg("Insufficient reserve in bonding curve")]
     InsufficientReserve,
 
-    // ---- Purchase Limits (6020-6029) ----
-    #[msg("Purchase exceeds daily limit for this period")]
-    DailyLimitExceeded,
+    #[msg("Pool depleted — insufficient token reserve to complete trade")]
+    PoolDepleted,
 
+    // ---- Purchase (6020-6029) ----
     #[msg("Purchase amount must be greater than zero")]
     ZeroPurchaseAmount,
 
-    // ---- Creator Vault (6030-6039) ----
-    #[msg("Creator tokens are still locked")]
-    TokensStillLocked,
+    // ---- Creator Vault / Smart Sell Limiter (6030-6039) ----
+    #[msg("Creator tokens are still locked — Year 1 vesting (0% sellable)")]
+    CreatorVestingLocked,
 
-    #[msg("Creator tokens have already been unlocked")]
-    TokensAlreadyUnlocked,
+    #[msg("Sell exceeds max price impact (5% limit per transaction)")]
+    SellImpactExceeded,
 
-    #[msg("Only the creator can unlock their tokens")]
-    UnauthorizedUnlock,
+    #[msg("Creator must wait 30 days between sells")]
+    CreatorSellCooldown,
+
+    #[msg("Only the creator can perform this action")]
+    UnauthorizedCreator,
 
     // ---- Rewards (6040-6049) ----
     #[msg("No rewards available to claim")]
@@ -102,4 +99,8 @@ pub enum HumanofiError {
 
     #[msg("Invalid epoch — must match current epoch")]
     InvalidEpoch,
+
+    // ---- Slippage Protection (6100-6109) ----
+    #[msg("Slippage exceeded — received less than minimum specified")]
+    SlippageExceeded,
 }

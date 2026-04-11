@@ -3,13 +3,20 @@
 // ========================================
 //
 // Allows holders to claim their accumulated rewards
-// from the reward pool (30% of all trading fees).
+// from the reward pool (2% of 6% total trading fees).
 //
 // ENGAGEMENT GATING:
 // Holders must have been active in the Inner Circle
 // this month (minimum MIN_ENGAGEMENT_ACTIONS interactions)
 // to qualify for claiming. This ensures rewards are
 // "usage incentives" not "passive dividends" (securities).
+//
+// DESIGN DECISION (E-03 audit):
+// This instruction intentionally does NOT check bonding_curve.is_active.
+// Rationale: rewards are SOL already paid as fees — they belong to holders.
+// Blocking claims after deactivation would punish innocent holders for
+// a creator's fault. No new rewards can accumulate on deactivated tokens
+// since buy/sell both check is_active. The pool drains naturally.
 //
 // Uses the reward-per-token pattern:
 // pending = balance * (global_rpt - personal_rpt) / PRECISION + owed
@@ -21,7 +28,7 @@ use crate::constants::*;
 use crate::errors::HumanofiError;
 use crate::state::*;
 
-pub fn handler(ctx: Context<ClaimRewards>, epoch: u64) -> Result<()> {
+pub fn handler(ctx: Context<ClaimRewards>, _epoch: u64) -> Result<()> {
     let holder_balance = ctx.accounts.holder_token_account.amount;
     require!(holder_balance > 0, HumanofiError::ZeroHolderBalance);
 

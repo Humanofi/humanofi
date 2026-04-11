@@ -48,10 +48,17 @@ export interface CreatorData {
 }
 
 export interface BondingCurveData {
-  basePrice: { toNumber: () => number };
-  supplySold: { toNumber: () => number };
+  x: { toNumber: () => number };
+  y: { toNumber: () => number };
+  k: { toString: () => string };
+  supplyPublic: { toNumber: () => number };
+  supplyCreator: { toNumber: () => number };
+  supplyProtocol: { toNumber: () => number };
   solReserve: { toNumber: () => number };
-  slope: { toNumber: () => number };
+  depthParameter: { toNumber: () => number };
+  twapPrice: { toString: () => string };
+  tradeCount: { toNumber: () => number };
+  creator: { toString: () => string };
 }
 
 interface PersonContextType {
@@ -206,15 +213,15 @@ export default function PersonLayout({
   const activityScore = creator?.activity_score || person?.activityScore || 0;
   const activityStatus = creator?.activity_status || "moderate";
 
-  const CURVE_PREC = 1_000_000_000_000;
+  // Human Curve™ price: P = x / y (lamports per base unit)
   const spotPriceLamports = curveData
-    ? curveData.basePrice.toNumber() + (curveData.slope.toNumber() * curveData.supplySold.toNumber()) / CURVE_PREC
+    ? curveData.x.toNumber() / curveData.y.toNumber()
     : 0;
   const priceStr = curveData
-    ? `${(spotPriceLamports / 1e9).toFixed(4)} SOL`
+    ? `${(spotPriceLamports / 1e9 * 1e6).toFixed(4)} SOL`
     : person?.price || "—";
   const marketCapStr = curveData
-    ? `${((curveData.supplySold.toNumber() / 1e6) * (spotPriceLamports / 1e9)).toFixed(2)} SOL`
+    ? `${(((curveData.supplyPublic.toNumber() + curveData.supplyCreator.toNumber()) / 1e6) * (spotPriceLamports / 1e9 * 1e6)).toFixed(2)} SOL`
     : person?.marketCap || "—";
 
   // Determine active tab from pathname

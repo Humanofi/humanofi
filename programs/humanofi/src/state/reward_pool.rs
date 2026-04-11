@@ -2,7 +2,7 @@
 // Humanofi — Reward Pool PDA
 // ========================================
 //
-// Accumulates the holders' share of trading fees (30%).
+// Accumulates the holders' share of trading fees (2% of 6% = ~33%).
 // Uses the reward-per-token pattern for gas-efficient
 // pro-rata distribution without iterating all holders.
 //

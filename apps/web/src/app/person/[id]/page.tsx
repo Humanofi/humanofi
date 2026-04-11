@@ -5,7 +5,7 @@ import BondingCurveChart from "@/components/BondingCurveChart";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
 import { useSolPrice } from "@/hooks/useSolPrice";
-import { formatUsd, solToUsd } from "@/lib/price";
+import { formatUsd, solToUsd, spotPrice, estimateBuy, estimateSell } from "@/lib/price";
 import { PublicKey } from "@solana/web3.js";
 import { toast } from "sonner";
 import { usePerson } from "./layout";
@@ -27,55 +27,6 @@ function formatSol(n: number) {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
   if (n >= 1) return n.toFixed(2);
   return n.toFixed(4);
-}
-
-const CURVE_PRECISION = 1_000_000_000_000; // 10^12, matches on-chain
-const FEE_BPS = 200; // 2% total fee
-const BPS = 10_000;
-
-/** Calculate spot price at current supply: base + slope * supply / PRECISION */
-function spotPrice(basePrice: number, slope: number, supplySold: number): number {
-  return basePrice + (slope * supplySold) / CURVE_PRECISION;
-}
-
-/**
- * Estimate tokens receivable for a given SOL amount using the
- * bonding curve integral (quadratic formula), same logic as on-chain.
- * Returns human-readable token count (divided by 1e6).
- */
-function estimateTokensFromSol(
-  solLamports: number,
-  basePrice: number,
-  slope: number,
-  supplySold: number
-): number {
-  // Deduct fees first (same as on-chain)
-  const fee = Math.ceil((solLamports * FEE_BPS) / BPS);
-  const netSol = solLamports - fee;
-  if (netSol <= 0) return 0;
-
-  const b = basePrice;
-  const m = slope;
-  const s = supplySold;
-  const cost = netSol;
-
-  // Flat price (slope = 0)
-  if (m === 0) {
-    if (b === 0) return 0;
-    return (cost * 1_000_000) / b;
-  }
-
-  // Quadratic: (m/(2P))·a² + (b + m·s/P)·a - cost = 0
-  // Multiply by 2P: m·a² + (2P·b + 2·m·s)·a - 2P·cost = 0
-  // a = (-B + √(B² + 4AC)) / 2A  where A=m, B=2Pb+2ms, C=2P·cost
-  const twoP = 2 * CURVE_PRECISION;
-  const coeffB = twoP * b + 2 * m * s;
-  const fourAC = 4 * m * twoP * cost;
-  const discriminant = coeffB * coeffB + fourAC;
-  const sqrtDisc = Math.sqrt(discriminant);
-  const tokens = (sqrtDisc - coeffB) / (2 * m);
-
-  return Math.max(0, Math.floor(tokens)) / 1_000_000; // raw → human tokens
 }
 
 function daysUntil(dateStr: string): number {
@@ -115,27 +66,30 @@ export default function PersonPublicPage() {
   const activityStatus = creator?.activity_status || "moderate";
   const displayNameShort = (creator?.display_name || mockPerson?.name || "").split(" ")[0];
 
-  // Raw on-chain values
-  const rawBasePrice = curveData ? curveData.basePrice.toNumber() : 0;
-  const rawSlope = curveData ? curveData.slope.toNumber() : 0;
-  const rawSupplySold = curveData ? curveData.supplySold.toNumber() : 0;
+  // Raw on-chain values (Human Curve™)
+  const rawX = curveData ? curveData.x.toNumber() : 0;
+  const rawY = curveData ? curveData.y.toNumber() : 0;
+  const rawK = curveData ? Number(curveData.k.toString()) : 0;
 
   // Human-readable values
+  // spotPrice returns lamports per base unit, ×10^6 and /10^9 for SOL per whole token
   const priceNum = curveData
-    ? spotPrice(rawBasePrice, rawSlope, rawSupplySold) / 1e9
+    ? (rawX / rawY) * 1e6 / 1e9
     : mockPerson?.priceNum || 0;
 
-  const supplySold = rawSupplySold / 1e6;
+  const totalSupply = curveData ? (curveData.supplyPublic.toNumber() + curveData.supplyCreator.toNumber()) / 1e6 : 0;
   const solReserve = curveData ? curveData.solReserve.toNumber() / 1e9 : 0;
-  const marketCap = supplySold * priceNum;
+  const marketCap = totalSupply * priceNum;
 
   const parsedAmt = parseFloat(amount) || 0;
   const estimateReceive =
     activeTab === "buy"
       ? curveData
-        ? estimateTokensFromSol(parsedAmt * 1e9, rawBasePrice, rawSlope, rawSupplySold).toFixed(2)
+        ? (estimateBuy(rawX, rawY, rawK, parsedAmt * 1e9).tokensBuyer / 1e6).toFixed(2)
         : (parsedAmt / (priceNum || 1)).toFixed(2)
-      : (parsedAmt * (priceNum || 0)).toFixed(4);
+      : curveData
+        ? (estimateSell(rawX, rawY, rawK, parsedAmt * 1e6).solNet / 1e9).toFixed(4)
+        : (parsedAmt * (priceNum || 0)).toFixed(4);
 
   // Lock info
   const lockUntil = creator?.token_lock_until || "";
@@ -246,16 +200,16 @@ export default function PersonPublicPage() {
               </div>
               <div className="dashboard__token-grid">
                 <div className="dashboard__token-stat">
-                  <span className="dashboard__token-label">Supply Sold</span>
-                  <span className="dashboard__token-value">{supplySold.toFixed(0)} tokens</span>
+                  <span className="dashboard__token-label">Supply (Public)</span>
+                  <span className="dashboard__token-value">{curveData ? (curveData.supplyPublic.toNumber() / 1e6).toFixed(0) : "—"} tokens</span>
                 </div>
                 <div className="dashboard__token-stat">
                   <span className="dashboard__token-label">SOL Reserve</span>
                   <span className="dashboard__token-value">{formatSol(solReserve)} SOL</span>
                 </div>
                 <div className="dashboard__token-stat">
-                  <span className="dashboard__token-label">Curve Slope</span>
-                  <span className="dashboard__token-value">{curveData ? (curveData.slope.toNumber() / 1e9).toFixed(6) : "—"}</span>
+                  <span className="dashboard__token-label">Creator Merit</span>
+                  <span className="dashboard__token-value">{curveData ? (curveData.supplyCreator.toNumber() / 1e6).toFixed(0) : "—"} tokens</span>
                 </div>
                 <div className="dashboard__token-stat">
                   <span className="dashboard__token-label">Mint Address</span>
@@ -375,9 +329,7 @@ export default function PersonPublicPage() {
               {activeTab === "buy" ? "Amount in SOL" : `Amount of ${displayNameShort.toUpperCase()}`}
             </label>
             <input type="number" className="trade-input" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
-            {activeTab === "buy" && (
-              <span className="trade-widget__limit-hint">Max: 1 SOL/day (week 1) · 5 SOL/day (month 1) · 20 SOL/day (after)</span>
-            )}
+
           </div>
 
           <div className="trade-widget__estimate">
@@ -425,14 +377,14 @@ export default function PersonPublicPage() {
             <Users size={20} weight="bold" style={{ color: tokenColor, flexShrink: 0, marginTop: 2 }} />
             <div>
               <strong>Fair access for everyone</strong>
-              <p>To give everyone a fair chance, each person can support up to 1 SOL/day the first week, 5 SOL/day the first month, and 20 SOL/day after. Early believers get the time they deserve.</p>
+              <p>Thanks to The Human Curve™, the market grows more stable with volume. 6% fees ensure sustainable growth for everyone.</p>
             </div>
           </div>
           <div className="protection-widget__item">
             <Lock size={20} weight="bold" style={{ color: tokenColor, flexShrink: 0, marginTop: 2 }} />
             <div>
               <strong>{displayNameShort} is committed long-term</strong>
-              <p>{displayNameShort} cannot sell their own tokens: Year 1 = fully locked, then progressively over 7 years. You as a supporter can sell anytime — this commitment only applies to {displayNameShort}.</p>
+              <p>{displayNameShort} cannot sell their own tokens for the first year. After that, each sale is limited to 5% price impact with a 30-day cooldown. You as a supporter can sell anytime.</p>
             </div>
           </div>
           {isCreator && lockUntil && (
@@ -520,8 +472,8 @@ export default function PersonPublicPage() {
             </h2>
             <div className="profile-token-grid">
               <div className="profile-token-stat">
-                <span>Supply Sold</span>
-                <strong>{supplySold.toFixed(0)} tokens</strong>
+                <span>Supply (Public)</span>
+                <strong>{curveData ? (curveData.supplyPublic.toNumber() / 1e6).toFixed(0) : "—"} tokens</strong>
               </div>
               <div className="profile-token-stat">
                 <span>SOL Reserve</span>
