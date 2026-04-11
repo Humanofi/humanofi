@@ -353,20 +353,20 @@ export default function PersonPublicPage() {
         </div>
 
 
-        {/* Investment Protection Info */}
+        {/* Supporter Protection Info */}
         <div className="protection-widget">
           <div className="protection-widget__item">
             <ShieldCheck size={14} weight="bold" style={{ color: tokenColor }} />
             <div>
-              <strong>Investor buy limits</strong>
-              <p>Each investor is limited to: 1 SOL/day (week 1), 5 SOL/day (month 1), 20 SOL/day (after). This prevents manipulation and protects early buyers.</p>
+              <strong>Buy limits per supporter</strong>
+              <p>Each supporter is limited to: 1 SOL/day (week 1), 5 SOL/day (month 1), 20 SOL/day (after). This prevents manipulation and gives early believers time to take position.</p>
             </div>
           </div>
           <div className="protection-widget__item">
             <Lock size={14} weight="bold" style={{ color: tokenColor }} />
             <div>
-              <strong>Progressive vesting</strong>
-              <p>{displayNameShort} can only unlock 20% of their supply per year over 5 years. Their financial interests are aligned with yours long-term.</p>
+              <strong>Progressive token lock</strong>
+              <p>{displayNameShort}&apos;s tokens follow a strict vesting: Year 1 = locked, Year 2-3 = max 10%/year, Year 4+ = max 20%/year. Their interests are structurally aligned with their supporters.</p>
             </div>
           </div>
           {lockUntil && (

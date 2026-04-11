@@ -25,6 +25,46 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
 
+    // ── Mode 1: Simple file upload (gallery, etc.) ──
+    const simpleFile = formData.get("file") as File | null;
+    const targetBucket = formData.get("bucket") as string | null;
+
+    if (simpleFile && targetBucket) {
+      const mimeType = simpleFile.type;
+      if (!mimeType.startsWith("image/")) {
+        return NextResponse.json({ error: "Only images allowed" }, { status: 400 });
+      }
+
+      const buffer = Buffer.from(await simpleFile.arrayBuffer());
+      if (buffer.length > 5 * 1024 * 1024) {
+        return NextResponse.json({ error: "File must be under 5MB" }, { status: 400 });
+      }
+
+      const allowedBuckets = ["avatars", "gallery", "metadata"];
+      if (!allowedBuckets.includes(targetBucket)) {
+        return NextResponse.json({ error: "Invalid bucket" }, { status: 400 });
+      }
+
+      const extension = mimeType.split("/")[1] || "jpg";
+      const filePath = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from(targetBucket)
+        .upload(filePath, buffer, {
+          contentType: mimeType,
+          upsert: true,
+        });
+
+      if (uploadError) {
+        console.error("[Upload] File upload error:", uploadError);
+        return NextResponse.json({ error: `Upload failed: ${uploadError.message}` }, { status: 500 });
+      }
+
+      const { data: urlData } = supabase.storage.from(targetBucket).getPublicUrl(filePath);
+      return NextResponse.json({ success: true, url: urlData.publicUrl });
+    }
+
+    // ── Mode 2: Token creation (avatar + metadata) ──
     const avatarFile = formData.get("avatar") as File | null;
     const tokenName = formData.get("tokenName") as string;
     const tokenSymbol = formData.get("tokenSymbol") as string;
