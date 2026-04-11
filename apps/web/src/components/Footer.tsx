@@ -1,5 +1,29 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
+import { useSolPrice } from "@/hooks/useSolPrice";
+import { formatUsd } from "@/lib/price";
+
+function SolPriceTicker() {
+  const { priceUsd, loading } = useSolPrice();
+
+  if (loading || priceUsd === 0) {
+    return (
+      <div className="footer__sol-price footer__sol-price--loading">
+        <span className="footer__sol-dot" />
+        SOL / USD —
+      </div>
+    );
+  }
+
+  return (
+    <div className="footer__sol-price">
+      <span className="footer__sol-dot footer__sol-dot--live" />
+      SOL / USD <strong>{formatUsd(priceUsd)}</strong>
+    </div>
+  );
+}
 
 export default function Footer() {
   return (
@@ -46,6 +70,7 @@ export default function Footer() {
       <div className="footer__bottom">
         <span>© {new Date().getFullYear()} Humanofi Protocol. All rights reserved.</span>
         <div className="footer__bottom-links">
+          <SolPriceTicker />
           <a href="#" className="footer__link">Privacy</a>
           <a href="#" className="footer__link">Terms</a>
           <span className="footer__solana">Built on Solana ◈</span>
