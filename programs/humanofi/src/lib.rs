@@ -11,9 +11,10 @@
 //   → Tokens cannot be transferred on Jupiter, Raydium, or wallet-to-wallet
 //   → Buy = mint + freeze, Sell = thaw + burn + freeze
 //
-// This ensures tokens are only tradable within Humanofi.
-// No Transfer Hook needed — freeze authority achieves the same result
-// with simpler code and fewer CPI calls.
+// Security:
+//   → CPI Guard: buy/sell reject program-to-program calls (anti-bot)
+//   → Flash Loan proof: frozen tokens = no transfer = no flash loan
+//   → Tokens are ONLY tradable within Humanofi. Period.
 
 use anchor_lang::prelude::*;
 
@@ -55,6 +56,7 @@ pub mod humanofi {
 
     /// Buy tokens from the bonding curve.
     ///
+    /// - CPI Guard: rejects program-to-program calls (anti-bot)
     /// - SOL → calculate tokens via bonding curve
     /// - Deduct 2% fee (50% creator / 30% holders / 20% treasury)
     /// - Mint tokens to buyer's ATA
@@ -66,6 +68,7 @@ pub mod humanofi {
 
     /// Sell tokens back to the bonding curve.
     ///
+    /// - CPI Guard: rejects program-to-program calls (anti-bot)
     /// - Thaw seller's ATA
     /// - Burn tokens
     /// - Calculate SOL return via bonding curve

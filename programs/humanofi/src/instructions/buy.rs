@@ -27,6 +27,16 @@ use crate::state::*;
 pub fn handler(ctx: Context<Buy>, sol_amount: u64) -> Result<()> {
     require!(sol_amount > 0, HumanofiError::ZeroPurchaseAmount);
 
+    // ── ANTI-BOT: Block CPI (program-to-program) calls ──
+    // Only top-level wallet transactions are allowed.
+    // This prevents MEV bots, arbitrage programs, and any
+    // automated on-chain actor from calling buy/sell.
+    #[cfg(not(feature = "cpi"))]
+    {
+        let stack_height = anchor_lang::solana_program::instruction::get_stack_height();
+        require!(stack_height <= 1, HumanofiError::CpiGuard);
+    }
+
     let curve = &ctx.accounts.bonding_curve;
     require!(curve.is_active, HumanofiError::CurveNotActive);
 

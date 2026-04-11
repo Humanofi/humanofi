@@ -70,6 +70,9 @@ pub enum HumanofiError {
     #[msg("Unauthorized: transfer blocked — tokens can only be traded via Humanofi")]
     UnauthorizedTransfer,
 
+    #[msg("CPI guard: only direct wallet transactions are allowed — no bots or programs")]
+    CpiGuard,
+
     #[msg("Invalid mint for this operation")]
     InvalidMint,
 
