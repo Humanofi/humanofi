@@ -8,7 +8,7 @@ interface PresenceSidebarProps {
   nextEvent?: { title: string; date: string } | null;
   isLive?: boolean;
   onJoinLive?: () => void;
-  stats24h?: { views: number; reactions: number; posts: number };
+  stats24h?: { reactions: number; posts: number };
 }
 
 export default function PresenceSidebar({
@@ -46,10 +46,6 @@ export default function PresenceSidebar({
         <div className="ic-sidebar__section">
           <div className="ic-sidebar__section-title">📊 Last 24h</div>
           <div className="ic-sidebar__stats-grid">
-            <div className="ic-sidebar__stat">
-              <span className="ic-sidebar__stat-val">{stats24h.views}</span>
-              <span className="ic-sidebar__stat-lbl">Views</span>
-            </div>
             <div className="ic-sidebar__stat">
               <span className="ic-sidebar__stat-val">{stats24h.reactions}</span>
               <span className="ic-sidebar__stat-lbl">Reactions</span>

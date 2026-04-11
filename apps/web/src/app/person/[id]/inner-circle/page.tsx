@@ -24,7 +24,7 @@ export default function InnerCirclePage() {
   const [showArchived, setShowArchived] = useState(false);
   const [holderBalance, setHolderBalance] = useState(0);
 
-  const [stats24h, setStats24h] = useState<{ views: number; reactions: number; posts: number }>({ views: 0, reactions: 0, posts: 0 });
+  const [stats24h, setStats24h] = useState<{ reactions: number; posts: number }>({ reactions: 0, posts: 0 });
 
   const { onlineUsers, onlineCount, liveReactions, sendReaction, consumeReaction } =
     useRealtimeChannel(
