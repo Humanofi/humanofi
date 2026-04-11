@@ -353,27 +353,27 @@ export default function PersonPublicPage() {
         </div>
 
 
-        {/* Supporter Protection Info */}
+        {/* How it works — trust & fairness */}
         <div className="protection-widget">
           <div className="protection-widget__item">
             <ShieldCheck size={14} weight="bold" style={{ color: tokenColor }} />
             <div>
-              <strong>Buy limits per supporter</strong>
-              <p>Each supporter is limited to: 1 SOL/day (week 1), 5 SOL/day (month 1), 20 SOL/day (after). This prevents manipulation and gives early believers time to take position.</p>
+              <strong>Fair access for everyone</strong>
+              <p>To give everyone a fair chance, each person can support up to 1 SOL/day the first week, 5 SOL/day the first month, and 20 SOL/day after. Early believers get the time they deserve.</p>
             </div>
           </div>
           <div className="protection-widget__item">
             <Lock size={14} weight="bold" style={{ color: tokenColor }} />
             <div>
-              <strong>Creator token lock</strong>
-              <p>{displayNameShort} cannot sell their own tokens: Year 1 = fully locked, Year 2-3 = max 10%/year, Year 4+ = max 20%/year. You as a supporter can sell anytime — this lock only applies to {displayNameShort}.</p>
+              <strong>{displayNameShort} is committed long-term</strong>
+              <p>{displayNameShort} cannot sell their own tokens: Year 1 = fully locked, then progressively over 7 years. You as a supporter can sell anytime — this commitment only applies to {displayNameShort}.</p>
             </div>
           </div>
-          {lockUntil && (
+          {isCreator && lockUntil && (
             <div className="protection-widget__item">
               <Timer size={14} weight="bold" style={{ color: tokenColor }} />
               <div>
-                <strong>Lock progress</strong>
+                <strong>Your lock progress</strong>
                 <div className="protection-widget__bar">
                   <div style={{ width: `${lockProgress}%`, background: tokenColor }} />
                 </div>
@@ -384,9 +384,12 @@ export default function PersonPublicPage() {
           <div className="protection-widget__item">
             <ShieldCheck size={14} weight="bold" style={{ color: tokenColor }} />
             <div>
-              <strong>Tokens confined to Humanofi</strong>
-              <p>Tokens can only be bought and sold on Humanofi. No external exchange, no wallet-to-wallet transfer. This ensures the token always represents real access to the creator&apos;s world.</p>
+              <strong>A closed, trusted ecosystem</strong>
+              <p>Tokens live exclusively on Humanofi. No external exchanges, no transfers between wallets. The token is the key to {displayNameShort}&apos;s world — and that access stays here.</p>
             </div>
+          </div>
+          <div className="protection-widget__safe">
+            Humanofi is a safe place. Every rule above is enforced by code, not promises. Your support goes directly to the person you believe in.
           </div>
         </div>
       </div>
