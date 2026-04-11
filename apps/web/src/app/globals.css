@@ -1521,8 +1521,8 @@ img { display: block; max-width: 100%; }
 }
 
 .person-tabs__link--active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  color: var(--token-color, var(--accent));
+  border-bottom-color: var(--token-color, var(--accent));
 }
 
 /* ========================================
