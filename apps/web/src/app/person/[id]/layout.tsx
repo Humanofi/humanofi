@@ -206,11 +206,15 @@ export default function PersonLayout({
   const activityScore = creator?.activity_score || person?.activityScore || 0;
   const activityStatus = creator?.activity_status || "moderate";
 
+  const CURVE_PREC = 1_000_000_000_000;
+  const spotPriceLamports = curveData
+    ? curveData.basePrice.toNumber() + (curveData.slope.toNumber() * curveData.supplySold.toNumber()) / CURVE_PREC
+    : 0;
   const priceStr = curveData
-    ? `${(curveData.basePrice.toNumber() / 1e9).toFixed(4)} SOL`
+    ? `${(spotPriceLamports / 1e9).toFixed(4)} SOL`
     : person?.price || "—";
   const marketCapStr = curveData
-    ? `${((curveData.supplySold.toNumber() / 1e6) * (curveData.basePrice.toNumber() / 1e9)).toFixed(2)} SOL`
+    ? `${((curveData.supplySold.toNumber() / 1e6) * (spotPriceLamports / 1e9)).toFixed(2)} SOL`
     : person?.marketCap || "—";
 
   // Determine active tab from pathname

@@ -29,6 +29,55 @@ function formatSol(n: number) {
   return n.toFixed(4);
 }
 
+const CURVE_PRECISION = 1_000_000_000_000; // 10^12, matches on-chain
+const FEE_BPS = 200; // 2% total fee
+const BPS = 10_000;
+
+/** Calculate spot price at current supply: base + slope * supply / PRECISION */
+function spotPrice(basePrice: number, slope: number, supplySold: number): number {
+  return basePrice + (slope * supplySold) / CURVE_PRECISION;
+}
+
+/**
+ * Estimate tokens receivable for a given SOL amount using the
+ * bonding curve integral (quadratic formula), same logic as on-chain.
+ * Returns human-readable token count (divided by 1e6).
+ */
+function estimateTokensFromSol(
+  solLamports: number,
+  basePrice: number,
+  slope: number,
+  supplySold: number
+): number {
+  // Deduct fees first (same as on-chain)
+  const fee = Math.ceil((solLamports * FEE_BPS) / BPS);
+  const netSol = solLamports - fee;
+  if (netSol <= 0) return 0;
+
+  const b = basePrice;
+  const m = slope;
+  const s = supplySold;
+  const cost = netSol;
+
+  // Flat price (slope = 0)
+  if (m === 0) {
+    if (b === 0) return 0;
+    return (cost * 1_000_000) / b;
+  }
+
+  // Quadratic: (m/(2P))·a² + (b + m·s/P)·a - cost = 0
+  // Multiply by 2P: m·a² + (2P·b + 2·m·s)·a - 2P·cost = 0
+  // a = (-B + √(B² + 4AC)) / 2A  where A=m, B=2Pb+2ms, C=2P·cost
+  const twoP = 2 * CURVE_PRECISION;
+  const coeffB = twoP * b + 2 * m * s;
+  const fourAC = 4 * m * twoP * cost;
+  const discriminant = coeffB * coeffB + fourAC;
+  const sqrtDisc = Math.sqrt(discriminant);
+  const tokens = (sqrtDisc - coeffB) / (2 * m);
+
+  return Math.max(0, Math.floor(tokens)) / 1_000_000; // raw → human tokens
+}
+
 function daysUntil(dateStr: string): number {
   const diff = new Date(dateStr).getTime() - Date.now();
   return Math.max(0, Math.ceil(diff / 86400000));
@@ -66,18 +115,26 @@ export default function PersonPublicPage() {
   const activityStatus = creator?.activity_status || "moderate";
   const displayNameShort = (creator?.display_name || mockPerson?.name || "").split(" ")[0];
 
+  // Raw on-chain values
+  const rawBasePrice = curveData ? curveData.basePrice.toNumber() : 0;
+  const rawSlope = curveData ? curveData.slope.toNumber() : 0;
+  const rawSupplySold = curveData ? curveData.supplySold.toNumber() : 0;
+
+  // Human-readable values
   const priceNum = curveData
-    ? curveData.basePrice.toNumber() / 1e9
+    ? spotPrice(rawBasePrice, rawSlope, rawSupplySold) / 1e9
     : mockPerson?.priceNum || 0;
 
-  const supplySold = curveData ? curveData.supplySold.toNumber() / 1e6 : 0;
+  const supplySold = rawSupplySold / 1e6;
   const solReserve = curveData ? curveData.solReserve.toNumber() / 1e9 : 0;
   const marketCap = supplySold * priceNum;
 
   const parsedAmt = parseFloat(amount) || 0;
   const estimateReceive =
     activeTab === "buy"
-      ? (parsedAmt / (priceNum || 1)).toFixed(2)
+      ? curveData
+        ? estimateTokensFromSol(parsedAmt * 1e9, rawBasePrice, rawSlope, rawSupplySold).toFixed(2)
+        : (parsedAmt / (priceNum || 1)).toFixed(2)
       : (parsedAmt * (priceNum || 0)).toFixed(4);
 
   // Lock info
