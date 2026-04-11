@@ -34,6 +34,27 @@ ALTER TABLE creator_activity
 ALTER TABLE creator_tokens 
   ADD COLUMN IF NOT EXISTS current_streak INTEGER NOT NULL DEFAULT 0;
 
+ALTER TABLE creator_tokens
+  ADD COLUMN IF NOT EXISTS last_active_at TIMESTAMPTZ NOT NULL DEFAULT now();
+
+ALTER TABLE creator_tokens
+  ADD COLUMN IF NOT EXISTS dormant_since TIMESTAMPTZ;
+
+ALTER TABLE creator_tokens
+  ADD COLUMN IF NOT EXISTS withdrawal_available BOOLEAN DEFAULT false;
+
+ALTER TABLE creator_tokens
+  ADD COLUMN IF NOT EXISTS regularity_score INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE creator_tokens
+  ADD COLUMN IF NOT EXISTS engagement_score INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE creator_tokens
+  ADD COLUMN IF NOT EXISTS retention_score INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE creator_tokens
+  ADD COLUMN IF NOT EXISTS activity_status TEXT NOT NULL DEFAULT 'moderate';
+
 -- ══════════════════════════════════════════
 -- 3. ACTIVITY SCORE v4 FUNCTION
 -- ══════════════════════════════════════════
