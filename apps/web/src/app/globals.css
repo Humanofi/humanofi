@@ -2220,6 +2220,24 @@ img { display: block; max-width: 100%; }
   margin-top: 2px;
 }
 
+/* ── Post Footer (reactions + views) ── */
+.ic-post__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.ic-post__views {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* ── Delete Confirmation Modal ── */
 .delete-modal__overlay {
   position: fixed;

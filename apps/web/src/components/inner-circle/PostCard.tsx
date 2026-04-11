@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { PushPin, Megaphone, CalendarBlank, ChartBar, DotsThreeVertical, PencilSimple, Trash, YoutubeLogo, Question, Archive, FloppyDisk, X, Crown, Globe } from "@phosphor-icons/react";
+import { PushPin, Megaphone, CalendarBlank, ChartBar, DotsThreeVertical, PencilSimple, Trash, YoutubeLogo, Question, Archive, FloppyDisk, X, Crown, Globe, Eye } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import ReactionBar from "./ReactionBar";
 import PollWidget from "./PollWidget";
@@ -25,6 +25,7 @@ export interface PostData {
   reactions: Record<string, number>;
   userReactions: string[];
   reply_count: number;
+  view_count?: number;
 }
 
 interface PostCardProps {
@@ -331,7 +332,14 @@ export default function PostCard({
         );
       })()}
 
-      <ReactionBar postId={post.id} mintAddress={post.creator_mint} walletAddress={walletAddress || ""} reactions={post.reactions || {}} userReactions={post.userReactions || []} onReactionChange={onReactionChange} />
+      <div className="ic-post__footer">
+        <ReactionBar postId={post.id} mintAddress={post.creator_mint} walletAddress={walletAddress || ""} reactions={post.reactions || {}} userReactions={post.userReactions || []} onReactionChange={onReactionChange} />
+        {(post.view_count || 0) > 0 && (
+          <span className="ic-post__views">
+            <Eye size={13} weight="bold" /> {post.view_count}
+          </span>
+        )}
+      </div>
 
       {/* Delete Confirmation Modal */}
       <AnimatePresence>
