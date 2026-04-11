@@ -979,9 +979,31 @@ img { display: block; max-width: 100%; }
   margin-top: 4px;
   margin-bottom: 8px;
 }
-.profile-header__score-inline {
+
+/* ── Activity Score Card (header right) ── */
+.profile-header__score-card {
+  margin-left: auto;
+  flex-shrink: 0;
+  border: 3px solid var(--border);
+  padding: 12px 16px;
+  background: #fff;
+  box-shadow: 4px 4px 0px var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 90px;
+}
+.profile-header__score-svg {
+  width: 72px;
+  height: 72px;
+}
+.profile-header__score-label {
+  font-size: 0.6rem;
   font-weight: 800;
-  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
 }
 
 /* ========== PROFILE LAYOUT (reorder: sidebar first on mobile) ========== */
@@ -994,11 +1016,6 @@ img { display: block; max-width: 100%; }
 
 .profile-sidebar {
   order: 1;
-  position: sticky;
-  top: 90px;
-  max-height: calc(100vh - 100px);
-  overflow-y: auto;
-  align-self: start;
 }
 .profile-main {
   order: 2;
@@ -1008,17 +1025,8 @@ img { display: block; max-width: 100%; }
   .profile-grid {
     grid-template-columns: 1fr;
   }
-  .profile-sidebar {
-    order: 1;
-    position: static;
-    max-height: none;
-    overflow-y: visible;
-  }
-  .profile-main {
-    order: 2;
-  }
-  .trade-widget {
-    position: static;
+  .profile-header__score-card {
+    display: none;
   }
 }
 

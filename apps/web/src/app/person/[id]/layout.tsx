@@ -264,11 +264,6 @@ export default function PersonLayout({
               className="profile-header__img" 
               priority 
             />
-            {/* Activity Score badge on avatar */}
-            <div className="profile-header__score-badge" style={{ background: scoreConfig.color }}>
-              <span>{scoreConfig.icon}</span>
-              <span>{activityScore}</span>
-            </div>
           </div>
           <div className="profile-header__info">
             <h1 className="profile-header__name">{displayName}</h1>
@@ -284,9 +279,6 @@ export default function PersonLayout({
                   <span className="profile-header__mcap">MCap: {marketCapStr}</span>
                 </>
               )}
-              <span className="profile-header__score-inline" style={{ color: scoreConfig.color }}>
-                {scoreConfig.icon} {scoreConfig.label}
-              </span>
             </div>
             
             <div className="profile-header__socials">
@@ -296,6 +288,20 @@ export default function PersonLayout({
                 </a>
               ))}
             </div>
+          </div>
+
+          {/* Activity Score Card — right side of header */}
+          <div className="profile-header__score-card" style={{ borderColor: scoreConfig.color }}>
+            <svg viewBox="0 0 80 80" className="profile-header__score-svg">
+              <circle cx="40" cy="40" r="32" stroke="var(--border-light)" strokeWidth="5" fill="none" />
+              <circle cx="40" cy="40" r="32" stroke={scoreConfig.color} strokeWidth="5" fill="none"
+                strokeDasharray={`${(activityScore / 100) * 201} 201`} strokeLinecap="round"
+                transform="rotate(-90 40 40)" style={{ transition: "stroke-dasharray 0.8s ease" }}
+              />
+              <text x="40" y="37" textAnchor="middle" fontSize="18" fontWeight="900" fill="var(--text)">{activityScore}</text>
+              <text x="40" y="50" textAnchor="middle" fontSize="7" fontWeight="700" fill={scoreConfig.color}>{scoreConfig.label}</text>
+            </svg>
+            <div className="profile-header__score-label">Activity</div>
           </div>
         </div>
 

@@ -352,27 +352,6 @@ export default function PersonPublicPage() {
           </div>
         </div>
 
-        {/* Activity Score — Visual */}
-        <div className="score-widget">
-          <div className="score-widget__header">
-            <Heartbeat size={16} weight="bold" />
-            <span>Activity Score</span>
-          </div>
-          <div className="score-widget__ring">
-            <svg viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="40" stroke="var(--border-light)" strokeWidth="6" fill="none" />
-              <circle cx="50" cy="50" r="40" stroke={scoreColor} strokeWidth="6" fill="none"
-                strokeDasharray={`${(activityScore / 100) * 251} 251`} strokeLinecap="round"
-                transform="rotate(-90 50 50)" style={{ transition: "stroke-dasharray 0.8s ease" }}
-              />
-              <text x="50" y="46" textAnchor="middle" fontSize="22" fontWeight="900" fill="var(--text)">{activityScore}</text>
-              <text x="50" y="60" textAnchor="middle" fontSize="8" fontWeight="700" fill={scoreColor}>{scoreLabel}</text>
-            </svg>
-          </div>
-          <div className="score-widget__caption">
-            This score reflects {displayNameShort}&apos;s real engagement with their community. Updated hourly.
-          </div>
-        </div>
 
         {/* Investment Protection Info */}
         <div className="protection-widget">
