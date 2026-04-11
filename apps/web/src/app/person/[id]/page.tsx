@@ -365,8 +365,8 @@ export default function PersonPublicPage() {
           <div className="protection-widget__item">
             <Lock size={14} weight="bold" style={{ color: tokenColor }} />
             <div>
-              <strong>Progressive token lock</strong>
-              <p>{displayNameShort}&apos;s tokens follow a strict vesting: Year 1 = locked, Year 2-3 = max 10%/year, Year 4+ = max 20%/year. Their interests are structurally aligned with their supporters.</p>
+              <strong>Creator token lock</strong>
+              <p>{displayNameShort} cannot sell their own tokens: Year 1 = fully locked, Year 2-3 = max 10%/year, Year 4+ = max 20%/year. You as a supporter can sell anytime — this lock only applies to {displayNameShort}.</p>
             </div>
           </div>
           {lockUntil && (
