@@ -755,8 +755,6 @@ img { display: block; max-width: 100%; }
   padding: 24px;
   background: var(--bg-panel);
   box-shadow: 8px 8px 0px var(--border);
-  position: sticky;
-  top: 100px;
 }
 
 .trade-widget__header {
@@ -996,6 +994,11 @@ img { display: block; max-width: 100%; }
 
 .profile-sidebar {
   order: 1;
+  position: sticky;
+  top: 90px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  align-self: start;
 }
 .profile-main {
   order: 2;
@@ -1007,6 +1010,9 @@ img { display: block; max-width: 100%; }
   }
   .profile-sidebar {
     order: 1;
+    position: static;
+    max-height: none;
+    overflow-y: visible;
   }
   .profile-main {
     order: 2;
