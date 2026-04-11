@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import SparklineChart from "./SparklineChart";
 
 interface PersonCardProps {
   id: string;
@@ -11,6 +12,7 @@ interface PersonCardProps {
   photoUrl: string;
   sparkline: number[];
   bio: string;
+  mintAddress?: string;
 }
 
 export default function PersonCard({
@@ -23,21 +25,8 @@ export default function PersonCard({
   photoUrl,
   sparkline,
   bio,
+  mintAddress,
 }: PersonCardProps) {
-  // Generate a very simple SVG sparkline path
-  const max = Math.max(...sparkline, 1);
-  const min = Math.min(...sparkline, 0);
-  const range = max - min;
-  const width = 100;
-  const height = 30;
-  const step = width / (sparkline.length - 1 || 1);
-  
-  const d = sparkline.reduce((acc, val, i) => {
-    const x = i * step;
-    const y = height - ((val - min) / range) * height;
-    return `${acc} ${i === 0 ? 'M' : 'L'} ${x},${y}`;
-  }, "");
-
   const tickerName = name.split(" ")[0].toUpperCase();
 
   return (
@@ -67,18 +56,13 @@ export default function PersonCard({
         <div className="card__price-row">
           <div className="card__price-group">
             <span className="card__price">{price}</span>
-            <span className="card__ticker"> ${tickerName}</span>
+            <span className="card__ticker"> {tickerName}</span>
           </div>
-          <svg width={width} height={height} className="card__sparkline" viewBox={`0 -5 ${width} ${height + 10}`}>
-            <path
-              d={d}
-              fill="none"
-              stroke={change >= 0 ? "var(--up)" : "var(--down)"}
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <SparklineChart
+            mintAddress={mintAddress}
+            fallbackData={sparkline}
+            change={change}
+          />
         </div>
         <div className="card__holders">{holders.toLocaleString("en-US")} holders</div>
       </div>

@@ -164,7 +164,7 @@ export default function PersonPublicPage() {
               <div className="dashboard__card-header">
                 <ChartLineUp size={16} weight="bold" /> Price History
               </div>
-              <BondingCurveChart currentPrice={priceNum} change={mockPerson?.change || 0} sparkline={sparkline} height={260} />
+              <BondingCurveChart mintAddress={creator?.mint_address || mockPerson?.id} currentPrice={priceNum} change={mockPerson?.change || 0} sparkline={sparkline} height={260} />
             </section>
 
             <section className="dashboard__card">
@@ -324,7 +324,7 @@ export default function PersonPublicPage() {
         </section>
 
         <section className="profile-section">
-          <BondingCurveChart currentPrice={priceNum} change={mockPerson?.change || 0} sparkline={sparkline} height={220} />
+          <BondingCurveChart mintAddress={creator?.mint_address || mockPerson?.id} currentPrice={priceNum} change={mockPerson?.change || 0} sparkline={sparkline} height={220} />
         </section>
 
         {isReal && creator && <LatestPublicPost creatorMint={creator.mint_address} />}

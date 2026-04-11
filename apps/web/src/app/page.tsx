@@ -190,6 +190,7 @@ export default function ExplorePage() {
               photoUrl={person.photoUrl}
               sparkline={person.sparkline}
               bio={person.bio}
+              mintAddress={person.id}
             />
           ))}
         </div>
