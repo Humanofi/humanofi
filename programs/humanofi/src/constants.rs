@@ -38,8 +38,8 @@ pub const BPS_DENOMINATOR: u64 = 10_000;
 /// Exit tax rate in basis points (10%)
 pub const EXIT_TAX_BPS: u64 = 1000;
 
-/// Exit tax window in seconds (90 days)
-pub const EXIT_TAX_WINDOW: i64 = 90 * 24 * 60 * 60;
+/// Exit tax window in seconds (30 days)
+pub const EXIT_TAX_WINDOW: i64 = 30 * 24 * 60 * 60;
 
 // ---- Creator Vesting Schedule ----
 
