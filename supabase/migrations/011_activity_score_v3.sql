@@ -446,7 +446,7 @@ BEGIN
             AND r.created_at >= now() - INTERVAL '30 days'
             GROUP BY r.wallet_address
             HAVING COUNT(DISTINCT r.post_id) >= 2
-        ) returning;
+        ) ret_engagers;
         
         -- Quality score
         v_quality := LEAST(15,
