@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback } from "react";
 import BondingCurveChart from "@/components/BondingCurveChart";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
@@ -11,9 +11,11 @@ import { toast } from "sonner";
 import { usePerson } from "./layout";
 import LatestPublicPost from "@/components/public-feed/LatestPublicPost";
 import { motion } from "framer-motion";
+import Image from "next/image";
 import {
   TrendUp, TrendDown, Users, Coin, ChartLineUp, Lock, LockOpen,
-  Timer, Fire, CurrencyDollar, Wallet, ShieldCheck, Warning, ArrowRight,
+  Timer, Fire, CurrencyDollar, Wallet, ShieldCheck, ArrowRight,
+  YoutubeLogo, Images, Lightning, Heartbeat,
 } from "@phosphor-icons/react";
 
 const TREASURY = new PublicKey(
@@ -33,7 +35,6 @@ function daysUntil(dateStr: string): number {
 }
 
 function progressPercent(dateStr: string): number {
-  // Assuming 365 days lock from creation
   const lockEnd = new Date(dateStr).getTime();
   const lockStart = lockEnd - 365 * 86400000;
   const elapsed = Date.now() - lockStart;
@@ -41,11 +42,18 @@ function progressPercent(dateStr: string): number {
   return Math.min(100, Math.max(0, (elapsed / total) * 100));
 }
 
+/** Extract YouTube embed URL from various formats */
+function getYouTubeEmbedUrl(url: string): string | null {
+  if (!url) return null;
+  const match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]+)/);
+  return match ? `https://www.youtube.com/embed/${match[1]}` : null;
+}
+
 export default function PersonPublicPage() {
   const [activeTab, setActiveTab] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("");
 
-  const { creator, curveData, mockPerson, isCreator } = usePerson();
+  const { creator, curveData, mockPerson, isCreator, tokenColor } = usePerson();
   const { authenticated, login } = usePrivy();
   const { buyTokens, sellTokens } = useHumanofi();
   const { priceUsd: solPriceUsd } = useSolPrice();
@@ -55,6 +63,7 @@ export default function PersonPublicPage() {
   const story = creator?.story || mockPerson?.story || "";
   const offer = creator?.offer || mockPerson?.offer || "";
   const activityScore = creator?.activity_score || mockPerson?.activityScore || 0;
+  const activityStatus = creator?.activity_status || "moderate";
   const displayNameShort = (creator?.display_name || mockPerson?.name || "").split(" ")[0];
 
   const priceNum = curveData
@@ -64,8 +73,6 @@ export default function PersonPublicPage() {
   const supplySold = curveData ? curveData.supplySold.toNumber() / 1e6 : 0;
   const solReserve = curveData ? curveData.solReserve.toNumber() / 1e9 : 0;
   const marketCap = supplySold * priceNum;
-
-  const sparkline = mockPerson?.sparkline || Array.from({ length: 12 }, () => Math.floor(Math.random() * 18) + 3);
 
   const parsedAmt = parseFloat(amount) || 0;
   const estimateReceive =
@@ -77,7 +84,16 @@ export default function PersonPublicPage() {
   const lockUntil = creator?.token_lock_until || "";
   const lockDays = lockUntil ? daysUntil(lockUntil) : 365;
   const lockProgress = lockUntil ? progressPercent(lockUntil) : 0;
-  const isLocked = lockDays > 0;
+
+  // YouTube embed
+  const youtubeEmbed = getYouTubeEmbedUrl(creator?.youtube_url || "");
+
+  // Gallery
+  const gallery = creator?.gallery_urls || [];
+
+  // Score ring
+  const scoreColor = activityScore >= 85 ? "#22c55e" : activityScore >= 65 ? "#3b82f6" : activityScore >= 45 ? "#f59e0b" : activityScore >= 25 ? "#ef4444" : "#6b7280";
+  const scoreLabel = activityScore >= 85 ? "Thriving" : activityScore >= 65 ? "Active" : activityScore >= 45 ? "Moderate" : activityScore >= 25 ? "Low" : "Dormant";
 
   const handleTrade = useCallback(async () => {
     if (!authenticated) { login(); return; }
@@ -114,7 +130,7 @@ export default function PersonPublicPage() {
         {/* ── KPI Row ── */}
         <div className="dashboard__kpi-row">
           <motion.div className="kpi-card" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0 }}>
-            <div className="kpi-card__icon" style={{ background: "rgba(99, 102, 241, 0.1)", color: "var(--accent)" }}>
+            <div className="kpi-card__icon" style={{ background: `${tokenColor}15`, color: tokenColor }}>
               <CurrencyDollar size={20} weight="bold" />
             </div>
             <div className="kpi-card__data">
@@ -146,25 +162,25 @@ export default function PersonPublicPage() {
           </motion.div>
 
           <motion.div className="kpi-card" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-            <div className="kpi-card__icon" style={{ background: "rgba(245, 158, 11, 0.1)", color: "#f59e0b" }}>
+            <div className="kpi-card__icon" style={{ background: `${scoreColor}15`, color: scoreColor }}>
               <Fire size={20} weight="bold" />
             </div>
             <div className="kpi-card__data">
               <div className="kpi-card__label">Activity Score</div>
               <div className="kpi-card__value">{activityScore}/100</div>
+              <div className="kpi-card__sub" style={{ color: scoreColor }}>{scoreLabel}</div>
             </div>
           </motion.div>
         </div>
 
         {/* ── Main Grid: Chart + Details ── */}
         <div className="dashboard__grid">
-          {/* Left: Chart + Token Info */}
           <div className="dashboard__main">
             <section className="dashboard__card">
               <div className="dashboard__card-header">
                 <ChartLineUp size={16} weight="bold" /> Price History
               </div>
-              <BondingCurveChart mintAddress={creator?.mint_address || mockPerson?.id} currentPrice={priceNum} change={mockPerson?.change || 0} sparkline={sparkline} height={260} />
+              <BondingCurveChart mintAddress={creator.mint_address} currentPrice={priceNum} change={mockPerson?.change || 0} height={260} />
             </section>
 
             <section className="dashboard__card">
@@ -193,7 +209,6 @@ export default function PersonPublicPage() {
               </div>
             </section>
 
-            {/* Latest Public Post */}
             <LatestPublicPost creatorMint={creator.mint_address} />
           </div>
 
@@ -202,9 +217,9 @@ export default function PersonPublicPage() {
             {/* ── Token Lock Card ── */}
             <section className="dashboard__card dashboard__lock-card">
               <div className="dashboard__card-header">
-                {isLocked ? <Lock size={16} weight="bold" /> : <LockOpen size={16} weight="bold" />}
+                <Lock size={16} weight="bold" />
                 Token Lock
-                {isLocked && <span className="dashboard__lock-badge">LOCKED</span>}
+                <span className="dashboard__lock-badge">LOCKED</span>
               </div>
 
               <div className="dashboard__lock-progress">
@@ -217,7 +232,7 @@ export default function PersonPublicPage() {
                 </div>
               </div>
 
-              {isLocked && (
+              {lockUntil && (
                 <div className="dashboard__lock-detail">
                   <Timer size={14} weight="bold" />
                   <span>
@@ -232,41 +247,6 @@ export default function PersonPublicPage() {
               </div>
             </section>
 
-            {/* ── Sell Widget (disabled during lock) ── */}
-            <section className="dashboard__card">
-              <div className="dashboard__card-header">
-                <Wallet size={16} weight="bold" /> Sell Tokens
-              </div>
-              {isLocked ? (
-                <div className="dashboard__sell-locked">
-                  <Lock size={32} weight="bold" />
-                  <h3>Selling is locked</h3>
-                  <p>You cannot sell your tokens for {lockDays} more days. This protects your holders and builds trust.</p>
-                  <div className="dashboard__sell-countdown">
-                    <div className="dashboard__countdown-item">
-                      <span className="dashboard__countdown-num">{Math.floor(lockDays / 30)}</span>
-                      <span className="dashboard__countdown-label">months</span>
-                    </div>
-                    <div className="dashboard__countdown-item">
-                      <span className="dashboard__countdown-num">{lockDays % 30}</span>
-                      <span className="dashboard__countdown-label">days</span>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <input type="number" className="trade-input" placeholder="Amount to sell" value={amount} onChange={(e) => setAmount(e.target.value)} />
-                  <div style={{ marginTop: 8, marginBottom: 12, fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", display: "flex", justifyContent: "space-between" }}>
-                    <span>You will receive</span>
-                    <span style={{ color: "var(--text)" }}>~{(parsedAmt * priceNum).toFixed(4)} SOL{solPriceUsd > 0 ? ` (${formatUsd(solToUsd(parsedAmt * priceNum, solPriceUsd))})` : ""}</span>
-                  </div>
-                  <button className="btn-solid" style={{ width: "100%", background: "#e53e3e" }} onClick={handleTrade}>
-                    Execute Sell
-                  </button>
-                </>
-              )}
-            </section>
-
             {/* ── Activity Score Card ── */}
             <section className="dashboard__card">
               <div className="dashboard__card-header">
@@ -275,7 +255,7 @@ export default function PersonPublicPage() {
               <div className="dashboard__score-ring">
                 <svg viewBox="0 0 120 120" className="dashboard__score-svg">
                   <circle cx="60" cy="60" r="50" stroke="var(--border-light)" strokeWidth="8" fill="none" />
-                  <circle cx="60" cy="60" r="50" stroke={activityScore >= 70 ? "#22c55e" : activityScore >= 40 ? "#f59e0b" : "#e53e3e"} strokeWidth="8" fill="none"
+                  <circle cx="60" cy="60" r="50" stroke={scoreColor} strokeWidth="8" fill="none"
                     strokeDasharray={`${(activityScore / 100) * 314} 314`} strokeLinecap="round"
                     transform="rotate(-90 60 60)" style={{ transition: "stroke-dasharray 0.6s ease" }}
                   />
@@ -287,17 +267,17 @@ export default function PersonPublicPage() {
                 <div className="dashboard__tip">
                   <span>Post regularly</span>
                   <ArrowRight size={10} />
-                  <span>+5 per post</span>
+                  <span>Boosts regularity</span>
                 </div>
                 <div className="dashboard__tip">
                   <span>Answer questions</span>
                   <ArrowRight size={10} />
-                  <span>+3 per answer</span>
+                  <span>Boosts quality</span>
                 </div>
                 <div className="dashboard__tip">
                   <span>Host events</span>
                   <ArrowRight size={10} />
-                  <span>+10 per event</span>
+                  <span>Boosts engagement</span>
                 </div>
               </div>
             </section>
@@ -308,94 +288,200 @@ export default function PersonPublicPage() {
   }
 
   /* ════════════════════════════════════════════
-     PUBLIC VISITOR VIEW (Profile & Trade)
+     PUBLIC VISITOR / HOLDER VIEW
+     Trade-first layout with rich profile
      ════════════════════════════════════════════ */
   return (
     <div className="profile-grid">
+      {/* ── SIDEBAR: Trade Widget (sticky) + Score ── */}
+      <div className="profile-sidebar">
+        {/* Trade Widget — FIRST, most visible */}
+        <div className="trade-widget" style={{ borderColor: tokenColor }}>
+          <div className="trade-widget__header">
+            <span className="trade-widget__title">{isReal ? "Trade" : "Demo Mode"}</span>
+            <span className="trade-widget__price" style={{ color: tokenColor }}>{formatSol(priceNum)} SOL</span>
+          </div>
+
+          <div className="trade-widget__tabs">
+            <button className={`trade-tab ${activeTab === "buy" ? "active" : ""}`} style={activeTab === "buy" ? { background: tokenColor, borderColor: tokenColor } : {}} onClick={() => setActiveTab("buy")}>Buy</button>
+            <button className={`trade-tab ${activeTab === "sell" ? "active" : ""}`} style={activeTab === "sell" ? { background: "#e53e3e", borderColor: "#e53e3e" } : {}} onClick={() => setActiveTab("sell")}>Sell</button>
+          </div>
+
+          <div className="trade-widget__input-group">
+            <label className="trade-widget__label">
+              {activeTab === "buy" ? "Amount in SOL" : `Amount of ${displayNameShort.toUpperCase()}`}
+            </label>
+            <input type="number" className="trade-input" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          </div>
+
+          <div className="trade-widget__estimate">
+            <span>You will {activeTab === "buy" ? "receive" : "get"}</span>
+            <span style={{ color: "var(--text)", fontWeight: 800 }}>
+              ~{estimateReceive} {activeTab === "buy" ? "tokens" : "SOL"}
+              {activeTab === "sell" && solPriceUsd > 0 ? ` (${formatUsd(solToUsd(parseFloat(estimateReceive) || 0, solPriceUsd))})` : ""}
+            </span>
+          </div>
+
+          <button 
+            className="trade-widget__btn" 
+            style={{ background: activeTab === "buy" ? tokenColor : "#e53e3e", opacity: isReal ? 1 : 0.5 }} 
+            onClick={handleTrade} 
+            disabled={!isReal}
+          >
+            {!authenticated ? "Connect Wallet" : !isReal ? "Demo — Create a Token First" : activeTab === "buy" ? `Buy ${displayNameShort}` : `Sell ${displayNameShort}`}
+          </button>
+
+          {/* Quick Stats — inline in trade widget */}
+          <div className="trade-widget__stats">
+            <div className="trade-widget__stat">
+              <CurrencyDollar size={14} weight="bold" />
+              <span>Price</span>
+              <strong>{curveData ? `${priceNum.toFixed(4)} SOL` : mockPerson?.price || "—"}</strong>
+              {solPriceUsd > 0 && <span className="trade-widget__stat-sub">{formatUsd(solToUsd(priceNum, solPriceUsd))}</span>}
+            </div>
+            <div className="trade-widget__stat">
+              <ChartLineUp size={14} weight="bold" />
+              <span>Market Cap</span>
+              <strong>{curveData ? `${marketCap.toFixed(2)} SOL` : mockPerson?.marketCap || "—"}</strong>
+            </div>
+            <div className="trade-widget__stat">
+              <Users size={14} weight="bold" />
+              <span>Holders</span>
+              <strong>{mockPerson?.holders?.toLocaleString("en-US") || "—"}</strong>
+            </div>
+          </div>
+        </div>
+
+        {/* Activity Score — Visual */}
+        <div className="score-widget">
+          <div className="score-widget__header">
+            <Heartbeat size={16} weight="bold" />
+            <span>Activity Score</span>
+          </div>
+          <div className="score-widget__ring">
+            <svg viewBox="0 0 100 100">
+              <circle cx="50" cy="50" r="40" stroke="var(--border-light)" strokeWidth="6" fill="none" />
+              <circle cx="50" cy="50" r="40" stroke={scoreColor} strokeWidth="6" fill="none"
+                strokeDasharray={`${(activityScore / 100) * 251} 251`} strokeLinecap="round"
+                transform="rotate(-90 50 50)" style={{ transition: "stroke-dasharray 0.8s ease" }}
+              />
+              <text x="50" y="46" textAnchor="middle" fontSize="22" fontWeight="900" fill="var(--text)">{activityScore}</text>
+              <text x="50" y="60" textAnchor="middle" fontSize="8" fontWeight="700" fill={scoreColor}>{scoreLabel}</text>
+            </svg>
+          </div>
+          <div className="score-widget__caption">
+            This score reflects {displayNameShort}&apos;s real engagement with their community. Updated hourly.
+          </div>
+        </div>
+
+        {/* Investment Protection Info */}
+        <div className="protection-widget">
+          <div className="protection-widget__item">
+            <ShieldCheck size={14} weight="bold" style={{ color: tokenColor }} />
+            <div>
+              <strong>Investor buy limits</strong>
+              <p>Each investor is limited to: 1 SOL/day (week 1), 5 SOL/day (month 1), 20 SOL/day (after). This prevents manipulation and protects early buyers.</p>
+            </div>
+          </div>
+          <div className="protection-widget__item">
+            <Lock size={14} weight="bold" style={{ color: tokenColor }} />
+            <div>
+              <strong>Progressive vesting</strong>
+              <p>{displayNameShort} can only unlock 20% of their supply per year over 5 years. Their financial interests are aligned with yours long-term.</p>
+            </div>
+          </div>
+          {lockUntil && (
+            <div className="protection-widget__item">
+              <Timer size={14} weight="bold" style={{ color: tokenColor }} />
+              <div>
+                <strong>Lock progress</strong>
+                <div className="protection-widget__bar">
+                  <div style={{ width: `${lockProgress}%`, background: tokenColor }} />
+                </div>
+                <p>{lockProgress.toFixed(0)}% elapsed — {lockDays} days remaining</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── MAIN: Chart, Video, Story, Gallery ── */}
       <div className="profile-main">
+        {/* Chart */}
+        <section className="profile-section">
+          <BondingCurveChart mintAddress={creator?.mint_address || mockPerson?.id} currentPrice={priceNum} change={mockPerson?.change || 0} height={260} />
+        </section>
+
+        {/* YouTube Video */}
+        {youtubeEmbed && (
+          <motion.section className="profile-section" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}>
+            <h2 className="profile-section__title">
+              <YoutubeLogo size={20} weight="bold" style={{ color: "#ff0000" }} /> Video
+            </h2>
+            <div className="profile-video-embed">
+              <iframe
+                src={youtubeEmbed}
+                title="Creator video"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+              />
+            </div>
+          </motion.section>
+        )}
+
+        {/* The Story */}
         <section className="profile-section">
           <h2 className="profile-section__title">The Story</h2>
           <p className="profile-section__text">{story || "No story yet."}</p>
         </section>
 
+        {/* What I Offer */}
         <section className="profile-section">
           <h2 className="profile-section__title">What I Offer (Inner Circle)</h2>
           <p className="profile-section__text">{offer || "No offer description yet."}</p>
         </section>
 
-        <section className="profile-section">
-          <BondingCurveChart mintAddress={creator?.mint_address || mockPerson?.id} currentPrice={priceNum} change={mockPerson?.change || 0} sparkline={sparkline} height={220} />
-        </section>
+        {/* Gallery */}
+        {gallery.length > 0 && (
+          <motion.section className="profile-section" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}>
+            <h2 className="profile-section__title">
+              <Images size={20} weight="bold" /> Gallery
+            </h2>
+            <div className="profile-gallery">
+              {gallery.map((url, i) => (
+                <div key={i} className="profile-gallery__item">
+                  <Image src={url} alt={`Gallery ${i + 1}`} width={400} height={300} style={{ objectFit: "cover", width: "100%", height: "100%" }} />
+                </div>
+              ))}
+            </div>
+          </motion.section>
+        )}
 
+        {/* Token Economics */}
+        {isReal && creator && (
+          <section className="profile-section">
+            <h2 className="profile-section__title">
+              <Coin size={20} weight="bold" /> Token Economics
+            </h2>
+            <div className="profile-token-grid">
+              <div className="profile-token-stat">
+                <span>Supply Sold</span>
+                <strong>{supplySold.toFixed(0)} tokens</strong>
+              </div>
+              <div className="profile-token-stat">
+                <span>SOL Reserve</span>
+                <strong>{formatSol(solReserve)} SOL</strong>
+              </div>
+              <div className="profile-token-stat">
+                <span>Mint</span>
+                <strong style={{ fontFamily: "monospace", fontSize: "0.75rem" }}>{creator.mint_address.slice(0, 8)}...{creator.mint_address.slice(-6)}</strong>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Latest Public Post */}
         {isReal && creator && <LatestPublicPost creatorMint={creator.mint_address} />}
-      </div>
-
-      <div className="profile-sidebar">
-        <div className="profile__stats-grid">
-          <div className="stat-card">
-            <div className="stat-card__lbl">Price</div>
-            <div className="stat-card__val">{curveData ? `${priceNum.toFixed(4)} SOL` : mockPerson?.price || "—"}</div>
-            {solPriceUsd > 0 && <div className="stat-card__sub">{formatUsd(solToUsd(priceNum, solPriceUsd))}</div>}
-          </div>
-          <div className="stat-card">
-            <div className="stat-card__lbl">Activity Score</div>
-            <div className="stat-card__val">{activityScore}/100</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-card__lbl">Market Cap</div>
-            <div className="stat-card__val">{curveData ? `${marketCap.toFixed(2)} SOL` : mockPerson?.marketCap || "—"}</div>
-            {solPriceUsd > 0 && <div className="stat-card__sub">{formatUsd(solToUsd(marketCap, solPriceUsd))}</div>}
-          </div>
-          <div className="stat-card">
-            <div className="stat-card__lbl">Holders</div>
-            <div className="stat-card__val">{mockPerson?.holders?.toLocaleString("en-US") || "—"}</div>
-          </div>
-        </div>
-
-        <div className="trade-widget">
-          <div className="trade-widget__info">
-            <div style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase" }}>{isReal ? "Trade" : "Demo Mode"}</div>
-            <div style={{ marginLeft: "auto", fontWeight: 800 }}>{isReal ? `${activityScore}/100` : "—"}</div>
-          </div>
-
-          <div className="trade-widget__tabs">
-            <button className={`trade-tab ${activeTab === "buy" ? "active" : ""}`} onClick={() => setActiveTab("buy")}>Buy</button>
-            <button className={`trade-tab ${activeTab === "sell" ? "active" : ""}`} onClick={() => setActiveTab("sell")}>Sell</button>
-          </div>
-
-          {activeTab === "buy" && isReal && (
-            <div style={{ background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: "0.72rem", lineHeight: 1.5, color: "var(--text-muted)" }}>
-              <span style={{ fontWeight: 700, color: "var(--accent)" }}>ⓘ Anti-manipulation limits</span><br />
-              Week 1: max <strong style={{ color: "var(--text)" }}>1 SOL/day</strong> ·
-              Month 1: max <strong style={{ color: "var(--text)" }}>5 SOL/day</strong> ·
-              After: max <strong style={{ color: "var(--text)" }}>20 SOL/day</strong>
-            </div>
-          )}
-
-          <div style={{ fontSize: "0.75rem", fontWeight: 800, textTransform: "uppercase", marginBottom: 8, color: "var(--text-muted)" }}>
-            {activeTab === "buy" ? "Amount in SOL" : `Amount of ${displayNameShort.toUpperCase()}`}
-          </div>
-          <input type="number" className="trade-input" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} max={activeTab === "buy" ? "1" : undefined} />
-
-          {activeTab === "buy" && parseFloat(amount) > 1 && (
-            <div style={{ background: "rgba(229,62,62,0.1)", border: "1px solid rgba(229,62,62,0.3)", borderRadius: 8, padding: "8px 12px", marginTop: 8, marginBottom: 4, fontSize: "0.72rem", color: "#e53e3e", fontWeight: 600 }}>
-              ⚠ This amount exceeds the Week 1 daily limit (1 SOL/day)
-            </div>
-          )}
-
-          <div style={{ marginBottom: 16, fontSize: "0.75rem", fontWeight: 800, color: "var(--text-muted)", display: "flex", justifyContent: "space-between" }}>
-            <span>You will {activeTab === "buy" ? "receive" : "get"}</span>
-            <span style={{ color: "var(--text)" }}>~{estimateReceive} {activeTab === "buy" ? "tokens" : "SOL"}{activeTab === "sell" && solPriceUsd > 0 ? ` (${formatUsd(solToUsd(parseFloat(estimateReceive) || 0, solPriceUsd))})` : ""}</span>
-          </div>
-
-          <button className="btn-solid" style={{ width: "100%", background: activeTab === "buy" ? "var(--accent)" : "var(--down, #e53e3e)", opacity: isReal ? 1 : 0.5 }} onClick={handleTrade} disabled={!isReal}>
-            {!authenticated ? "Connect Wallet" : !isReal ? "Demo — Create a Token First" : activeTab === "buy" ? "Execute Buy" : "Execute Sell"}
-          </button>
-        </div>
-
-        <div style={{ marginTop: 24, fontSize: "0.75rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
-          <strong>Lock Info:</strong> {displayNameShort} can only unlock 20% of their supply initially. Their interests are aligned long-term.
-        </div>
       </div>
     </div>
   );

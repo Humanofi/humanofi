@@ -11,6 +11,18 @@ import { useHumanofi } from "@/hooks/useHumanofi";
 import { PublicKey } from "@solana/web3.js";
 import { getPersonById, Person } from "@/lib/mockData";
 
+// -- Token Color Palette --
+const TOKEN_COLORS: Record<string, string> = {
+  blue: "#1144ff",
+  violet: "#7c3aed",
+  emerald: "#059669",
+  orange: "#ea580c",
+  crimson: "#dc2626",
+  cyan: "#0891b2",
+  amber: "#d97706",
+  pink: "#db2777",
+};
+
 // -- Types --
 export interface CreatorData {
   mint_address: string;
@@ -24,7 +36,12 @@ export interface CreatorData {
   country_code: string | null;
   socials: Record<string, string>;
   activity_score: number;
+  activity_status: string;
   token_lock_until: string;
+  subtitle: string;
+  youtube_url: string;
+  gallery_urls: string[];
+  token_color: string;
 }
 
 export interface BondingCurveData {
@@ -41,8 +58,8 @@ interface PersonContextType {
   isCreator: boolean;
   loading: boolean;
   mockPerson: Person | null;
-  /** Convenience: the person's display name (from real or mock) */
   displayName: string;
+  tokenColor: string;
 }
 
 const PersonContext = createContext<PersonContextType>({
@@ -53,6 +70,7 @@ const PersonContext = createContext<PersonContextType>({
   loading: true,
   mockPerson: null,
   displayName: "",
+  tokenColor: "#1144ff",
 });
 
 export function usePerson() {
@@ -78,7 +96,6 @@ export default function PersonLayout({
   const { authenticated } = usePrivy();
   const { fetchBondingCurve, connected, walletAddress } = useHumanofi();
 
-  // Fallback to mock data if this ID is a mock slug
   const mockPerson = getPersonById(id) || null;
 
   // ── Fetch creator data from Supabase ──
@@ -117,17 +134,14 @@ export default function PersonLayout({
         return;
       }
 
-      // Creator check (local comparison, no API call)
       const userIsCreator = walletAddress === creator.wallet_address;
       setIsCreator(userIsCreator);
 
-      // If the user IS the creator, they automatically have access
       if (userIsCreator) {
         setIsHolder(true);
         return;
       }
 
-      // Check holder status via the Inner Circle API (validates on-chain)
       try {
         const res = await fetch(`/api/inner-circle/${creator.mint_address}/posts`, {
           headers: { "x-wallet-address": walletAddress },
@@ -144,9 +158,11 @@ export default function PersonLayout({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletAddress, creator?.mint_address, authenticated, connected]);
 
-  // Is this a real on-chain creator or a demo mock?
   const isReal = !!creator;
   const person = mockPerson;
+
+  // Token color
+  const tokenColor = TOKEN_COLORS[creator?.token_color || "blue"] || TOKEN_COLORS.blue;
 
   // ── Loading state ──
   if (loading && !person) {
@@ -177,12 +193,15 @@ export default function PersonLayout({
     );
   }
 
-  // Build display values from real or mock data
+  // Build display values
   const displayName = creator?.display_name || person?.name || "Unknown";
   const avatarUrl = creator?.avatar_url || person?.photoUrl || "/default-avatar.png";
   const category = creator?.category || person?.tag || "";
   const countryCode = creator?.country_code || person?.country || "—";
   const socials = creator?.socials || person?.socials || {};
+  const subtitle = creator?.subtitle || "";
+  const activityScore = creator?.activity_score || person?.activityScore || 0;
+  const activityStatus = creator?.activity_status || "moderate";
 
   const priceStr = curveData
     ? `${(curveData.basePrice.toNumber() / 1e9).toFixed(4)} SOL`
@@ -193,15 +212,25 @@ export default function PersonLayout({
 
   // Determine active tab from pathname
   const isInnerCircle = pathname?.includes("/inner-circle");
+  const isPublicPosts = pathname?.includes("/public-posts");
   const isManage = pathname?.includes("/manage");
-  const isPublic = !isInnerCircle && !isManage;
+  const isProfile = !isInnerCircle && !isPublicPosts && !isManage;
+
+  // Score status config
+  const scoreConfig = {
+    thriving: { color: "#22c55e", label: "Thriving", icon: "🔥" },
+    active: { color: "#3b82f6", label: "Active", icon: "⚡" },
+    moderate: { color: "#f59e0b", label: "Moderate", icon: "○" },
+    low_activity: { color: "#ef4444", label: "Low", icon: "▽" },
+    dormant: { color: "#6b7280", label: "Dormant", icon: "💤" },
+  }[activityStatus] || { color: "#f59e0b", label: "Moderate", icon: "○" };
 
   return (
-    <PersonContext.Provider value={{ creator, curveData, isHolder, isCreator, loading, mockPerson: person, displayName }}>
+    <PersonContext.Provider value={{ creator, curveData, isHolder, isCreator, loading, mockPerson: person, displayName, tokenColor }}>
       <div className="halftone-bg" />
       <Topbar />
 
-      <main className="page" style={{ paddingTop: 40, maxWidth: 1200 }}>
+      <main className="page" style={{ paddingTop: 40, maxWidth: 1200, ["--token-color" as string]: tokenColor }}>
         <p style={{ marginBottom: 32 }}>
           <Link href="/" style={{ fontSize: "0.8rem", fontWeight: 800, textTransform: "uppercase" }}>
             ← Back to Marketplace
@@ -213,7 +242,7 @@ export default function PersonLayout({
           <div style={{
             background: "rgba(255, 200, 0, 0.15)",
             border: "1px solid rgba(255, 200, 0, 0.3)",
-            borderRadius: 8,
+            borderRadius: 0,
             padding: "8px 16px",
             marginBottom: 24,
             fontSize: "0.8rem",
@@ -225,26 +254,39 @@ export default function PersonLayout({
         )}
 
         {/* PROFILE HEADER */}
-        <div className="profile-header">
-          <Image 
-            src={avatarUrl} 
-            alt={displayName} 
-            width={160} 
-            height={160} 
-            className="profile-header__img" 
-            priority 
-          />
+        <div className="profile-header" style={{ borderLeft: `4px solid ${tokenColor}` }}>
+          <div className="profile-header__avatar-wrap">
+            <Image 
+              src={avatarUrl} 
+              alt={displayName} 
+              width={160} 
+              height={160} 
+              className="profile-header__img" 
+              priority 
+            />
+            {/* Activity Score badge on avatar */}
+            <div className="profile-header__score-badge" style={{ background: scoreConfig.color }}>
+              <span>{scoreConfig.icon}</span>
+              <span>{activityScore}</span>
+            </div>
+          </div>
           <div className="profile-header__info">
             <h1 className="profile-header__name">{displayName}</h1>
+            {subtitle && (
+              <div className="profile-header__subtitle">&ldquo;{subtitle}&rdquo;</div>
+            )}
             <div className="profile-header__meta">
-              <span className="profile-header__tag">{category}</span>
-              <span className="profile-header__country">Country: {countryCode}</span>
+              <span className="profile-header__tag" style={{ borderColor: tokenColor, color: tokenColor }}>{category}</span>
+              <span className="profile-header__country">{countryCode}</span>
               {isReal && (
                 <>
-                  <span className="profile-header__price">Price: {priceStr}</span>
+                  <span className="profile-header__price">{priceStr}</span>
                   <span className="profile-header__mcap">MCap: {marketCapStr}</span>
                 </>
               )}
+              <span className="profile-header__score-inline" style={{ color: scoreConfig.color }}>
+                {scoreConfig.icon} {scoreConfig.label}
+              </span>
             </div>
             
             <div className="profile-header__socials">
@@ -263,7 +305,7 @@ export default function PersonLayout({
             <>
               <Link
                 href={`/person/${id}`}
-                className={`person-tabs__link ${isPublic ? "person-tabs__link--active" : ""}`}
+                className={`person-tabs__link ${isProfile ? "person-tabs__link--active" : ""}`}
               >
                 Dashboard
               </Link>
@@ -273,15 +315,29 @@ export default function PersonLayout({
               >
                 Inner Circle
               </Link>
+              <Link
+                href={`/person/${id}/manage`}
+                className={`person-tabs__link ${isManage ? "person-tabs__link--active" : ""}`}
+              >
+                Manage Profile
+              </Link>
             </>
           ) : (
             <>
               <Link
                 href={`/person/${id}`}
-                className={`person-tabs__link ${isPublic ? "person-tabs__link--active" : ""}`}
+                className={`person-tabs__link ${isProfile ? "person-tabs__link--active" : ""}`}
               >
                 Profile & Trade
               </Link>
+              {isReal && (
+                <Link
+                  href={`/person/${id}/public-posts`}
+                  className={`person-tabs__link ${isPublicPosts ? "person-tabs__link--active" : ""}`}
+                >
+                  Public Posts
+                </Link>
+              )}
               {isReal && (
                 <Link
                   href={`/person/${id}/inner-circle`}
