@@ -76,6 +76,11 @@ export default function Topbar() {
           { href: "/leaderboard", label: "Leaderboard" },
         ];
 
+        // Portfolio link (when connected)
+        if (privyState.authenticated) {
+          items.push({ href: "/portfolio", label: "My Humans" });
+        }
+
         if (humanofiUser?.isCreator && humanofiUser.creator?.mint_address) {
           items.push({
             href: `/person/${humanofiUser.creator.mint_address}`,
@@ -111,7 +116,9 @@ export default function Topbar() {
             className={`topbar__link ${
               pathname === item.href ||
               (item.label === "My Token" &&
-                pathname?.startsWith("/person/"))
+                pathname?.startsWith("/person/")) ||
+              (item.label === "My Humans" &&
+                pathname === "/portfolio")
                 ? "topbar__link--active"
                 : ""
             }`}

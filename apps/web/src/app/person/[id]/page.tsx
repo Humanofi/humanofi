@@ -59,7 +59,7 @@ export default function PersonPublicPage() {
   const [tradeActiveTab, setTradeActiveTab] = useState<"buy" | "sell">("buy");
   const [tradeAmount, setTradeAmount] = useState(0);
 
-  const { creator, curveData, liveCurve, mockPerson, isCreator, tokenColor, refreshCurve, chartRef } = usePerson();
+  const { creator, curveData, liveCurve, mockPerson, isCreator, isHolder, tokenColor, refreshCurve, chartRef } = usePerson();
   const { authenticated, login } = usePrivy();
   const { buyTokens, sellTokens, claimCreatorFees, fetchCreatorFeeVault, walletAddress } = useHumanofi();
   const { priceUsd: solPriceUsd } = useSolPrice();
@@ -156,6 +156,41 @@ export default function PersonPublicPage() {
       setClaiming(false);
     }
   }, [creator?.mint_address, claimCreatorFees, fetchCreatorFeeVault, claiming]);
+
+  // ── Holder Position state (My Position widget) ──
+  interface HolderPosition {
+    balance: number;
+    sol_invested: number;
+    sol_recovered: number;
+    tokens_bought: number;
+    avg_entry_price: number;
+    buy_count: number;
+    sell_count: number;
+    first_bought_at: string;
+  }
+  const [holderPosition, setHolderPosition] = useState<HolderPosition | null>(null);
+
+  useEffect(() => {
+    if (!walletAddress || !creator?.mint_address || isCreator) return;
+    fetch(`/api/portfolio?wallet=${walletAddress}&mint=${creator.mint_address}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.positions?.length > 0) setHolderPosition(data.positions[0]);
+      })
+      .catch(() => {});
+  }, [walletAddress, creator?.mint_address, isCreator]);
+
+  // Holder position calculations
+  const posTokens = holderPosition ? holderPosition.balance / 1e6 : 0;
+  const posValueSol = posTokens * priceNum;
+  const posInvestedSol = holderPosition ? holderPosition.sol_invested / 1e9 : 0;
+  const posRecoveredSol = holderPosition ? holderPosition.sol_recovered / 1e9 : 0;
+  const posPnlSol = posValueSol + posRecoveredSol - posInvestedSol;
+  const posPnlPct = posInvestedSol > 0 ? (posPnlSol / posInvestedSol) * 100 : 0;
+  const posAvgEntry = holderPosition && holderPosition.tokens_bought > 0
+    ? (holderPosition.sol_invested / holderPosition.tokens_bought) * 1e6 / 1e9
+    : 0;
+  const posPnlColor = posPnlSol >= 0 ? "#22c55e" : "#ef4444";
 
   /** Record a verified trade in Supabase */
   const recordTrade = useCallback(async (txSig: string, tradeType: "buy" | "sell", solAmt: number, tokenAmt: number) => {
@@ -506,6 +541,73 @@ export default function PersonPublicPage() {
           onLogin={login}
         />
 
+        {/* ── My Position (holders only) ── */}
+        {isHolder && !isCreator && holderPosition && posTokens > 0 && (
+          <div className="dashboard__card" style={{ borderLeft: `3px solid ${tokenColor}`, marginBottom: 16 }}>
+            <div className="dashboard__card-header">
+              <Heartbeat size={16} weight="bold" /> My Position
+            </div>
+
+            {/* Tokens held */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: "1.4rem", fontWeight: 900, color: "var(--text)" }}>
+                {posTokens >= 1000 ? `${(posTokens / 1000).toFixed(1)}K` : posTokens.toFixed(0)} tokens
+              </div>
+              <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600, marginTop: 2 }}>
+                Value: {formatSol(posValueSol)} SOL
+                {solPriceUsd > 0 && <span> (~{formatUsd(solToUsd(posValueSol, solPriceUsd))})</span>}
+              </div>
+            </div>
+
+            {/* P&L */}
+            <div style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "10px 12px", borderRadius: 6,
+              background: posPnlSol >= 0 ? "rgba(34, 197, 94, 0.08)" : "rgba(239, 68, 68, 0.08)",
+              border: `1px solid ${posPnlSol >= 0 ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.2)"}`,
+              marginBottom: 12,
+            }}>
+              <div>
+                <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>P&L</div>
+                <div style={{ fontSize: "1rem", fontWeight: 900, color: posPnlColor }}>
+                  {posPnlSol >= 0 ? "+" : ""}{formatSol(posPnlSol)} SOL
+                </div>
+                {solPriceUsd > 0 && (
+                  <div style={{ fontSize: "0.75rem", fontWeight: 700, color: posPnlColor, opacity: 0.8 }}>
+                    {posPnlSol >= 0 ? "+" : ""}{formatUsd(solToUsd(posPnlSol, solPriceUsd))}
+                  </div>
+                )}
+              </div>
+              <div style={{
+                fontSize: "1.1rem", fontWeight: 900, color: posPnlColor,
+                display: "flex", alignItems: "center", gap: 4,
+              }}>
+                {posPnlSol >= 0 ? <TrendUp size={18} weight="bold" /> : <TrendDown size={18} weight="bold" />}
+                {posPnlPct >= 0 ? "+" : ""}{posPnlPct.toFixed(1)}%
+              </div>
+            </div>
+
+            {/* Entry price vs Current */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <div style={{ background: "var(--card-bg)", padding: "8px 10px", borderRadius: 6 }}>
+                <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>Avg Entry</div>
+                <div style={{ fontSize: "0.85rem", fontWeight: 800 }}>{formatSol(posAvgEntry)} SOL</div>
+              </div>
+              <div style={{ background: "var(--card-bg)", padding: "8px 10px", borderRadius: 6 }}>
+                <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>Current</div>
+                <div style={{ fontSize: "0.85rem", fontWeight: 800, color: priceNum > posAvgEntry ? "#22c55e" : priceNum < posAvgEntry ? "#ef4444" : "var(--text)" }}>
+                  {formatSol(priceNum)} SOL {priceNum > posAvgEntry ? "↑" : priceNum < posAvgEntry ? "↓" : ""}
+                </div>
+              </div>
+            </div>
+
+            {/* Trade summary */}
+            <div style={{ marginTop: 10, fontSize: "0.7rem", color: "var(--text-muted)", display: "flex", justifyContent: "space-between" }}>
+              <span>Invested: {formatSol(posInvestedSol)} SOL</span>
+              <span>{holderPosition.buy_count} buy{holderPosition.buy_count > 1 ? "s" : ""}{holderPosition.sell_count > 0 ? ` · ${holderPosition.sell_count} sell${holderPosition.sell_count > 1 ? "s" : ""}` : ""}</span>
+            </div>
+          </div>
+        )}
 
         {/* How it works — trust & fairness */}
         <div className="protection-widget">
