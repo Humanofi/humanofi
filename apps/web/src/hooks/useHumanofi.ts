@@ -411,6 +411,8 @@ function parseAnchorError(err: unknown): string {
     }
     // Check for common wallet/network errors
     if (msg.includes("User rejected")) return "Transaction cancelled.";
+    if (msg.includes("already been processed"))
+      return "Transaction already sent — refresh the page.";
     // Check simulation errors FIRST
     if (msg.includes("Simulation failed"))
       return extractSimError(msg);

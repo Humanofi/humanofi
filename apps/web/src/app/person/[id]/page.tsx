@@ -132,20 +132,30 @@ export default function PersonPublicPage() {
   const daysUntilClaim = canClaimNow ? 0 : Math.ceil((nextClaimAt - now) / 86400);
 
   const handleClaimFees = useCallback(async () => {
-    if (!creator?.mint_address || !claimCreatorFees) return;
+    if (!creator?.mint_address || !claimCreatorFees || claiming) return;
     setClaiming(true);
     try {
-      await claimCreatorFees(new PublicKey(creator.mint_address));
-      // Refresh vault data after claim
+      const sig = await claimCreatorFees(new PublicKey(creator.mint_address));
+      if (sig) {
+        // Immediately update UI to show 0 unclaimed (optimistic update)
+        setFeeVault((prev: Record<string, unknown> | null) => prev ? {
+          ...prev,
+          totalClaimed: prev.totalAccumulated,
+          lastClaimAt: Math.floor(Date.now() / 1000),
+        } : prev);
+      }
+      // Then confirm with on-chain data after a delay
       setTimeout(async () => {
-        const updated = await fetchCreatorFeeVault(new PublicKey(creator.mint_address));
-        setFeeVault(updated);
+        try {
+          const updated = await fetchCreatorFeeVault(new PublicKey(creator!.mint_address));
+          if (updated) setFeeVault(updated);
+        } catch { /* ignore */ }
         setClaiming(false);
-      }, 3000);
+      }, 5000);
     } catch {
       setClaiming(false);
     }
-  }, [creator?.mint_address, claimCreatorFees, fetchCreatorFeeVault]);
+  }, [creator?.mint_address, claimCreatorFees, fetchCreatorFeeVault, claiming]);
 
   /** Record a verified trade in Supabase */
   const recordTrade = useCallback(async (txSig: string, tradeType: "buy" | "sell", solAmt: number, tokenAmt: number) => {
