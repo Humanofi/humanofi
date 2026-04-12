@@ -180,9 +180,14 @@ export default function PersonPublicPage() {
       .catch(() => {});
   }, [walletAddress, creator?.mint_address, isCreator]);
 
-  // Holder position calculations
+  // Holder position calculations — using LIQUIDATION VALUE (estimateSell)
   const posTokens = holderPosition ? holderPosition.balance / 1e6 : 0;
-  const posValueSol = posTokens * priceNum;
+  const posTokensBase = holderPosition ? holderPosition.balance : 0;
+  // Liquidation value = actual SOL you'd get by selling now (after fees + slippage)
+  const posLiquidation = posTokensBase > 0 && rawX > 0 && rawY > 0 && rawK > 0
+    ? estimateSell(rawX, rawY, rawK, posTokensBase)
+    : null;
+  const posValueSol = posLiquidation ? posLiquidation.solNet / 1e9 : 0;
   const posInvestedSol = holderPosition ? holderPosition.sol_invested / 1e9 : 0;
   const posRecoveredSol = holderPosition ? holderPosition.sol_recovered / 1e9 : 0;
   const posPnlSol = posValueSol + posRecoveredSol - posInvestedSol;
@@ -269,19 +274,22 @@ export default function PersonPublicPage() {
       setTradeTxSig(txSig);
       setTradeStep("verifying");
 
-      // Calculate correct amounts for trade recording
+      // Calculate correct amounts using bonding curve math
       let solAmt: number;
       let tokenAmt: number;
 
       if (tab === "buy") {
-        // parsedAmount = SOL spent
+        // parsedAmount = SOL spent (human-readable)
         solAmt = parsedAmount;
-        tokenAmt = parsedAmount / (priceNum || 1); // estimate tokens received
+        // Use estimateBuy for accurate 86% buyer tokens (not naive division)
+        const est = estimateBuy(rawX, rawY, rawK, Math.floor(parsedAmount * 1e9));
+        tokenAmt = est.tokensBuyer / 1e6; // buyer's 86% share in human tokens
       } else {
-        // parsedAmount = tokens sold (human-readable, not base units)
+        // parsedAmount = tokens sold (human-readable)
         tokenAmt = parsedAmount;
-        // Estimate SOL received from selling those tokens
-        solAmt = parsedAmount * (priceNum || 0); // tokens × price per token = SOL
+        // Use estimateSell for accurate SOL net (after fees + slippage)
+        const est = estimateSell(rawX, rawY, rawK, Math.floor(parsedAmount * 1e6));
+        solAmt = est.solNet / 1e9; // SOL net in human units
       }
 
       await recordTrade(txSig, tab, solAmt, tokenAmt);
@@ -293,7 +301,7 @@ export default function PersonPublicPage() {
       setTradeStep("error");
       setTradeError(msg);
     }
-  }, [authenticated, login, creator, buyTokens, sellTokens, recordTrade, priceNum]);
+  }, [authenticated, login, creator, buyTokens, sellTokens, recordTrade, priceNum, rawX, rawY, rawK]);
 
   /* ════════════════════════════════════════════
      CREATOR DASHBOARD VIEW
@@ -568,7 +576,7 @@ export default function PersonPublicPage() {
                 {posTokens >= 1000 ? `${(posTokens / 1000).toFixed(1)}K` : posTokens.toFixed(0)} tokens
               </div>
               <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600, marginTop: 2 }}>
-                Value: {formatSol(posValueSol)} SOL
+                Sell value: {formatSol(posValueSol)} SOL
                 {solPriceUsd > 0 && <span> (~{formatUsd(solToUsd(posValueSol, solPriceUsd))})</span>}
               </div>
             </div>

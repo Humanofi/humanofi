@@ -8,7 +8,7 @@ import Link from "next/link";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
 import { useSolPrice } from "@/hooks/useSolPrice";
-import { formatUsd, solToUsd } from "@/lib/price";
+import { formatUsd, solToUsd, estimateSell } from "@/lib/price";
 import { PublicKey } from "@solana/web3.js";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -109,7 +109,8 @@ export default function PortfolioPage() {
       });
   }, [walletAddress]);
 
-  // ── 2. Enrich with live prices (client-side, batch) ──
+  // ── 2. Enrich with LIQUIDATION VALUES (client-side, batch) ──
+  // Uses estimateSell() — the REAL SOL you'd get by selling (after fees + slippage)
   const enrichPrices = useCallback(async () => {
     if (positions.length === 0 || !fetchBondingCurve) return;
 
@@ -123,10 +124,13 @@ export default function PortfolioPage() {
           const c = curve as any;
           const x = c.x.toNumber();
           const y = c.y.toNumber();
-          const currentPrice = (x / y) * 1e6 / 1e9; // SOL per token
+          const k = Number(c.k.toString());
+          const currentPrice = (x / y) * 1e6 / 1e9; // spot price (display only)
 
-          const tokens = pos.balance / 1e6;
-          const valueSol = tokens * currentPrice;
+          // LIQUIDATION VALUE: what you'd actually get by selling all your tokens
+          const sellEst = estimateSell(x, y, k, pos.balance);
+          const valueSol = sellEst.solNet / 1e9; // SOL net after fees + slippage
+
           const investedSol = pos.sol_invested / 1e9;
           const recoveredSol = pos.sol_recovered / 1e9;
           const pnlSol = valueSol + recoveredSol - investedSol;
@@ -246,7 +250,7 @@ export default function PortfolioPage() {
               textAlign: "right",
             }}>
               <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Total Value
+                Sell Value
               </div>
               <div style={{ fontSize: "1.6rem", fontWeight: 900 }}>
                 {formatSol(totalValueSol)} SOL
