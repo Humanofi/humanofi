@@ -142,8 +142,11 @@ async function processEvent(supabase: any, event: any) {
 
     // ── Price Snapshot ──
     // Log a price snapshot for chart history after each trade.
-    // We read the bonding curve state from accountData if available,
-    // otherwise compute from holder count as a proxy.
+    // Price snapshot: only record holder count from Helius webhook.
+    // Accurate price snapshots are recorded by POST /api/price-snapshot
+    // (called from the frontend after each trade with x/y from bonding curve).
+    // The webhook doesn't have access to x/y, so any price calculation here
+    // would be inaccurate (solReserve/supply ≠ x/y spot price).
     try {
       const { count: holderCount } = await supabase
         .from("token_holders")
@@ -151,45 +154,15 @@ async function processEvent(supabase: any, event: any) {
         .eq("mint_address", mint)
         .gt("balance", 0);
 
-      // Try to extract bonding curve data from account changes
-      const accountData = event.accountData || [];
-      let priceSol = 0;
-      let supply = 0;
-      let solReserve = 0;
-
-      // Look for bonding curve PDA in account data
-      for (const acc of accountData) {
-        if (acc.tokenBalanceChanges) {
-          for (const change of acc.tokenBalanceChanges) {
-            if (change.mint === mint) {
-              supply = Math.abs(change.rawTokenAmount?.tokenAmount || 0);
-            }
-          }
-        }
-        if (acc.nativeBalanceChange && Math.abs(acc.nativeBalanceChange) > 0) {
-          solReserve = Math.abs(acc.nativeBalanceChange);
-          // Estimate price from SOL exchanged / tokens exchanged
-          if (supply > 0) {
-            priceSol = solReserve / supply;
-          }
-        }
-      }
-
-      // If we couldn't extract price from account data, skip snapshot
-      // (the on-chain bonding curve has x/y for accurate pricing)
-
-      if (priceSol > 0) {
-        await supabase.from("price_snapshots").insert({
-          mint_address: mint,
-          price_sol: priceSol,
-          supply,
-          sol_reserve: solReserve,
-          holder_count: holderCount || 0,
-          source: "trade",
-        });
+      // Update holder count on creator_tokens for quick access
+      if (holderCount !== null) {
+        await supabase
+          .from("creator_tokens")
+          .update({ holder_count: holderCount })
+          .eq("mint_address", mint);
       }
     } catch (snapshotErr) {
-      console.warn("[Helius] Price snapshot failed:", snapshotErr);
+      console.warn("[Helius] Holder count update failed:", snapshotErr);
       // Non-blocking — don't fail the webhook
     }
   }
