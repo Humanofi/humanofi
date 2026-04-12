@@ -53,16 +53,11 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64, min_sol_out: u64) -> Resul
     // ── Detect if seller is the creator ──
     let is_creator = ctx.accounts.seller.key() == curve.creator;
 
-    // ── UNIVERSAL: Smart Sell Limiter applies to ALL sellers (S-03 fix) ──
-    // This prevents any wallet (including creator with a second wallet)
-    // from causing > 5% price impact in a single sell transaction.
-    let max_sell = curve.get_max_sell_amount()?;
-    require!(
-        token_amount <= max_sell,
-        HumanofiError::SellImpactExceeded
-    );
-
-    // ── CREATOR-SPECIFIC: Additional vesting + cooldown ──
+    // ── CREATOR-SPECIFIC: Vesting + Smart Sell Limiter + Cooldown ──
+    // Regular holders can sell freely — creators have additional restrictions:
+    //   - Year 1: hard lock (0% sellable)
+    //   - Year 2+: max 5% price impact per sell (Smart Sell Limiter)
+    //   - 30-day cooldown between creator sells
     if is_creator {
         // Verify creator vault is provided
         let vault = ctx.accounts.creator_vault.as_ref()
@@ -70,6 +65,13 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64, min_sol_out: u64) -> Resul
 
         // Year 1: hard lock (0% sellable)
         vault.can_sell(now)?;
+
+        // Smart Sell Limiter: max 5% price impact
+        let max_sell = curve.get_max_sell_amount()?;
+        require!(
+            token_amount <= max_sell,
+            HumanofiError::SellImpactExceeded
+        );
     }
 
     // ── REWARD SNAPSHOT (MasterChef pattern) ──

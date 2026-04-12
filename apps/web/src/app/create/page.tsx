@@ -664,10 +664,10 @@ export default function CreatePage() {
                   <div style={{ padding: 20, border: "2px solid var(--border-light)", fontSize: "0.8rem", lineHeight: 1.7, color: "var(--text-muted)", marginBottom: 28 }}>
                     <strong style={{ color: "var(--text)" }}>What happens when you launch:</strong>
                     <ul style={{ marginTop: 8, paddingLeft: 16 }}>
-                      <li>A <strong>Token-2022 mint</strong> is created on Solana</li>
-                      <li><strong>100M tokens</strong> are minted to your vault (locked 1 year)</li>
-                      <li>A <strong>bonding curve</strong> market is activated — anyone can buy/sell</li>
+                      <li>A <strong>Token-2022 mint</strong> is created on Solana (with metadata &amp; freeze)</li>
+                      <li>A <strong>Human Curve™ bonding curve</strong> is activated — anyone can buy/sell</li>
                       <li><strong>${initialLiquidityUSD}</strong> injected as initial liquidity — your token starts with real value</li>
+                      <li>You earn <strong>12.6% of every buy</strong> as Merit Reward tokens (no pre-mint)</li>
                       <li>Your profile goes <strong>live on the marketplace</strong></li>
                       <li>You can start posting in your <strong>Inner Circle</strong> (token-gated feed)</li>
                     </ul>

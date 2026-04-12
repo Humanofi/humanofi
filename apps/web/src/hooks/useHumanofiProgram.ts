@@ -26,10 +26,31 @@ export function useHumanofiProgram() {
   const { authenticated } = usePrivy();
   const { wallets, ready } = useWallets();
 
-  // Use the first available Solana wallet (embedded or external like Phantom)
+  // Prefer external wallets (Phantom, Solflare) over Privy embedded wallet.
+  // Privy's embedded wallet has 0 SOL by default — using it for transactions fails.
   const activeWallet = useMemo(() => {
     if (!ready || wallets.length === 0) return null;
-    return wallets[0]; // First connected wallet
+
+    // Log all available wallets for debugging
+    if (wallets.length > 0) {
+      console.log(`[Humanofi] Available wallets (${wallets.length}):`,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        wallets.map((w: any, i: number) => `[${i}] ${w.address.slice(0, 8)}... type=${w.walletClientType || 'unknown'}`).join(', ')
+      );
+    }
+
+    // Prefer external wallet (Phantom, Solflare, etc.) over embedded
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const external = wallets.find((w: any) => w.walletClientType !== 'privy');
+    if (external) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      console.log(`[Humanofi] Using external wallet: ${external.address.slice(0, 8)}... (${(external as any).walletClientType})`);
+      return external;
+    }
+
+    // Fallback to first available (embedded)
+    console.log(`[Humanofi] Using embedded wallet: ${wallets[0].address.slice(0, 8)}...`);
+    return wallets[0];
   }, [ready, wallets]);
 
   const walletAddress = activeWallet?.address || null;

@@ -95,6 +95,29 @@ pub fn handler(
         uri,
     )?;
 
+    // ---- Top-up mint rent after metadata realloc ----
+    // token_metadata_initialize expands the mint account to store name/symbol/uri.
+    // The expanded account needs more lamports for rent-exemption.
+    // Without this, the runtime rejects: "account (1) with insufficient funds for rent".
+    {
+        let mint_info = ctx.accounts.mint.to_account_info();
+        let required_rent = Rent::get()?.minimum_balance(mint_info.data_len());
+        let current_lamports = mint_info.lamports();
+        if current_lamports < required_rent {
+            let deficit = required_rent - current_lamports;
+            anchor_lang::system_program::transfer(
+                CpiContext::new(
+                    ctx.accounts.system_program.to_account_info(),
+                    anchor_lang::system_program::Transfer {
+                        from: ctx.accounts.creator.to_account_info(),
+                        to: mint_info,
+                    },
+                ),
+                deficit,
+            )?;
+        }
+    }
+
     // ---- Transfer initial liquidity: creator → bonding curve PDA ----
     anchor_lang::system_program::transfer(
         CpiContext::new(

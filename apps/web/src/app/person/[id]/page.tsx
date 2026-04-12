@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import BondingCurveChart from "@/components/BondingCurveChart";
+import { useState, useCallback, useRef } from "react";
+import BondingCurveChart, { type BondingCurveChartHandle } from "@/components/BondingCurveChart";
+import TradeModal, { type TradeStep } from "@/components/TradeModal";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
 import { useSolPrice } from "@/hooks/useSolPrice";
@@ -26,7 +27,10 @@ const TREASURY = new PublicKey(
 function formatSol(n: number) {
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
   if (n >= 1) return n.toFixed(2);
-  return n.toFixed(4);
+  if (n >= 0.0001) return n.toFixed(4);
+  if (n >= 0.000001) return n.toFixed(6);
+  if (n > 0) return n.toExponential(2);
+  return "0";
 }
 
 function daysUntil(dateStr: string): number {
@@ -53,10 +57,16 @@ export default function PersonPublicPage() {
   const [activeTab, setActiveTab] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("");
 
-  const { creator, curveData, mockPerson, isCreator, tokenColor } = usePerson();
+  const { creator, curveData, liveCurve, mockPerson, isCreator, tokenColor, refreshCurve, chartRef } = usePerson();
   const { authenticated, login } = usePrivy();
-  const { buyTokens, sellTokens } = useHumanofi();
+  const { buyTokens, sellTokens, walletAddress } = useHumanofi();
   const { priceUsd: solPriceUsd } = useSolPrice();
+
+  // Trade modal state
+  const [tradeModalOpen, setTradeModalOpen] = useState(false);
+  const [tradeStep, setTradeStep] = useState<TradeStep>("idle");
+  const [tradeTxSig, setTradeTxSig] = useState<string | undefined>();
+  const [tradeError, setTradeError] = useState<string | undefined>();
 
   const isReal = !!creator;
 
@@ -66,20 +76,21 @@ export default function PersonPublicPage() {
   const activityStatus = creator?.activity_status || "moderate";
   const displayNameShort = (creator?.display_name || mockPerson?.name || "").split(" ")[0];
 
-  // Raw on-chain values (Human Curve™)
-  const rawX = curveData ? curveData.x.toNumber() : 0;
-  const rawY = curveData ? curveData.y.toNumber() : 0;
-  const rawK = curveData ? Number(curveData.k.toString()) : 0;
+  // Use live WebSocket data if available, fallback to initial fetch
+  const rawX = liveCurve ? liveCurve.x : curveData ? curveData.x.toNumber() : 0;
+  const rawY = liveCurve ? liveCurve.y : curveData ? curveData.y.toNumber() : 0;
+  const rawK = liveCurve ? Number(liveCurve.k) : curveData ? Number(curveData.k.toString()) : 0;
 
-  // Human-readable values
-  // spotPrice returns lamports per base unit, ×10^6 and /10^9 for SOL per whole token
-  const priceNum = curveData
-    ? (rawX / rawY) * 1e6 / 1e9
+  const priceNum = liveCurve ? liveCurve.priceSol
+    : curveData ? (curveData.x.toNumber() / curveData.y.toNumber()) * 1e6 / 1e9
     : mockPerson?.priceNum || 0;
 
-  const totalSupply = curveData ? (curveData.supplyPublic.toNumber() + curveData.supplyCreator.toNumber()) / 1e6 : 0;
-  const solReserve = curveData ? curveData.solReserve.toNumber() / 1e9 : 0;
-  const marketCap = totalSupply * priceNum;
+  const supplyPublic = liveCurve ? liveCurve.supplyPublic / 1e6 : curveData ? curveData.supplyPublic.toNumber() / 1e6 : 0;
+  const supplyCreator = liveCurve ? liveCurve.supplyCreator / 1e6 : curveData ? curveData.supplyCreator.toNumber() / 1e6 : 0;
+  const supplyProtocol = liveCurve ? liveCurve.supplyProtocol / 1e6 : curveData ? curveData.supplyProtocol.toNumber() / 1e6 : 0;
+  const totalSupply = supplyPublic + supplyCreator + supplyProtocol;
+  const solReserve = liveCurve ? liveCurve.solReserve / 1e9 : curveData ? curveData.solReserve.toNumber() / 1e9 : 0;
+  const marketCap = totalSupply > 0 ? totalSupply * priceNum : solReserve;
 
   const parsedAmt = parseFloat(amount) || 0;
   const estimateReceive =
@@ -106,31 +117,98 @@ export default function PersonPublicPage() {
   const scoreColor = activityScore >= 85 ? "#22c55e" : activityScore >= 65 ? "#3b82f6" : activityScore >= 45 ? "#f59e0b" : activityScore >= 25 ? "#ef4444" : "#6b7280";
   const scoreLabel = activityScore >= 85 ? "Thriving" : activityScore >= 65 ? "Active" : activityScore >= 45 ? "Moderate" : activityScore >= 25 ? "Low" : "Dormant";
 
+  /** Record a verified trade in Supabase */
+  const recordTrade = useCallback(async (txSig: string, tradeType: "buy" | "sell", solAmt: number, tokenAmt: number) => {
+    if (!creator || !walletAddress) return;
+    try {
+      // Wait for on-chain state to update
+      await new Promise(r => setTimeout(r, 2000));
+      await refreshCurve();
+
+      // Read fresh price from live curve
+      const freshPrice = liveCurve?.priceSol || priceNum;
+
+      await fetch("/api/trades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mintAddress: creator.mint_address,
+          tradeType,
+          walletAddress,
+          solAmount: Math.floor(solAmt * 1e9),
+          tokenAmount: Math.floor(tokenAmt * 1e6),
+          priceSol: freshPrice,
+          txSignature: txSig,
+          xAfter: rawX,
+          yAfter: rawY,
+          kAfter: rawK,
+          solReserve: Math.floor(solReserve * 1e9),
+          supplyPublic: Math.floor(supplyPublic * 1e6),
+        }),
+      });
+    } catch (err) {
+      console.warn("[Trade] Failed to record:", err);
+    }
+  }, [creator, walletAddress, refreshCurve, liveCurve, priceNum, rawX, rawY, rawK, solReserve, supplyPublic]);
+
   const handleTrade = useCallback(async () => {
     if (!authenticated) { login(); return; }
     const parsedAmount = parseFloat(amount);
     if (!parsedAmount || parsedAmount <= 0) { toast.error("Enter a valid amount."); return; }
     if (!creator) { toast.error("This is a demo profile — trading not available."); return; }
 
+    // Open modal
+    setTradeModalOpen(true);
+    setTradeStep("signing");
+    setTradeTxSig(undefined);
+    setTradeError(undefined);
+
     try {
+      let txSig: string | null = null;
+
       if (activeTab === "buy") {
-        await buyTokens({
+        txSig = await buyTokens({
           mint: new PublicKey(creator.mint_address),
           solAmount: parsedAmount,
           creatorWallet: new PublicKey(creator.wallet_address),
           treasury: TREASURY,
         });
       } else {
-        await sellTokens({
+        txSig = await sellTokens({
           mint: new PublicKey(creator.mint_address),
           tokenAmount: parsedAmount * 1_000_000,
           creatorWallet: new PublicKey(creator.wallet_address),
           treasury: TREASURY,
         });
       }
+
+      if (!txSig) {
+        setTradeStep("error");
+        setTradeError("Transaction was not signed.");
+        return;
+      }
+
+      // TX signed → confirming
+      setTradeStep("confirming");
+      setTradeTxSig(txSig);
+
+      // Wait for confirmation (TX is already confirmed when .rpc() resolves)
+      // Now verify and record
+      setTradeStep("verifying");
+
+      // Record with cryptographic proof
+      const tokenAmt = activeTab === "buy" ? parsedAmount / (priceNum || 1) : parsedAmount;
+      await recordTrade(txSig, activeTab, parsedAmount, tokenAmt);
+
+      setTradeStep("complete");
       setAmount("");
-    } catch { /* handled */ }
-  }, [authenticated, login, amount, creator, activeTab, buyTokens, sellTokens]);
+
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Transaction failed";
+      setTradeStep("error");
+      setTradeError(msg);
+    }
+  }, [authenticated, login, amount, creator, activeTab, buyTokens, sellTokens, recordTrade, priceNum]);
 
   /* ════════════════════════════════════════════
      CREATOR DASHBOARD VIEW
@@ -191,7 +269,7 @@ export default function PersonPublicPage() {
               <div className="dashboard__card-header">
                 <ChartLineUp size={16} weight="bold" /> Price History
               </div>
-              <BondingCurveChart mintAddress={creator.mint_address} currentPrice={priceNum} change={mockPerson?.change || 0} height={260} />
+              <BondingCurveChart ref={chartRef} mintAddress={creator.mint_address} currentPrice={priceNum} height={260} />
             </section>
 
             <section className="dashboard__card">
@@ -316,7 +394,7 @@ export default function PersonPublicPage() {
         <div className="trade-widget" style={{ borderColor: tokenColor }}>
           <div className="trade-widget__header">
             <span className="trade-widget__title">{isReal ? "Trade" : "Demo Mode"}</span>
-            <span className="trade-widget__price" style={{ color: tokenColor }}>{formatSol(priceNum)} SOL</span>
+            <span className="trade-widget__price" style={{ color: tokenColor }}>{priceNum > 0 ? formatSol(priceNum) : "—"} SOL</span>
           </div>
 
           <div className="trade-widget__tabs">
@@ -354,7 +432,7 @@ export default function PersonPublicPage() {
             <div className="trade-widget__stat">
               <CurrencyDollar size={14} weight="bold" />
               <span>Price</span>
-              <strong>{curveData ? `${priceNum.toFixed(4)} SOL` : mockPerson?.price || "—"}</strong>
+              <strong>{curveData ? `${formatSol(priceNum)} SOL` : mockPerson?.price || "—"}</strong>
               {solPriceUsd > 0 && <span className="trade-widget__stat-sub">{formatUsd(solToUsd(priceNum, solPriceUsd))}</span>}
             </div>
             <div className="trade-widget__stat">
@@ -416,7 +494,7 @@ export default function PersonPublicPage() {
       <div className="profile-main">
         {/* Chart */}
         <section className="profile-section">
-          <BondingCurveChart mintAddress={creator?.mint_address || mockPerson?.id} currentPrice={priceNum} change={mockPerson?.change || 0} height={260} />
+          <BondingCurveChart ref={chartRef} mintAddress={creator?.mint_address || mockPerson?.id} currentPrice={priceNum} height={260} />
         </section>
 
         {/* YouTube Video */}
@@ -490,6 +568,21 @@ export default function PersonPublicPage() {
         {/* Latest Public Post */}
         {isReal && creator && <LatestPublicPost creatorMint={creator.mint_address} />}
       </div>
+
+      {/* ── Trade Processing Modal ─ */}
+      <TradeModal
+        isOpen={tradeModalOpen}
+        step={tradeStep}
+        tradeType={activeTab}
+        amount={amount || "0"}
+        tokenSymbol={creator?.display_name?.split(" ")[0] || mockPerson?.name?.split(" ")[0] || "TOKEN"}
+        txSignature={tradeTxSig}
+        errorMessage={tradeError}
+        onClose={() => {
+          setTradeModalOpen(false);
+          setTradeStep("idle");
+        }}
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, use } from "react";
+import { createContext, useContext, useEffect, useState, use, useCallback, useRef } from "react";
 import Topbar from "@/components/Topbar";
 import Footer from "@/components/Footer";
 import Image from "next/image";
@@ -8,6 +8,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
+import { useBondingCurveWs, type LiveCurveData } from "@/hooks/useBondingCurveWs";
+import type { BondingCurveChartHandle } from "@/components/BondingCurveChart";
 import { PublicKey } from "@solana/web3.js";
 import { getPersonById, Person } from "@/lib/mockData";
 
@@ -64,23 +66,29 @@ export interface BondingCurveData {
 interface PersonContextType {
   creator: CreatorData | null;
   curveData: BondingCurveData | null;
+  liveCurve: LiveCurveData | null;
   isHolder: boolean;
   isCreator: boolean;
   loading: boolean;
   mockPerson: Person | null;
   displayName: string;
   tokenColor: string;
+  refreshCurve: () => Promise<void>;
+  chartRef: React.RefObject<BondingCurveChartHandle | null>;
 }
 
 const PersonContext = createContext<PersonContextType>({
   creator: null,
   curveData: null,
+  liveCurve: null,
   isHolder: false,
   isCreator: false,
   loading: true,
   mockPerson: null,
   displayName: "",
   tokenColor: "#1144ff",
+  refreshCurve: async () => {},
+  chartRef: { current: null },
 });
 
 export function usePerson() {
@@ -109,6 +117,19 @@ export default function PersonLayout({
   const mockPerson = getPersonById(id) || null;
 
   // ── Fetch creator data from Supabase ──
+  const mintRef = useRef<string | null>(null);
+  const chartRef = useRef<BondingCurveChartHandle | null>(null);
+
+  const refreshCurve = useCallback(async () => {
+    if (!mintRef.current) return;
+    try {
+      const curve = await fetchBondingCurve(new PublicKey(mintRef.current));
+      if (curve) setCurveData(curve as unknown as BondingCurveData);
+    } catch (err) {
+      console.warn("Failed to refresh curve:", err);
+    }
+  }, [fetchBondingCurve]);
+
   useEffect(() => {
     async function fetchCreator() {
       setLoading(true);
@@ -121,6 +142,7 @@ export default function PersonLayout({
             const found = data.creators?.find((c: CreatorData) => c.mint_address === id);
             if (found) {
               setCreator(found);
+              mintRef.current = found.mint_address;
               const curve = await fetchBondingCurve(new PublicKey(found.mint_address));
               if (curve) setCurveData(curve as unknown as BondingCurveData);
             }
@@ -134,6 +156,20 @@ export default function PersonLayout({
     }
     fetchCreator();
   }, [id, fetchBondingCurve]);
+
+  // ── WebSocket: live bonding curve updates ──
+  const [liveCurve, setLiveCurve] = useState<LiveCurveData | null>(null);
+  
+  const handleWsUpdate = useCallback((data: LiveCurveData) => {
+    setLiveCurve(data);
+    // Push live price to chart
+    chartRef.current?.pushPrice(data.priceSol);
+  }, []);
+
+  useBondingCurveWs({
+    mintAddress: mintRef.current,
+    onUpdate: handleWsUpdate,
+  });
 
   // ── Check if user is a holder / is the creator ──
   useEffect(() => {
@@ -240,7 +276,7 @@ export default function PersonLayout({
   }[activityStatus] || { color: "#f59e0b", label: "Moderate", icon: "○" };
 
   return (
-    <PersonContext.Provider value={{ creator, curveData, isHolder, isCreator, loading, mockPerson: person, displayName, tokenColor }}>
+    <PersonContext.Provider value={{ creator, curveData, liveCurve, isHolder, isCreator, loading, mockPerson: person, displayName, tokenColor, refreshCurve, chartRef }}>
       <div className="halftone-bg" />
       <Topbar />
 

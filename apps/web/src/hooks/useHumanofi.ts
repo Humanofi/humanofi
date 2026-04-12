@@ -102,10 +102,19 @@ export function useHumanofi() {
         return null;
       }
 
+      // Debug: log wallet and balance
+      try {
+        const bal = await program.provider.connection.getBalance(publicKey);
+        console.log(`[Humanofi] createToken — wallet=${publicKey.toBase58()}, balance=${bal / 1e9} SOL, rpc=${program.provider.connection.rpcEndpoint}`);
+      } catch (e) {
+        console.error("[Humanofi] Failed to check balance:", e);
+      }
+
       const mint = Keypair.generate();
       const [bondingCurve] = deriveBondingCurvePDA(mint.publicKey);
       const [creatorVault] = deriveCreatorVaultPDA(mint.publicKey);
       const [rewardPool] = deriveRewardPoolPDA(mint.publicKey);
+      const [protocolVault] = deriveProtocolVaultPDA(mint.publicKey);
 
       const txPromise = program.methods
         .createToken(
@@ -120,6 +129,7 @@ export function useHumanofi() {
           bondingCurve,
           creatorVault,
           rewardPool,
+          protocolVault,
           tokenProgram: TOKEN_2022_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
@@ -256,7 +266,7 @@ export function useHumanofi() {
           bondingCurve,
           rewardPool,
           holderRewardState,
-          creatorVault: isCreator ? creatorVaultPda : null,
+          creatorVault: isCreator ? creatorVaultPda : (null as unknown as PublicKey),
           sellerTokenAccount,
           creatorWallet: params.creatorWallet,
           treasury: params.treasury,
@@ -400,13 +410,17 @@ export function useHumanofi() {
   // ─── FETCH BONDING CURVE STATE ───
   const fetchBondingCurve = useCallback(
     async (mint: PublicKey) => {
-      if (!program) return null;
+      if (!program) {
+        console.warn("[Humanofi] fetchBondingCurve: program not ready");
+        return null;
+      }
       const [pda] = deriveBondingCurvePDA(mint);
       try {
         const account = await (program.account as Record<string, { fetch: (addr: PublicKey) => Promise<unknown> }>)
           .bondingCurve.fetch(pda);
         return account;
-      } catch {
+      } catch (err) {
+        console.error("[Humanofi] fetchBondingCurve FAILED for", mint.toBase58(), err);
         return null;
       }
     },
@@ -433,6 +447,10 @@ export function useHumanofi() {
 function parseAnchorError(err: unknown): string {
   if (err && typeof err === "object" && "message" in err) {
     const msg = (err as { message: string }).message;
+
+    // ALWAYS log the full error to console for debugging
+    console.error("[Humanofi] Raw error:", msg);
+
     // Extract custom program error messages
     const match = msg.match(/Custom program error: 0x([0-9a-fA-F]+)/);
     if (match) {
@@ -447,12 +465,15 @@ function parseAnchorError(err: unknown): string {
     }
     // Check for common wallet/network errors
     if (msg.includes("User rejected")) return "Transaction cancelled.";
-    if (msg.includes("insufficient") || msg.includes("no record of a prior credit")) 
-      return "Insufficient balance — Top up your wallet with SOL.";
+    // Check simulation errors FIRST (they may contain "insufficient" as a substring)
     if (msg.includes("Simulation failed"))
       return extractSimError(msg);
+    if (msg.includes("no record of a prior credit"))
+      return "Wallet has no SOL on this network — fund your wallet on Devnet.";
+    if (msg.includes("insufficient funds"))
+      return "Insufficient SOL — Top up your wallet.";
     if (msg.includes("blockhash")) return "Transaction expired — Please try again.";
-    return msg.length > 150 ? msg.slice(0, 150) + "..." : msg;
+    return msg.length > 200 ? msg.slice(0, 200) + "..." : msg;
   }
   return "Unknown error";
 }
