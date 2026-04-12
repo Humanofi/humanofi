@@ -10,7 +10,7 @@
 //                 → 30-day cooldown between sells
 //
 // The creator's tokens arrive progressively via the Merit Reward
-// mechanism (12.6% Merit Reward on each buy). Protocol gets 1.4%.
+// mechanism (10% Merit Reward on each buy). Protocol gets 4%.
 //
 // Seeds: ["vault", mint_pubkey]
 

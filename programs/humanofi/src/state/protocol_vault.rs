@@ -3,7 +3,7 @@
 // ========================================
 //
 // Holds the protocol's token treasury for each mint.
-// Tokens accumulate via the 1.4% Merit Fee on each buy.
+// Tokens accumulate via the 4% Merit Fee on each buy.
 // The Price Stabilizer sells from this vault to smooth price spikes.
 //
 // Seeds: ["protocol_vault", mint_pubkey]
