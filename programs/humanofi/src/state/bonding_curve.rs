@@ -231,7 +231,7 @@ impl BondingCurve {
     ///   2. Apply k-deepening: x += depth, k = x * y
     ///   3. Remaining SOL enters the curve
     ///   4. Curve produces Δy_total tokens
-    ///   5. Split: 86% buyer, 12.6% creator, 1.4% protocol
+    ///   5. Split: 86% buyer, 10% creator, 4% protocol
     pub fn calculate_buy(&self, sol_brut: u64) -> Result<BuyResult> {
         require!(sol_brut > 0, HumanofiError::ZeroPurchaseAmount);
         require!(self.y > 0, HumanofiError::PoolDepleted);

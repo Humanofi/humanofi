@@ -9,8 +9,8 @@
 
 const TOTAL_FEE_BPS = 600;          // 6% total fee
 const FEE_DEPTH_BPS = 100;          // 1% k-deepening
-const ALPHA_CREATOR_BPS = 1_260;    // 12.6% Merit Reward → creator
-const ALPHA_PROTOCOL_BPS = 140;     // 1.4% Merit Fee → protocol
+const ALPHA_CREATOR_BPS = 1_000;    // 10% Merit Reward → creator
+const ALPHA_PROTOCOL_BPS = 400;     // 4% Merit Fee → protocol
 const BPS_DENOMINATOR = 10_000;
 const LAMPORTS_PER_SOL = 1_000_000_000;
 const TOKEN_DECIMALS = 1_000_000;     // 10^6
@@ -19,8 +19,8 @@ const TOKEN_DECIMALS = 1_000_000;     // 10^6
 
 export interface BuyEstimate {
   tokensBuyer: number;      // Tokens the buyer receives (86%)
-  tokensCreator: number;    // Tokens the creator receives (12.6% Merit Reward)
-  tokensProtocol: number;   // Tokens the protocol receives (1.4% Merit Fee)
+  tokensCreator: number;    // Tokens the creator receives (10% Merit Reward)
+  tokensProtocol: number;   // Tokens the protocol receives (4% Merit Fee)
   tokensTotal: number;      // Total tokens produced by the curve
   effectivePrice: number;   // SOL per whole token (all-inclusive)
   feeTotal: number;         // Total fee in SOL
@@ -81,7 +81,7 @@ export function estimateBuy(
   const xNew = xAfterDepth + solToCurve;
   const yNew = kAfterDepth / xNew;
 
-  // Step 4: Tokens — merit split 12.6% creator + 1.4% protocol
+  // Step 4: Tokens — merit split 10% creator + 4% protocol
   const tokensTotal = y - yNew;
   const tokensCreator = Math.floor(tokensTotal * ALPHA_CREATOR_BPS / BPS_DENOMINATOR);
   const tokensProtocol = Math.floor(tokensTotal * ALPHA_PROTOCOL_BPS / BPS_DENOMINATOR);
