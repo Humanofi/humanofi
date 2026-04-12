@@ -269,8 +269,22 @@ export default function PersonPublicPage() {
       setTradeTxSig(txSig);
       setTradeStep("verifying");
 
-      const tokenAmt = tab === "buy" ? parsedAmount / (priceNum || 1) : parsedAmount;
-      await recordTrade(txSig, tab, parsedAmount, tokenAmt);
+      // Calculate correct amounts for trade recording
+      let solAmt: number;
+      let tokenAmt: number;
+
+      if (tab === "buy") {
+        // parsedAmount = SOL spent
+        solAmt = parsedAmount;
+        tokenAmt = parsedAmount / (priceNum || 1); // estimate tokens received
+      } else {
+        // parsedAmount = tokens sold (human-readable, not base units)
+        tokenAmt = parsedAmount;
+        // Estimate SOL received from selling those tokens
+        solAmt = parsedAmount * (priceNum || 0); // tokens × price per token = SOL
+      }
+
+      await recordTrade(txSig, tab, solAmt, tokenAmt);
 
       setTradeStep("complete");
 
