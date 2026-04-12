@@ -90,54 +90,22 @@ async function processEvent(supabase: any, event: any) {
 
     if (!mint) continue;
 
-    // Update sender balance (decrease)
+    // Update sender balance (decrease) — atomic operation
     if (fromUserAccount) {
-      // First try to get current balance
-      const { data: sender } = await supabase
-        .from("token_holders")
-        .select("balance")
-        .eq("wallet_address", fromUserAccount)
-        .eq("mint_address", mint)
-        .single();
-
-      const newBalance = Math.max(0, (sender?.balance || 0) - tokenAmount);
-
-      await supabase
-        .from("token_holders")
-        .upsert(
-          {
-            wallet_address: fromUserAccount,
-            mint_address: mint,
-            balance: newBalance,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "wallet_address,mint_address" }
-        );
+      await supabase.rpc("update_holder_balance", {
+        p_wallet: fromUserAccount,
+        p_mint: mint,
+        p_delta: -tokenAmount,
+      });
     }
 
-    // Update receiver balance (increase)
+    // Update receiver balance (increase) — atomic operation
     if (toUserAccount) {
-      const { data: receiver } = await supabase
-        .from("token_holders")
-        .select("balance")
-        .eq("wallet_address", toUserAccount)
-        .eq("mint_address", mint)
-        .single();
-
-      const newBalance = (receiver?.balance || 0) + tokenAmount;
-
-      await supabase
-        .from("token_holders")
-        .upsert(
-          {
-            wallet_address: toUserAccount,
-            mint_address: mint,
-            balance: newBalance,
-            first_bought_at: receiver ? undefined : new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "wallet_address,mint_address" }
-        );
+      await supabase.rpc("update_holder_balance", {
+        p_wallet: toUserAccount,
+        p_mint: mint,
+        p_delta: tokenAmount,
+      });
     }
 
     // ── Price Snapshot ──

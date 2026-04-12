@@ -667,7 +667,7 @@ export default function CreatePage() {
                       <li>A <strong>Token-2022 mint</strong> is created on Solana (with metadata &amp; freeze)</li>
                       <li>A <strong>Human Curve™ bonding curve</strong> is activated — anyone can buy/sell</li>
                       <li><strong>${initialLiquidityUSD}</strong> injected as initial liquidity — your token starts with real value</li>
-                      <li>You earn <strong>10% of every buy</strong> as Merit Reward tokens + <strong>3% fees</strong> in SOL</li>
+                      <li>You get <strong>Founder tokens</strong> at the initial price (locked 1 year) + earn <strong>2% fees</strong> in SOL on every trade</li>
                       <li>Your profile goes <strong>live on the marketplace</strong></li>
                       <li>You can start posting in your <strong>Inner Circle</strong> (token-gated feed)</li>
                     </ul>

@@ -98,8 +98,9 @@ export async function verifyRequest(request: Request): Promise<AuthResult> {
     }
   }
 
-  // ── Fallback: x-wallet-address header (dev/beta only) ──
-  // This is less secure but allows development without Privy secrets.
+  // ── Fallback: x-wallet-address header ──
+  // Only allowed when Privy is NOT configured (local dev without secrets).
+  // When Privy IS configured, x-wallet-address alone is rejected — JWT is required.
   const fallbackWallet = request.headers.get("x-wallet-address");
 
   if (fallbackWallet) {
@@ -114,17 +115,28 @@ export async function verifyRequest(request: Request): Promise<AuthResult> {
     }
 
     if (privy) {
-      // If Privy is configured but no token was sent, that's suspicious
+      // Privy is configured → x-wallet-address without JWT is NOT allowed
+      // This prevents wallet spoofing in production
       console.warn(
-        `[Auth] Request with x-wallet-address but no JWT token. ` +
-        `Wallet: ${fallbackWallet.slice(0, 8)}... — allowing for beta.`
+        `[Auth] REJECTED: x-wallet-address without JWT. ` +
+        `Wallet: ${fallbackWallet.slice(0, 8)}... — send Authorization: Bearer <token>`
       );
+      return {
+        authenticated: false,
+        walletAddress: null,
+        userId: null,
+        error: "JWT required — x-wallet-address alone is not accepted when Privy is configured",
+      };
     }
 
+    // Privy NOT configured (dev mode) → allow x-wallet-address fallback
+    console.warn(
+      `[Auth] Dev mode: using x-wallet-address fallback for ${fallbackWallet.slice(0, 8)}...`
+    );
     return {
       authenticated: true,
       walletAddress: fallbackWallet,
-      userId: null, // No verified user ID in fallback mode
+      userId: null,
     };
   }
 

@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Trash, DotsThreeVertical, Users, TrendUp, PencilSimple, FloppyDisk, X } from "@phosphor-icons/react";
 import MediaPlayer from "../inner-circle/MediaPlayer";
 import { toast } from "sonner";
+import { useAuthFetch } from "@/lib/authFetch";
 
 const REACTIONS = [
   { emoji: "🔥", label: "Fire" },
@@ -78,6 +79,7 @@ export default function PublicPostCard({
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(post.content);
   const [saving, setSaving] = useState(false);
+  const authFetch = useAuthFetch();
 
   const ytMatch = post.content.match(YOUTUBE_REGEX);
   const ytVideoId = ytMatch ? ytMatch[1] : null;
@@ -90,9 +92,9 @@ export default function PublicPostCard({
     if (loading) return;
     setLoading(emoji);
     try {
-      const res = await fetch(`/api/public-posts/${post.id}/reactions`, {
+      const res = await authFetch(`/api/public-posts/${post.id}/reactions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-wallet-address": walletAddress },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emoji }),
       });
       if (res.ok) {
@@ -122,9 +124,8 @@ export default function PublicPostCard({
     if (!onDelete || !walletAddress) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/public-posts/${post.id}`, {
+      const res = await authFetch(`/api/public-posts/${post.id}`, {
         method: "DELETE",
-        headers: { "x-wallet-address": walletAddress },
       });
       if (res.ok) {
         onDelete(post.id);
@@ -145,12 +146,9 @@ export default function PublicPostCard({
     if (!onUpdate || !walletAddress || !editContent.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/public-posts/${post.id}`, {
+      const res = await authFetch(`/api/public-posts/${post.id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-wallet-address": walletAddress,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: editContent.trim() }),
       });
       if (res.ok) {

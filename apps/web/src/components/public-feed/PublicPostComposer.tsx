@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ImageSquare, PaperPlaneTilt } from "@phosphor-icons/react";
 import { toast } from "sonner";
+import { useAuthFetch } from "@/lib/authFetch";
 
 interface PublicPostComposerProps {
   walletAddress: string;
@@ -18,6 +19,7 @@ export default function PublicPostComposer({ walletAddress, canPost, onPublished
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const authFetch = useAuthFetch();
 
   const charCount = content.length;
   const charLimit = 500;
@@ -41,9 +43,8 @@ export default function PublicPostComposer({ walletAddress, canPost, onPublished
         const formData = new FormData();
         formData.append("files", selectedFile);
         // Use inner-circle upload route (works for any file)
-        const uploadRes = await fetch(`/api/inner-circle/public/upload`, {
+        const uploadRes = await authFetch(`/api/inner-circle/public/upload`, {
           method: "POST",
-          headers: { "x-wallet-address": walletAddress },
           body: formData,
         });
         if (uploadRes.ok) {
@@ -51,9 +52,9 @@ export default function PublicPostComposer({ walletAddress, canPost, onPublished
         }
       }
 
-      const res = await fetch("/api/public-posts", {
+      const res = await authFetch("/api/public-posts", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-wallet-address": walletAddress },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: content.trim(), mediaUrls }),
       });
 

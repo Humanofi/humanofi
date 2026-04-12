@@ -13,12 +13,9 @@
         "Buy tokens from the Human Curve™.",
         "",
         "- CPI Guard: rejects program-to-program calls (anti-bot)",
-        "- SOL → Human Curve calculation (k-deepening + merit split)",
-        "- Fees: 3% creator vault + 2% protocol + 1% k-depth",
-        "- Mint 86% tokens → buyer ATA (frozen)",
-        "- Mint 10% tokens → creator ATA (Merit Reward, frozen)",
-        "- Mint 4% tokens → protocol ATA (Merit Fee, frozen)",
-        "- Price Stabilizer: auto-sells protocol tokens if price spiked > 2%",
+        "- SOL → Human Curve calculation (k-deepening)",
+        "- Fees: 2% creator vault + 2% protocol + 1% k-depth (5% total)",
+        "- Mint 100% tokens → buyer ATA (frozen)",
         "- Slippage protection: reverts if tokens received < min_tokens_out"
       ],
       "discriminator": [
@@ -48,8 +45,7 @@
           "writable": true,
           "relations": [
             "bonding_curve",
-            "creator_fee_vault",
-            "protocol_vault"
+            "creator_fee_vault"
           ]
         },
         {
@@ -80,7 +76,7 @@
         {
           "name": "creator_fee_vault",
           "docs": [
-            "Creator Fee Vault PDA — accumulates 3% creator fees"
+            "Creator Fee Vault PDA — accumulates 2% creator fees"
           ],
           "writable": true,
           "pda": {
@@ -100,40 +96,6 @@
                   101,
                   101,
                   115
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "mint"
-              }
-            ]
-          }
-        },
-        {
-          "name": "protocol_vault",
-          "docs": [
-            "Protocol Vault PDA — tracks protocol token balance"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  112,
-                  114,
-                  111,
-                  116,
-                  111,
-                  99,
-                  111,
-                  108,
-                  95,
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
                 ]
               },
               {
@@ -235,137 +197,9 @@
           }
         },
         {
-          "name": "creator_token_account",
-          "docs": [
-            "Creator's token account for Merit Reward (init_if_needed)"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "creator_wallet"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            }
-          }
-        },
-        {
-          "name": "protocol_token_account",
-          "docs": [
-            "Protocol's token account for Merit Fee (init_if_needed)",
-            "Authority = bonding_curve PDA (so the program can burn for Stabilizer)"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "bonding_curve"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            }
-          }
-        },
-        {
-          "name": "creator_wallet",
-          "docs": [
-            "Creator's wallet (ATA authority for Merit tokens)"
-          ],
-          "writable": true
-        },
-        {
           "name": "treasury",
           "docs": [
-            "Protocol treasury wallet (receives 2% of fees + Stabilizer revenue)"
+            "Protocol treasury wallet (receives 2% of fees)"
           ],
           "writable": true
         },
@@ -441,7 +275,7 @@
         {
           "name": "creator_fee_vault",
           "docs": [
-            "Creator Fee Vault PDA (SOL stored as lamports)"
+            "Creator Fee Vault PDA — accumulates 2% of trading fees (SOL stored as lamports)"
           ],
           "writable": true,
           "pda": {
@@ -483,20 +317,18 @@
     {
       "name": "create_token",
       "docs": [
-        "Creates a new personal token with the Human Curve™.",
+        "Creates a new personal token with the Human Curve™ + Founder Buy.",
         "",
         "Initializes:",
         "- Token-2022 Mint (freeze_authority = bonding_curve PDA)",
         "- BondingCurve PDA (Human Curve™: x · y = k, SOL reserve)",
         "- CreatorVault PDA (vesting + Smart Sell Limiter tracker)",
-        "- CreatorFeeVault PDA (accumulates 3% of trading fees)",
-        "- ProtocolVault PDA (Stabilizer token treasury)",
+        "- CreatorFeeVault PDA (accumulates 2% of trading fees)",
+        "- ProtocolVault PDA (kept for compat, empty in v3.6)",
         "- On-chain metadata (name, symbol, image URI)",
-        "- Initial SOL liquidity injected into bonding curve reserve",
         "",
-        "No tokens are minted at creation. Creator earns tokens",
-        "via the Merit Reward (10%) on each subsequent buy.",
-        "Protocol earns 4% for the Price Stabilizer."
+        "Founder Buy: Creator buys tokens at P₀ using initial_liquidity.",
+        "3% fee (2% protocol + 1% depth). Tokens locked via CreatorVault."
       ],
       "discriminator": [
         84,
@@ -580,7 +412,7 @@
         {
           "name": "creator_fee_vault",
           "docs": [
-            "Creator Fee Vault PDA — accumulates 3% of trading fees."
+            "Creator Fee Vault PDA — accumulates 2% of trading fees."
           ],
           "writable": true,
           "pda": {
@@ -612,7 +444,7 @@
         {
           "name": "protocol_vault",
           "docs": [
-            "Protocol Vault PDA — holds protocol's Merit Fee tokens."
+            "Protocol Vault PDA — kept for backward compatibility (empty in v3.6)."
           ],
           "writable": true,
           "pda": {
@@ -642,6 +474,73 @@
               }
             ]
           }
+        },
+        {
+          "name": "creator_token_account",
+          "docs": [
+            "Creator's token account for Founder Buy tokens (init, frozen)"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "account",
+                "path": "token_program"
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                140,
+                151,
+                37,
+                143,
+                78,
+                36,
+                137,
+                241,
+                187,
+                61,
+                16,
+                41,
+                20,
+                142,
+                13,
+                131,
+                11,
+                90,
+                19,
+                153,
+                218,
+                255,
+                16,
+                132,
+                4,
+                142,
+                123,
+                216,
+                219,
+                233,
+                248,
+                89
+              ]
+            }
+          }
+        },
+        {
+          "name": "treasury",
+          "docs": [
+            "Protocol treasury wallet (receives 2% Founder Buy fee)"
+          ],
+          "writable": true
         },
         {
           "name": "token_program",
@@ -688,10 +587,12 @@
       "docs": [
         "Sell tokens back via the Human Curve™.",
         "",
-        "- CPI Guard: rejects program-to-program calls (anti-bot)",
-        "- If creator: verify vesting (Year 1 lock) + Smart Sell Limiter (5% impact max) + cooldown (30 days)",
-        "- Thaw → Burn → Calculate SOL return → Distribute fees → Transfer → Re-freeze",
-        "- Fees: 3% creator vault + 2% protocol + 1% k-depth",
+        "Dual fee structure (v3.6):",
+        "- Holder sell: 5% (2% creator + 2% protocol + 1% depth)",
+        "- Creator sell: 6% (5% protocol + 1% depth, no self-fee)",
+        "",
+        "Creator-specific:",
+        "- Year 1 lock, Smart Sell Limiter (5% impact max), 30-day cooldown",
         "- Slippage protection: reverts if SOL received < min_sol_out"
       ],
       "discriminator": [
@@ -753,7 +654,7 @@
         {
           "name": "creator_fee_vault",
           "docs": [
-            "Creator Fee Vault PDA — receives 3% of sell fees"
+            "Creator Fee Vault PDA — receives 2% of holder sell fees (0% on creator sell)"
           ],
           "writable": true,
           "pda": {
@@ -871,7 +772,7 @@
         {
           "name": "creator_wallet",
           "docs": [
-            "Creator's wallet (for validation only now — fees go to vault)"
+            "Creator's wallet (for validation only — fees go to vault)"
           ],
           "writable": true
         },
@@ -1166,14 +1067,14 @@
           {
             "name": "supply_creator",
             "docs": [
-              "Tokens held by the creator (Merit Reward, locked)"
+              "Tokens held by the creator (Founder Buy tokens, locked via CreatorVault)"
             ],
             "type": "u64"
           },
           {
             "name": "supply_protocol",
             "docs": [
-              "Tokens held by protocol vault (Merit Fee, used by Stabilizer)"
+              "Tokens held by protocol vault (always 0 in v3.6 — Merit removed)"
             ],
             "type": "u64"
           },
@@ -1357,28 +1258,28 @@
           {
             "name": "token_balance",
             "docs": [
-              "Current token balance in the vault (base units)"
+              "Current token balance in the vault (always 0 in v3.6)"
             ],
             "type": "u64"
           },
           {
             "name": "total_accumulated",
             "docs": [
-              "Total tokens ever accumulated via Merit Fee (historical)"
+              "Total tokens ever accumulated (always 0 in v3.6)"
             ],
             "type": "u64"
           },
           {
             "name": "total_stabilized",
             "docs": [
-              "Total tokens ever sold by the Stabilizer (historical)"
+              "Total tokens ever sold by the Stabilizer (always 0 in v3.6)"
             ],
             "type": "u64"
           },
           {
             "name": "total_sol_earned",
             "docs": [
-              "Total SOL earned by stabilization (lamports, historical)"
+              "Total SOL earned by stabilization (lamports, always 0 in v3.6)"
             ],
             "type": "u64"
           },

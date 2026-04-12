@@ -5,6 +5,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PushPin, Megaphone, CalendarBlank, ChartBar, DotsThreeVertical, PencilSimple, Trash, YoutubeLogo, Question, Archive, FloppyDisk, X, Crown, Globe, Eye } from "@phosphor-icons/react";
 import { toast } from "sonner";
+import { useAuthFetch } from "@/lib/authFetch";
 import ReactionBar from "./ReactionBar";
 import PollWidget from "./PollWidget";
 import EventCard from "./EventCard";
@@ -90,6 +91,7 @@ export default function PostCard({
   const [saving, setSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showArchiveWarning, setShowArchiveWarning] = useState(false);
+  const authFetch = useAuthFetch();
 
   const allMedia = [...(post.image_urls || []), ...(post.media_urls || [])];
   const ytMatch = post.content.match(YOUTUBE_REGEX);
@@ -106,9 +108,8 @@ export default function PostCard({
     if (!onDelete || !walletAddress) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/inner-circle/${post.creator_mint}/posts/${post.id}`, {
+      const res = await authFetch(`/api/inner-circle/${post.creator_mint}/posts/${post.id}`, {
         method: "DELETE",
-        headers: { "x-wallet-address": walletAddress },
       });
       if (res.ok) {
         onDelete(post.id);
@@ -130,12 +131,9 @@ export default function PostCard({
     if (!onUpdate || !walletAddress) return;
     setArchiving(true);
     try {
-      const res = await fetch(`/api/inner-circle/${post.creator_mint}/posts/${post.id}`, {
+      const res = await authFetch(`/api/inner-circle/${post.creator_mint}/posts/${post.id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-wallet-address": walletAddress,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_archived: !post.is_archived }),
       });
       if (res.ok) {
@@ -157,12 +155,9 @@ export default function PostCard({
     if (!onUpdate || !walletAddress || !editContent.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch(`/api/inner-circle/${post.creator_mint}/posts/${post.id}`, {
+      const res = await authFetch(`/api/inner-circle/${post.creator_mint}/posts/${post.id}`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-wallet-address": walletAddress,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: editContent.trim() }),
       });
       if (res.ok) {

@@ -116,9 +116,34 @@ export async function POST(request: NextRequest) {
     const lastName = idVerification.last_name;
     const dateOfBirth = idVerification.date_of_birth; // "YYYY-MM-DD"
     const documentNumber = idVerification.document_number || idVerification.personal_number || sessionId;
-    // Country from nationality (ISO 3166-1 alpha-3 → we take first 2 chars) or issuing_state
+    // Country from nationality (ISO 3166-1 alpha-3 → alpha-2 mapping)
     const rawCountry = idVerification.nationality || idVerification.issuing_state || "XX";
-    const countryCode = rawCountry.length === 3 ? rawCountry.slice(0, 2) : rawCountry;
+    const ALPHA3_TO_ALPHA2: Record<string, string> = {
+      AFG:"AF",ALB:"AL",DZA:"DZ",AND:"AD",AGO:"AO",ARG:"AR",ARM:"AM",AUS:"AU",
+      AUT:"AT",AZE:"AZ",BHS:"BS",BHR:"BH",BGD:"BD",BRB:"BB",BLR:"BY",BEL:"BE",
+      BLZ:"BZ",BEN:"BJ",BTN:"BT",BOL:"BO",BIH:"BA",BWA:"BW",BRA:"BR",BRN:"BN",
+      BGR:"BG",BFA:"BF",BDI:"BI",KHM:"KH",CMR:"CM",CAN:"CA",CPV:"CV",CAF:"CF",
+      TCD:"TD",CHL:"CL",CHN:"CN",COL:"CO",COG:"CG",COD:"CD",CRI:"CR",HRV:"HR",
+      CUB:"CU",CYP:"CY",CZE:"CZ",DNK:"DK",DJI:"DJ",DOM:"DO",ECU:"EC",EGY:"EG",
+      SLV:"SV",GNQ:"GQ",ERI:"ER",EST:"EE",ETH:"ET",FIN:"FI",FRA:"FR",GAB:"GA",
+      GMB:"GM",GEO:"GE",DEU:"DE",GHA:"GH",GRC:"GR",GTM:"GT",GIN:"GN",GUY:"GY",
+      HTI:"HT",HND:"HN",HUN:"HU",ISL:"IS",IND:"IN",IDN:"ID",IRN:"IR",IRQ:"IQ",
+      IRL:"IE",ISR:"IL",ITA:"IT",JAM:"JA",JPN:"JP",JOR:"JO",KAZ:"KZ",KEN:"KE",
+      KWT:"KW",KGZ:"KG",LAO:"LA",LVA:"LV",LBN:"LB",LBR:"LR",LBY:"LY",LIE:"LI",
+      LTU:"LT",LUX:"LU",MKD:"MK",MDG:"MG",MWI:"MW",MYS:"MY",MLI:"ML",MLT:"MT",
+      MRT:"MR",MUS:"MU",MEX:"MX",MDA:"MD",MCO:"MC",MNG:"MN",MNE:"ME",MAR:"MA",
+      MOZ:"MZ",MMR:"MM",NAM:"NA",NPL:"NP",NLD:"NL",NZL:"NZ",NIC:"NI",NER:"NE",
+      NGA:"NG",NOR:"NO",OMN:"OM",PAK:"PK",PAN:"PA",PRY:"PY",PER:"PE",PHL:"PH",
+      POL:"PL",PRT:"PT",QAT:"QA",ROU:"RO",RUS:"RU",RWA:"RW",SAU:"SA",SEN:"SN",
+      SRB:"RS",SGP:"SG",SVK:"SK",SVN:"SI",SOM:"SO",ZAF:"ZA",KOR:"KR",ESP:"ES",
+      LKA:"LK",SDN:"SD",SUR:"SR",SWE:"SE",CHE:"CH",SYR:"SY",TWN:"TW",TJK:"TJ",
+      TZA:"TZ",THA:"TH",TGO:"TG",TTO:"TT",TUN:"TN",TUR:"TR",TKM:"TM",UGA:"UG",
+      UKR:"UA",ARE:"AE",GBR:"GB",USA:"US",URY:"UY",UZB:"UZ",VEN:"VE",VNM:"VN",
+      YEM:"YE",ZMB:"ZM",ZWE:"ZW",
+    };
+    const countryCode = rawCountry.length === 3
+      ? (ALPHA3_TO_ALPHA2[rawCountry.toUpperCase()] || rawCountry.slice(0, 2))
+      : rawCountry;
 
     if (!firstName || !lastName || !dateOfBirth) {
       return NextResponse.json(

@@ -2,7 +2,7 @@
 // Humanofi — Creator Fee Vault PDA
 // ========================================
 //
-// Accumulates the creator's share of trading fees (3% of 6%).
+// Accumulates the creator's share of trading fees (2% of 5% total).
 // SOL fees are sent here during buy/sell and the creator
 // can claim them every 15 days.
 //

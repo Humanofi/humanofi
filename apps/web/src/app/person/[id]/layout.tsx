@@ -8,6 +8,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
+import { useAuthFetch } from "@/lib/authFetch";
 import { useBondingCurveWs, type LiveCurveData } from "@/hooks/useBondingCurveWs";
 import type { BondingCurveChartHandle } from "@/components/BondingCurveChart";
 import { PublicKey } from "@solana/web3.js";
@@ -113,6 +114,7 @@ export default function PersonLayout({
 
   const { authenticated } = usePrivy();
   const { fetchBondingCurve, connected, walletAddress } = useHumanofi();
+  const authFetch = useAuthFetch();
 
   const mockPerson = getPersonById(id) || null;
 
@@ -189,9 +191,7 @@ export default function PersonLayout({
       }
 
       try {
-        const res = await fetch(`/api/inner-circle/${creator.mint_address}/posts`, {
-          headers: { "x-wallet-address": walletAddress },
-        });
+        const res = await authFetch(`/api/inner-circle/${creator.mint_address}/posts`);
         setIsHolder(res.ok);
       } catch {
         setIsHolder(false);

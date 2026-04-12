@@ -1,16 +1,20 @@
 // ========================================
-// Humanofi — Sell Tokens (Human Curve™)
+// Humanofi — Sell Tokens (Human Curve™) — v3.6
 // ========================================
 //
-// Sell flow v2 (simplified — no holder rewards):
+// Sell flow v3.6 (dual fee structure):
 //   1. CPI Guard: reject bot/program calls
 //   2. If seller = creator: verify vesting + Smart Sell Limiter + cooldown
-//   3. Calculate sell via Human Curve (fees + k-deepening)
+//   3. Calculate sell via Human Curve (dual fee structure)
 //   4. Thaw seller's ATA → Burn tokens
-//   5. Distribute fees from bonding curve PDA (3% creator vault, 2% protocol)
+//   5. Distribute fees from bonding curve PDA
 //   6. Transfer net SOL to seller
 //   7. Re-freeze ATA if balance remains
-//   8. Update curve state (x, y, k, supplies)
+//   8. Update curve state (x, y, k, supply)
+//
+// v3.6 Dual Fee Structure:
+//   Holder sell: 5% (2% creator vault + 2% protocol + 1% depth)
+//   Creator sell: 6% (5% protocol + 1% depth, no self-fee)
 //
 // Creator-specific rules:
 //   - Year 1: 0% sellable (hard lock)
@@ -64,8 +68,8 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64, min_sol_out: u64) -> Resul
         );
     }
 
-    // ── Calculate sell via Human Curve™ ──
-    let result = curve.calculate_sell(token_amount)?;
+    // ── Calculate sell via Human Curve™ (dual fee structure) ──
+    let result = curve.calculate_sell(token_amount, is_creator)?;
     require!(result.sol_net > 0, HumanofiError::PriceCalculationZero);
 
     // ── Slippage protection ──
@@ -129,14 +133,14 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64, min_sol_out: u64) -> Resul
     **curve_info.try_borrow_mut_lamports()? -= result.sol_net;
     **ctx.accounts.seller.to_account_info().try_borrow_mut_lamports()? += result.sol_net;
 
-    // 3% → Creator Fee Vault PDA
+    // Creator fee vault (2% for holder sell, 0% for creator sell)
     if result.fee_creator > 0 {
         **curve_info.try_borrow_mut_lamports()? -= result.fee_creator;
         **ctx.accounts.creator_fee_vault.to_account_info().try_borrow_mut_lamports()? += result.fee_creator;
         ctx.accounts.creator_fee_vault.record_deposit(result.fee_creator)?;
     }
 
-    // 2% → Protocol treasury
+    // Protocol treasury (2% for holder sell, 5% for creator sell)
     if result.fee_protocol > 0 {
         **curve_info.try_borrow_mut_lamports()? -= result.fee_protocol;
         **ctx.accounts.treasury.to_account_info().try_borrow_mut_lamports()? += result.fee_protocol;
@@ -190,7 +194,7 @@ pub struct Sell<'info> {
     )]
     pub bonding_curve: Account<'info, BondingCurve>,
 
-    /// Creator Fee Vault PDA — receives 3% of sell fees
+    /// Creator Fee Vault PDA — receives 2% of holder sell fees (0% on creator sell)
     #[account(
         mut,
         seeds = [SEED_CREATOR_FEES, mint.key().as_ref()],
@@ -217,7 +221,7 @@ pub struct Sell<'info> {
     )]
     pub seller_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    /// Creator's wallet (for validation only now — fees go to vault)
+    /// Creator's wallet (for validation only — fees go to vault)
     /// CHECK: validated via bonding_curve.creator
     #[account(
         mut,

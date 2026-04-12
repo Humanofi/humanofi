@@ -1,14 +1,15 @@
 // ========================================
-// Humanofi — Protocol Interaction Hook (v3 — Simplified Fees)
+// Humanofi — Protocol Interaction Hook (v3.6)
 // ========================================
 // High-level hook wrapping all Anchor instructions
 // with proper PDA derivation, error handling, and toast notifications.
 //
-// v3 changes:
-//   - Removed holder rewards (no RewardPool, no EngagementRecord)
-//   - Added CreatorFeeVault (3% of fees, claimable every 15 days)
-//   - Merit Reward: 10% creator + 4% protocol (was 12.6% + 1.4%)
-//   - Fees: 3% creator vault + 2% protocol + 1% depth
+// v3.6 changes:
+//   - Merit Reward REMOVED: buyer gets 100% of tokens
+//   - Founder Buy: creator gets tokens at P₀ during creation
+//   - Holder fees: 2% creator vault + 2% protocol + 1% depth (5%)
+//   - Creator sell: 5% protocol + 1% depth (6%, no self-fee)
+//   - Removed creatorTokenAccount/protocolTokenAccount from buy
 
 "use client";
 
@@ -17,6 +18,7 @@ import { PublicKey, Keypair, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web
 import { toast } from "sonner";
 import { BN } from "@coral-xyz/anchor";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
+import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofiProgram, PROGRAM_ID } from "./useHumanofiProgram";
 
 // Re-export for consumers
@@ -72,6 +74,7 @@ function derivePurchaseLimiterPDA(buyer: PublicKey, mint: PublicKey) {
  */
 export function useHumanofi() {
   const { program, connection, publicKey, walletAddress, connected } = useHumanofiProgram();
+  const { getAccessToken } = usePrivy();
 
   // ─── CREATE TOKEN ───
   const createToken = useCallback(
@@ -101,6 +104,14 @@ export function useHumanofi() {
       const [creatorFeeVault] = deriveCreatorFeeVaultPDA(mint.publicKey);
       const [protocolVault] = deriveProtocolVaultPDA(mint.publicKey);
 
+      // v3.6: creatorTokenAccount + treasury needed for Founder Buy
+      const creatorTokenAccount = getAssociatedTokenAddressSync(
+        mint.publicKey,
+        publicKey,
+        false,
+        TOKEN_2022_PROGRAM_ID
+      );
+
       const txPromise = program.methods
         .createToken(
           params.name,
@@ -115,6 +126,8 @@ export function useHumanofi() {
           creatorVault,
           creatorFeeVault,
           protocolVault,
+          creatorTokenAccount,
+          treasury: params.treasury,
           tokenProgram: TOKEN_2022_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
@@ -139,7 +152,6 @@ export function useHumanofi() {
     async (params: {
       mint: PublicKey;
       solAmount: number; // in SOL (e.g. 0.5)
-      creatorWallet: PublicKey;
       treasury: PublicKey;
       minTokensOut?: number; // slippage protection (0 = no check)
     }) => {
@@ -151,7 +163,6 @@ export function useHumanofi() {
       const lamports = Math.floor(params.solAmount * LAMPORTS_PER_SOL);
       const [bondingCurve] = deriveBondingCurvePDA(params.mint);
       const [creatorFeeVault] = deriveCreatorFeeVaultPDA(params.mint);
-      const [protocolVault] = deriveProtocolVaultPDA(params.mint);
       const [purchaseLimiter] = derivePurchaseLimiterPDA(publicKey, params.mint);
 
       const buyerTokenAccount = getAssociatedTokenAddressSync(
@@ -161,21 +172,8 @@ export function useHumanofi() {
         TOKEN_2022_PROGRAM_ID
       );
 
-      // Creator's ATA for Merit Reward (10%)
-      const creatorTokenAccount = getAssociatedTokenAddressSync(
-        params.mint,
-        params.creatorWallet,
-        false,
-        TOKEN_2022_PROGRAM_ID
-      );
-
-      // Protocol's ATA for Merit Fee (4%) — authority = bonding_curve PDA
-      const protocolTokenAccount = getAssociatedTokenAddressSync(
-        params.mint,
-        bondingCurve,
-        true, // allowOwnerOffCurve = true (PDA is owner)
-        TOKEN_2022_PROGRAM_ID
-      );
+      // v3.6: No more creatorTokenAccount or protocolTokenAccount
+      // 100% tokens go to buyer — merit reward removed
 
       const txPromise = program.methods
         .buy(
@@ -187,12 +185,8 @@ export function useHumanofi() {
           mint: params.mint,
           bondingCurve,
           creatorFeeVault,
-          protocolVault,
           purchaseLimiter,
           buyerTokenAccount,
-          creatorTokenAccount,
-          protocolTokenAccount,
-          creatorWallet: params.creatorWallet,
           treasury: params.treasury,
           tokenProgram: TOKEN_2022_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -346,9 +340,16 @@ export function useHumanofi() {
       }
 
       try {
+        const headers: Record<string, string> = {};
+        try {
+          const token = await getAccessToken();
+          if (token) headers["Authorization"] = `Bearer ${token}`;
+        } catch { /* Privy not available */ }
+        if (walletAddress) headers["x-wallet-address"] = walletAddress;
+
         const res = await fetch(`/api/inner-circle/${mint}/checkin`, {
           method: "POST",
-          headers: { "x-wallet-address": walletAddress },
+          headers,
         });
         const data = await res.json();
 

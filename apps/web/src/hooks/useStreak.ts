@@ -7,6 +7,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useAuthFetch } from "@/lib/authFetch";
 
 export interface StreakData {
   currentStreak: number;
@@ -52,6 +53,7 @@ export function useStreak(mintAddress: string | null, walletAddress: string | nu
     isActiveToday: false,
   });
   const [loading, setLoading] = useState(true);
+  const authFetch = useAuthFetch();
 
   // Fetch streak data
   useEffect(() => {
@@ -62,9 +64,7 @@ export function useStreak(mintAddress: string | null, walletAddress: string | nu
       }
 
       try {
-        const res = await fetch(`/api/inner-circle/${mintAddress}/streak`, {
-          headers: { "x-wallet-address": walletAddress },
-        });
+        const res = await authFetch(`/api/inner-circle/${mintAddress}/streak`);
         if (res.ok) {
           const data = await res.json();
           const today = new Date().toISOString().split("T")[0];
@@ -91,12 +91,9 @@ export function useStreak(mintAddress: string | null, walletAddress: string | nu
     if (!mintAddress || !walletAddress) return;
 
     try {
-      await fetch(`/api/inner-circle/${mintAddress}/streak`, {
+      await authFetch(`/api/inner-circle/${mintAddress}/streak`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-wallet-address": walletAddress,
-        },
+        headers: { "Content-Type": "application/json" },
       });
 
       // Optimistic update

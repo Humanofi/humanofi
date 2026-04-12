@@ -7,6 +7,7 @@ import TradeWidget from "@/components/TradeWidget";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
 import { useSolPrice } from "@/hooks/useSolPrice";
+import { useAuthFetch } from "@/lib/authFetch";
 import { formatUsd, solToUsd, spotPrice, estimateBuy, estimateSell } from "@/lib/price";
 import { PublicKey } from "@solana/web3.js";
 import { toast } from "sonner";
@@ -63,6 +64,7 @@ export default function PersonPublicPage() {
   const { authenticated, login } = usePrivy();
   const { buyTokens, sellTokens, claimCreatorFees, fetchCreatorFeeVault, walletAddress } = useHumanofi();
   const { priceUsd: solPriceUsd } = useSolPrice();
+  const authFetch = useAuthFetch();
 
   // Trade modal state
   const [tradeModalOpen, setTradeModalOpen] = useState(false);
@@ -208,9 +210,8 @@ export default function PersonPublicPage() {
       // Read fresh price from live curve
       const freshPrice = liveCurve?.priceSol || priceNum;
 
-      await fetch("/api/trades", {
+      await authFetch("/api/trades", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mintAddress: creator.mint_address,
           tradeType,
@@ -252,7 +253,6 @@ export default function PersonPublicPage() {
         txSig = await buyTokens({
           mint: new PublicKey(creator.mint_address),
           solAmount: parsedAmount,
-          creatorWallet: new PublicKey(creator.wallet_address),
           treasury: TREASURY,
         });
       } else {
@@ -281,9 +281,9 @@ export default function PersonPublicPage() {
       if (tab === "buy") {
         // parsedAmount = SOL spent (human-readable)
         solAmt = parsedAmount;
-        // Use estimateBuy for accurate 86% buyer tokens (not naive division)
+        // Use estimateBuy for accurate token output (100% to buyer)
         const est = estimateBuy(rawX, rawY, rawK, Math.floor(parsedAmount * 1e9));
-        tokenAmt = est.tokensBuyer / 1e6; // buyer's 86% share in human tokens
+        tokenAmt = est.tokensBuyer / 1e6; // 100% tokens to buyer
       } else {
         // parsedAmount = tokens sold (human-readable)
         tokenAmt = parsedAmount;
@@ -379,7 +379,7 @@ export default function PersonPublicPage() {
                   <span className="dashboard__token-value">{formatSol(solReserve)} SOL</span>
                 </div>
                 <div className="dashboard__token-stat">
-                  <span className="dashboard__token-label">Creator Merit</span>
+                  <span className="dashboard__token-label">Founder Tokens</span>
                   <span className="dashboard__token-value">{curveData ? (curveData.supplyCreator.toNumber() / 1e6).toFixed(0) : "—"} tokens</span>
                 </div>
                 <div className="dashboard__token-stat">
@@ -394,7 +394,7 @@ export default function PersonPublicPage() {
             {/* ── Creator Fee Revenue Card ── */}
             <section className="dashboard__card" style={{ borderLeft: `3px solid #22c55e` }}>
               <div className="dashboard__card-header">
-                <Wallet size={16} weight="bold" /> Fee Revenue (3% of trades)
+                <Wallet size={16} weight="bold" /> Fee Revenue (2% of trades)
               </div>
               <div className="dashboard__token-grid">
                 <div className="dashboard__token-stat">

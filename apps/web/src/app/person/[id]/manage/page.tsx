@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { usePerson } from "../layout";
 import { useHumanofi } from "@/hooks/useHumanofi";
+import { useAuthFetch } from "@/lib/authFetch";
 import { toast } from "sonner";
 import Image from "next/image";
 import {
@@ -23,6 +24,7 @@ const TOKEN_COLORS = [
 export default function ManagePage() {
   const { creator, isCreator } = usePerson();
   const { walletAddress } = useHumanofi();
+  const authFetch = useAuthFetch();
   const [saving, setSaving] = useState(false);
 
   // Form state
@@ -62,12 +64,9 @@ export default function ManagePage() {
     setSaving(true);
 
     try {
-      const res = await fetch("/api/creators/profile", {
+      const res = await authFetch("/api/creators/profile", {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-wallet-address": walletAddress,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           subtitle: subtitle.slice(0, 80),
           bio,

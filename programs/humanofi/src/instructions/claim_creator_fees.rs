@@ -3,7 +3,7 @@
 // ========================================
 //
 // Allows the creator to claim their accumulated trading fees
-// (3% of all buy/sell volume) from the CreatorFeeVault PDA.
+// (2% of all buy/sell volume) from the CreatorFeeVault PDA.
 //
 // Rules:
 //   - Only the creator can claim (enforced via constraint)
@@ -67,7 +67,7 @@ pub struct ClaimCreatorFees<'info> {
     /// The Token-2022 Mint
     pub mint: InterfaceAccount<'info, Mint>,
 
-    /// Creator Fee Vault PDA (SOL stored as lamports)
+    /// Creator Fee Vault PDA — accumulates 2% of trading fees (SOL stored as lamports)
     #[account(
         mut,
         seeds = [SEED_CREATOR_FEES, mint.key().as_ref()],

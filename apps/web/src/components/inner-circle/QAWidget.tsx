@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PaperPlaneTilt, ChatCircleDots, Check, Eye, EyeSlash } from "@phosphor-icons/react";
 import { toast } from "sonner";
+import { useAuthFetch } from "@/lib/authFetch";
 
 interface QuestionData {
   id: string;
@@ -41,12 +42,12 @@ export default function QAWidget({ postId, mintAddress, walletAddress, isCreator
   const [answering, setAnswering] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const [answeredCount, setAnsweredCount] = useState(0);
+  const authFetch = useAuthFetch();
 
   const fetchQuestions = useCallback(async () => {
     try {
-      const res = await fetch(
-        `/api/inner-circle/${mintAddress}/questions?postId=${postId}`,
-        { headers: { "x-wallet-address": walletAddress } }
+      const res = await authFetch(
+        `/api/inner-circle/${mintAddress}/questions?postId=${postId}`
       );
       if (res.ok) {
         const data = await res.json();
@@ -69,9 +70,9 @@ export default function QAWidget({ postId, mintAddress, walletAddress, isCreator
     if (!newQuestion.trim() || submitting) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/inner-circle/${mintAddress}/questions`, {
+      const res = await authFetch(`/api/inner-circle/${mintAddress}/questions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-wallet-address": walletAddress },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "ask", postId, question: newQuestion.trim() }),
       });
       if (res.ok) {
@@ -95,9 +96,9 @@ export default function QAWidget({ postId, mintAddress, walletAddress, isCreator
     if (!answer) return;
     setAnswering(questionId);
     try {
-      const res = await fetch(`/api/inner-circle/${mintAddress}/questions`, {
+      const res = await authFetch(`/api/inner-circle/${mintAddress}/questions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-wallet-address": walletAddress },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "answer", questionId, answer }),
       });
       if (res.ok) {

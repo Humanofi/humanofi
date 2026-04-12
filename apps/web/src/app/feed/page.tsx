@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Topbar from "@/components/Topbar";
 import Footer from "@/components/Footer";
 import { useHumanofi } from "@/hooks/useHumanofi";
+import { useAuthFetch } from "@/lib/authFetch";
 import { useSupabaseAuth } from "@/hooks/useSupabaseAuth";
 import { usePrivy } from "@privy-io/react-auth";
 import Link from "next/link";
@@ -19,6 +20,7 @@ export default function UnifiedFeedPage() {
   const { walletAddress } = useHumanofi();
   const { user: humanofiUser } = useSupabaseAuth();
   const { authenticated, login } = usePrivy();
+  const authFetch = useAuthFetch();
 
   const [tab, setTab] = useState<FeedTab>("public");
 
@@ -37,9 +39,7 @@ export default function UnifiedFeedPage() {
   const fetchPublicFeed = useCallback(async () => {
     try {
       setPublicLoading(true);
-      const headers: Record<string, string> = {};
-      if (walletAddress) headers["x-wallet-address"] = walletAddress;
-      const res = await fetch("/api/public-posts?limit=50", { headers });
+      const res = await authFetch("/api/public-posts?limit=50");
       if (res.ok) {
         const data = await res.json();
         let posts = data.posts || [];
@@ -62,7 +62,7 @@ export default function UnifiedFeedPage() {
     if (!walletAddress) { setCircleLoading(false); return; }
     try {
       setCircleLoading(true);
-      const res = await fetch("/api/feed", { headers: { "x-wallet-address": walletAddress } });
+      const res = await authFetch("/api/feed");
       if (!res.ok) { setCircleLoading(false); return; }
       const data = await res.json();
       if (data.userVotes) setUserVotes(data.userVotes);
@@ -84,9 +84,7 @@ export default function UnifiedFeedPage() {
       });
       await Promise.all(Object.entries(mintGroups).map(async ([mint, ids]) => {
         try {
-          const rr = await fetch(`/api/inner-circle/${mint}/reactions?postIds=${ids.join(",")}`, {
-            headers: { "x-wallet-address": walletAddress },
-          });
+          const rr = await authFetch(`/api/inner-circle/${mint}/reactions?postIds=${ids.join(",")}`);
           if (rr.ok) {
             const rd = await rr.json();
             fetched.forEach((p: any) => {
@@ -140,9 +138,9 @@ export default function UnifiedFeedPage() {
   const handleVote = useCallback(async (postId: string, optionIndex: number) => {
     const post = circlePosts.find((p) => p.id === postId);
     if (!post) return;
-    const res = await fetch(`/api/inner-circle/${post.creator_mint}/poll`, {
+    const res = await authFetch(`/api/inner-circle/${post.creator_mint}/poll`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-wallet-address": walletAddress || "" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ postId, optionIndex }),
     });
     if (res.ok) {
@@ -155,9 +153,9 @@ export default function UnifiedFeedPage() {
   const handleRsvp = useCallback(async (postId: string, status: string) => {
     const post = circlePosts.find((p) => p.id === postId);
     if (!post) return;
-    const res = await fetch(`/api/inner-circle/${post.creator_mint}/event`, {
+    const res = await authFetch(`/api/inner-circle/${post.creator_mint}/event`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-wallet-address": walletAddress || "" },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ postId, status }),
     });
     if (res.ok) {

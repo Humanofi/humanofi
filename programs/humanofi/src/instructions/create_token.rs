@@ -1,28 +1,31 @@
 // ========================================
-// Humanofi — Create Token (Token-2022 + Human Curve™)
+// Humanofi — Create Token (Token-2022 + Human Curve™) — v3.6
 // ========================================
 //
 // Creates a new personal token with:
 //   - Token-2022 Mint with MetadataPointer extension
 //   - Token Metadata (name, symbol, uri — visible in wallets)
 //   - BondingCurve PDA initialized with Human Curve™ (x · y = k)
-//   - CreatorFeeVault PDA initialized (accumulates 3% of fees)
+//   - CreatorFeeVault PDA initialized (accumulates 2% of fees)
 //   - CreatorVault PDA initialized (vesting + sell limiter tracker)
-//   - ProtocolVault PDA initialized (Stabilizer token treasury)
-//   - Initial SOL liquidity deposited in bonding curve reserve
+//   - ProtocolVault PDA initialized (kept for backward compat, empty)
+//   - Founder Buy: creator gets tokens at P₀ (locked via CreatorVault)
 //
-// IMPORTANT: No tokens are minted at creation!
-// The creator's tokens arrive progressively via the Merit Reward
-// mechanism (10% of each buy). Protocol gets 4%.
+// v3.6 changes:
+//   - Founder Buy: creator buys tokens at creation using initial_liquidity V
+//   - x₀ = D (depth only), then V enters via the curve → creator gets tokens
+//   - 3% Founder Buy fee (2% protocol + 1% depth, no creator self-fee)
+//   - Tokens are locked: 1 year cliff, then Smart Sell Limiter applies
 //
-// x₀ = 21 × V (D = 20×V depth parameter + V real SOL)
 // freeze_authority = bonding_curve PDA → tokens only tradable on Humanofi.
 
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{
-        token_metadata_initialize, Mint, TokenInterface, TokenMetadataInitialize,
+        freeze_account, mint_to, token_metadata_initialize,
+        FreezeAccount, Mint, MintTo, TokenInterface, TokenMetadataInitialize,
+        TokenAccount,
     },
 };
 
@@ -30,14 +33,19 @@ use crate::constants::*;
 use crate::errors::HumanofiError;
 use crate::state::*;
 
-/// Creates a new personal token with the Human Curve™.
+/// Creates a new personal token with the Human Curve™ and Founder Buy.
 ///
 /// # Initialization (Depth Parameter D)
-///   x₀ = DEPTH_TOTAL_MULTIPLIER × V (21 × V)
-///   D  = DEPTH_RATIO × V             (20 × V, mathematical, not real SOL)
+///   x₀ = DEPTH_RATIO × V (20 × V, depth only — no real SOL yet)
 ///   y₀ = INITIAL_Y (1,000,000 × 10^6)
 ///   k₀ = x₀ × y₀
-///   P₀ = x₀ / y₀ = 21V / 10^12
+///
+/// # Founder Buy
+///   V SOL enters the curve at P₀ with 3% fee:
+///   - 2% → Protocol Treasury
+///   - 1% → k-deepening (stays in vault)
+///   - 97% → curve reserve
+///   Creator receives tokens at the initial (lowest) price.
 ///
 /// # Parameters
 ///   - name: Token name (1-32 chars)
@@ -131,21 +139,18 @@ pub fn handler(
     )?;
 
     // ---- Initialize Human Curve™ ----
-    // x₀ = DEPTH_TOTAL_MULTIPLIER × V = 21 × V
-    //   where D = DEPTH_RATIO × V = 20 × V is a depth parameter (not real SOL)
-    //   and   V = initial_liquidity (real SOL in vault)
+    // x₀ = D = DEPTH_RATIO × V = 20 × V (depth parameter only, no real SOL yet)
     // y₀ = 1,000,000 tokens (in base units)
     // k₀ = x₀ × y₀
-    let x0 = (DEPTH_TOTAL_MULTIPLIER as u128)
-        .checked_mul(initial_liquidity as u128)
+    // The Founder Buy will then add V through the curve.
+    let depth = (DEPTH_RATIO as u64)
+        .checked_mul(initial_liquidity)
         .ok_or(HumanofiError::MathOverflow)?;
+
+    let x0 = depth as u128;
     let y0 = INITIAL_Y;
     let k0 = x0
         .checked_mul(y0)
-        .ok_or(HumanofiError::MathOverflow)?;
-
-    let depth = (DEPTH_RATIO as u64)
-        .checked_mul(initial_liquidity)
         .ok_or(HumanofiError::MathOverflow)?;
 
     // Initial TWAP = initial spot price (P₀ = x₀ / y₀)
@@ -165,13 +170,53 @@ pub fn handler(
     curve.supply_public = 0;
     curve.supply_creator = 0;
     curve.supply_protocol = 0;
-    curve.sol_reserve = initial_liquidity; // Only real SOL
-    curve.depth_parameter = depth;         // D = 20 × V (mathematical, not withdrawable)
+    curve.sol_reserve = 0; // No real SOL yet — Founder Buy adds it
+    curve.depth_parameter = depth;
     curve.twap_price = initial_twap;
     curve.trade_count = 0;
     curve.created_at = now;
     curve.is_active = true;
     curve.bump = curve_bump;
+
+    // ---- Founder Buy: Creator buys tokens at P₀ ----
+    // V SOL is already in the PDA (transferred above).
+    // Fee: 3% (2% protocol + 1% depth). No creator self-fee.
+    let founder_result = curve.calculate_founder_buy(initial_liquidity)?;
+
+    // Transfer protocol fee OUT of bonding curve → treasury
+    if founder_result.fee_protocol > 0 {
+        let curve_info = ctx.accounts.bonding_curve.to_account_info();
+        **curve_info.try_borrow_mut_lamports()? -= founder_result.fee_protocol;
+        **ctx.accounts.treasury.to_account_info().try_borrow_mut_lamports()? += founder_result.fee_protocol;
+    }
+
+    // Mint Founder Buy tokens → creator ATA (frozen)
+    mint_to(
+        CpiContext::new_with_signer(
+            ctx.accounts.token_program.to_account_info(),
+            MintTo {
+                mint: ctx.accounts.mint.to_account_info(),
+                to: ctx.accounts.creator_token_account.to_account_info(),
+                authority: ctx.accounts.bonding_curve.to_account_info(),
+            },
+            signer_seeds,
+        ),
+        founder_result.tokens_creator,
+    )?;
+
+    freeze_account(CpiContext::new_with_signer(
+        ctx.accounts.token_program.to_account_info(),
+        FreezeAccount {
+            account: ctx.accounts.creator_token_account.to_account_info(),
+            mint: ctx.accounts.mint.to_account_info(),
+            authority: ctx.accounts.bonding_curve.to_account_info(),
+        },
+        signer_seeds,
+    ))?;
+
+    // Apply Founder Buy to curve state
+    let curve = &mut ctx.accounts.bonding_curve;
+    curve.apply_founder_buy(&founder_result)?;
 
     // ---- Initialize Creator Vault PDA (vesting + sell limiter) ----
     let vault = &mut ctx.accounts.creator_vault;
@@ -193,6 +238,7 @@ pub fn handler(
     cfv.bump = ctx.bumps.creator_fee_vault;
 
     // ---- Initialize Protocol Vault PDA ----
+    // v3.6: Kept for backward compatibility but always empty (Merit removed).
     let pv = &mut ctx.accounts.protocol_vault;
     pv.mint = mint_key;
     pv.token_balance = 0;
@@ -202,16 +248,15 @@ pub fn handler(
     pv.bump = ctx.bumps.protocol_vault;
 
     msg!(
-        "🚀 Token created | mint={} | creator={} | name={} | symbol={} | V={} | x₀={} | y₀={} | k₀={} | P₀={}",
+        "🚀 Token created | mint={} | creator={} | name={} | symbol={} | V={} | founder_tokens={} | sol_reserve={} | fee_protocol={}",
         mint_key,
         ctx.accounts.creator.key(),
         name,
         symbol,
         initial_liquidity,
-        x0,
-        y0,
-        k0,
-        x0 / y0
+        founder_result.tokens_creator,
+        founder_result.sol_to_curve + founder_result.fee_depth,
+        founder_result.fee_protocol,
     );
 
     Ok(())
@@ -259,7 +304,7 @@ pub struct CreateToken<'info> {
     )]
     pub creator_vault: Box<Account<'info, CreatorVault>>,
 
-    /// Creator Fee Vault PDA — accumulates 3% of trading fees.
+    /// Creator Fee Vault PDA — accumulates 2% of trading fees.
     #[account(
         init,
         payer = creator,
@@ -269,7 +314,7 @@ pub struct CreateToken<'info> {
     )]
     pub creator_fee_vault: Box<Account<'info, CreatorFeeVault>>,
 
-    /// Protocol Vault PDA — holds protocol's Merit Fee tokens.
+    /// Protocol Vault PDA — kept for backward compatibility (empty in v3.6).
     #[account(
         init,
         payer = creator,
@@ -278,6 +323,24 @@ pub struct CreateToken<'info> {
         bump,
     )]
     pub protocol_vault: Box<Account<'info, ProtocolVault>>,
+
+    /// Creator's token account for Founder Buy tokens (init, frozen)
+    #[account(
+        init,
+        payer = creator,
+        associated_token::mint = mint,
+        associated_token::authority = creator,
+        associated_token::token_program = token_program,
+    )]
+    pub creator_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    /// Protocol treasury wallet (receives 2% Founder Buy fee)
+    /// CHECK: Validated against hardcoded TREASURY_WALLET constant
+    #[account(
+        mut,
+        constraint = treasury.key() == TREASURY_WALLET @ HumanofiError::InvalidTreasury
+    )]
+    pub treasury: UncheckedAccount<'info>,
 
     /// Token-2022 program
     pub token_program: Interface<'info, TokenInterface>,

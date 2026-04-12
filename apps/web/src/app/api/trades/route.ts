@@ -1,15 +1,19 @@
 // ========================================
 // Humanofi — Trades API (On-Chain Verified)
 // ========================================
-// POST: Record a trade with TX signature verification
+// POST: Record a trade with TX signature + auth verification
 // GET:  Return trade history for chart (OHLCV-like data)
 //
-// Every trade is verified on-chain before insertion.
-// tx_signature is UNIQUE — no duplicates, no fakes.
+// Security:
+//   1. Privy JWT or wallet header authentication
+//   2. TX exists on-chain and did not fail
+//   3. TX signer matches authenticated wallet
+//   4. tx_signature is UNIQUE — no duplicates
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/client";
 import { Connection } from "@solana/web3.js";
+import { verifyRequest } from "@/lib/auth/verifyRequest";
 
 const RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.devnet.solana.com";
 
@@ -18,6 +22,15 @@ export async function POST(request: NextRequest) {
   const supabase = createServerClient();
   if (!supabase) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+  }
+
+  // ── AUTHENTICATION ──
+  const auth = await verifyRequest(request);
+  if (!auth.authenticated || !auth.walletAddress) {
+    return NextResponse.json(
+      { error: auth.error || "Authentication required" },
+      { status: 401 }
+    );
   }
 
   try {
@@ -46,8 +59,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "tradeType must be 'buy' or 'sell'" }, { status: 400 });
     }
 
+    // ── WALLET MATCH: Authenticated wallet must match trade wallet ──
+    if (auth.walletAddress !== walletAddress) {
+      console.warn(
+        `[Trades] Wallet mismatch: auth=${auth.walletAddress?.slice(0, 8)} vs body=${walletAddress?.slice(0, 8)}`
+      );
+      return NextResponse.json(
+        { error: "Wallet mismatch — you can only record your own trades" },
+        { status: 403 }
+      );
+    }
+
     // ── VERIFY TX ON-CHAIN ──
-    // This prevents fake trades from being inserted.
     let slot = 0;
     try {
       const connection = new Connection(RPC_URL, "confirmed");
@@ -56,20 +79,39 @@ export async function POST(request: NextRequest) {
       });
 
       if (!tx) {
-        // TX might not be finalized yet — allow with warning
-        console.warn(`[Trades] TX ${txSignature.slice(0, 12)}... not found yet (may be pending)`);
-        slot = 0;
-      } else {
-        slot = tx.slot;
-        
-        // Optionally verify the TX interacted with our program
-        // (defense in depth — even without this, tx_signature is unique)
-        if (tx.meta?.err) {
-          return NextResponse.json({ error: "Transaction failed on-chain" }, { status: 400 });
-        }
+        // TX not finalized yet — retry instead of silently accepting
+        return NextResponse.json(
+          { error: "Transaction not found on-chain yet — please retry in a few seconds" },
+          { status: 202 }
+        );
+      }
+
+      slot = tx.slot;
+
+      // Verify the TX did not fail
+      if (tx.meta?.err) {
+        return NextResponse.json({ error: "Transaction failed on-chain" }, { status: 400 });
+      }
+
+      // ── VERIFY SIGNER: TX fee payer must match authenticated wallet ──
+      const accountKeys = tx.transaction.message.getAccountKeys();
+      const feePayer = accountKeys.get(0)?.toBase58();
+      if (feePayer && feePayer !== walletAddress) {
+        console.warn(
+          `[Trades] Signer mismatch: tx_signer=${feePayer?.slice(0, 8)} vs wallet=${walletAddress?.slice(0, 8)}`
+        );
+        return NextResponse.json(
+          { error: "Transaction signer does not match your wallet" },
+          { status: 403 }
+        );
       }
     } catch (err) {
-      console.warn("[Trades] TX verification error (proceeding anyway):", err);
+      console.warn("[Trades] TX verification error:", err);
+      // If RPC is down, reject rather than accept unverified trades
+      return NextResponse.json(
+        { error: "Could not verify transaction on-chain — please retry" },
+        { status: 503 }
+      );
     }
 
     // ── INSERT TRADE ──
@@ -118,19 +160,26 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const mint = searchParams.get("mint");
-  const limit = parseInt(searchParams.get("limit") || "200");
+  const limit = Math.min(parseInt(searchParams.get("limit") || "200"), 500);
+  const after = searchParams.get("after"); // cursor-based pagination
 
   if (!mint) {
     return NextResponse.json({ error: "mint param required" }, { status: 400 });
   }
 
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from("trades")
       .select("trade_type, price_sol, sol_amount, token_amount, tx_signature, slot, created_at")
       .eq("mint_address", mint)
       .order("created_at", { ascending: true })
       .limit(limit);
+
+    if (after) {
+      query = query.gt("created_at", after);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

@@ -1,17 +1,30 @@
 // ========================================
-// Humanofi — Price Snapshot API (Simplified)
+// Humanofi — Price Snapshot API (Authenticated)
 // ========================================
 // POST /api/price-snapshot
 // Receives price data from the frontend after a trade
 // and saves it to Supabase for chart history.
+//
+// SECURITY: Requires authentication (Privy JWT or dev fallback).
+// Only authenticated users who just completed a trade should call this.
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@/lib/supabase/client";
+import { verifyRequest } from "@/lib/auth/verifyRequest";
 
 export async function POST(request: NextRequest) {
   const supabase = createServerClient();
   if (!supabase) {
     return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+  }
+
+  // ── AUTHENTICATION ──
+  const auth = await verifyRequest(request);
+  if (!auth.authenticated) {
+    return NextResponse.json(
+      { error: auth.error || "Authentication required" },
+      { status: 401 }
+    );
   }
 
   try {

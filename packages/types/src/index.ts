@@ -1,5 +1,5 @@
 // ========================================
-// Humanofi — Shared Types (v2 — Human Curve™)
+// Humanofi — Shared Types (v3.6 — Human Curve™)
 // ========================================
 // All TypeScript types shared across the monorepo.
 
@@ -8,44 +8,59 @@ import { PublicKey } from "@solana/web3.js";
 // ---- Protocol Constants ----
 
 export const PROTOCOL_CONSTANTS = {
-  /** Total transaction fee in basis points (6%) */
-  TOTAL_FEE_BPS: 600,
+  // ---- Holder Trade Fees (5% total) ----
+  /** Total transaction fee in basis points (5%) */
+  TOTAL_FEE_BPS: 500,
   /** Creator's fee share: 2% of total tx */
   FEE_CREATOR_BPS: 200,
-  /** Holders' reward pool: 2% of total tx */
-  FEE_HOLDERS_BPS: 200,
-  /** Protocol treasury: 1% of total tx */
-  FEE_PROTOCOL_BPS: 100,
+  /** Protocol treasury: 2% of total tx */
+  FEE_PROTOCOL_BPS: 200,
   /** k-deepening (stays in curve): 1% of total tx */
   FEE_DEPTH_BPS: 100,
-  /** Total Merit allocation: 14% = 12.6% creator + 1.4% protocol */
-  ALPHA_TOTAL_BPS: 1_400,
-  /** Creator Merit Reward: 12.6% of tokens produced */
-  ALPHA_CREATOR_BPS: 1_260,
-  /** Protocol Merit Fee: 1.4% of tokens produced */
-  ALPHA_PROTOCOL_BPS: 140,
-  /** Depth multiplier: x₀ = 21 × V */
-  DEPTH_TOTAL_MULTIPLIER: 21,
+
+  // ---- Creator Sell Fees (6% total, no self-fee) ----
+  /** Creator sell total fee: 6% */
+  CREATOR_SELL_FEE_BPS: 600,
+  /** Creator sell protocol share: 5% */
+  CREATOR_SELL_PROTOCOL_BPS: 500,
+  /** Creator sell depth share: 1% */
+  CREATOR_SELL_DEPTH_BPS: 100,
+
+  // ---- Founder Buy Fees (3% total) ----
+  /** Founder Buy total fee: 3% */
+  FOUNDER_BUY_FEE_BPS: 300,
+  /** Founder Buy protocol fee: 2% */
+  FOUNDER_BUY_PROTOCOL_BPS: 200,
+  /** Founder Buy depth fee: 1% */
+  FOUNDER_BUY_DEPTH_BPS: 100,
+
+  // ---- Curve Parameters ----
   /** Depth ratio: D = 20 × V (mathematical parameter, not real SOL) */
   DEPTH_RATIO: 20,
   /** Initial y₀ = 1,000,000 tokens (in whole tokens) */
   INITIAL_Y_TOKENS: 1_000_000,
+
+  // ---- Creator Sell Limiter ----
   /** Creator token lock duration: Year 1 = 0% sellable */
   CREATOR_LOCK_DURATION: 365 * 24 * 60 * 60,
   /** Creator sell cooldown (30 days between sells) */
   CREATOR_SELL_COOLDOWN: 30 * 24 * 60 * 60,
-  /** Smart Sell Limiter: max 5% price impact per creator sell (500 BPS) */
+  /** Smart Sell Limiter: max 5% price impact per sell (500 BPS) */
   SELL_IMPACT_BPS: 500,
+
+  // ---- Price Stabilizer (DORMANT in v3.6) ----
   /** Price Stabilizer threshold: 2% deviation from TWAP */
   STABILIZER_THRESHOLD_BPS: 200,
   /** Price Stabilizer max sell: 50% of protocol tokens */
   STABILIZER_MAX_SELL_PCT: 50,
+
+  // ---- Token ----
   /** Token decimals */
   TOKEN_DECIMALS: 6,
   /** Minimum initial liquidity (0.03 SOL) */
   MIN_INITIAL_LIQUIDITY: 30_000_000,
-  /** Maximum initial liquidity (100 SOL) */
-  MAX_INITIAL_LIQUIDITY: 100_000_000_000,
+  /** Maximum initial liquidity (10 SOL) */
+  MAX_INITIAL_LIQUIDITY: 10_000_000_000,
 } as const;
 
 // ---- Identity (HIUID) ----
@@ -167,9 +182,9 @@ export interface BondingCurveState {
   k: bigint;
   /** Public tokens in circulation (holders) */
   supplyPublic: number;
-  /** Creator tokens accumulated via Merit Reward (12.6%) */
+  /** Creator tokens from Founder Buy (locked via CreatorVault) */
   supplyCreator: number;
-  /** Protocol tokens accumulated via Merit Fee (1.4%) */
+  /** Protocol token balance (always 0 in v3.6 — Merit removed) */
   supplyProtocol: number;
   /** Real SOL in vault (lamports). INVARIANT: sol_reserve = x − depth_parameter */
   solReserve: number;
@@ -190,7 +205,8 @@ export interface PriceInfo {
   marketCap: number;
 }
 
-// ---- Reward Pool ----
+// ---- Reward Pool (LEGACY — removed in v3) ----
+// Kept for backward compatibility with existing API responses.
 
 export interface RewardPoolState {
   mint: string;

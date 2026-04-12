@@ -9,8 +9,8 @@
 //                 → Max 5% price impact per sell (Smart Sell Limiter)
 //                 → 30-day cooldown between sells
 //
-// The creator's tokens arrive progressively via the Merit Reward
-// mechanism (10% Merit Reward on each buy). Protocol gets 4%.
+// v3.6: The creator's tokens come from the Founder Buy at token creation.
+// Creator receives tokens at P₀ (initial price) — all locked via this vault.
 //
 // Seeds: ["vault", mint_pubkey]
 

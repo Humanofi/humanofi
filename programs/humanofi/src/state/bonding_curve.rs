@@ -1,16 +1,18 @@
 // ========================================
-// Humanofi — The Human Curve™ (Bonding Curve PDA)
+// Humanofi — The Human Curve™ (Bonding Curve PDA) — v3.6
 // ========================================
 //
 // Implements the proprietary constant-product AMM: x · y = k(t)
 //
-// Innovations:
-//   1. Merit Reward (α = 14%) — 10% creator + 4% protocol
-//   2. k-Evolution — Curve depth grows with volume (1% of each tx)
-//   3. Smart Sell Limiter — Creator capped at 5% price impact per sell
-//   4. Price Stabilizer — Auto-sells protocol tokens to smooth price spikes
+// v3.6 Innovations:
+//   1. k-Evolution — Curve depth grows with volume (1% of each tx)
+//   2. Smart Sell Limiter — Creator capped at 5% price impact per sell
+//   3. Founder Buy — Creator gets tokens at P₀ during creation (locked)
+//   4. Dual fee structure — Holder 5% / Creator sell 6%
 //
-// Fee split v2: 3% creator vault, 2% protocol, 1% depth (no holder rewards)
+// Fee split v3.6:
+//   Holder buy/sell: 2% creator vault, 2% protocol, 1% depth
+//   Creator sell:    5% protocol, 1% depth (no self-fee)
 //
 // x = sol_reserve + D (Depth Parameter). D = 20×V, mathematical depth, never withdrawable.
 //
@@ -25,7 +27,7 @@ use crate::constants::*;
 use crate::errors::HumanofiError;
 
 // ────────────────────────────────────────────────────────
-// Result structs for buy/sell/stabilize calculations
+// Result structs for buy/sell calculations
 // ────────────────────────────────────────────────────────
 
 /// Result of a buy calculation — all amounts in lamports/base units
@@ -33,15 +35,9 @@ use crate::errors::HumanofiError;
 pub struct BuyResult {
     /// SOL entering the curve (after fees)
     pub sol_to_curve: u64,
-    /// Tokens produced by the curve (total)
-    pub tokens_total: u64,
-    /// Tokens going to the buyer (86%)
+    /// Tokens produced by the curve — 100% goes to buyer
     pub tokens_buyer: u64,
-    /// Tokens going to the creator (10% Merit Reward)
-    pub tokens_creator: u64,
-    /// Tokens going to the protocol vault (4% Merit Fee)
-    pub tokens_protocol: u64,
-    /// Fee breakdown (3% creator, 2% protocol, 1% depth)
+    /// Fee breakdown (2% creator, 2% protocol, 1% depth)
     pub fee_creator: u64,
     pub fee_protocol: u64,
     pub fee_depth: u64,
@@ -56,9 +52,10 @@ pub struct BuyResult {
 pub struct SellResult {
     /// Gross SOL from the curve before fees
     pub sol_gross: u64,
-    /// Net SOL the seller receives (after 6% fees)
+    /// Net SOL the seller receives (after fees)
     pub sol_net: u64,
-    /// Fee breakdown (3% creator, 2% protocol, 1% depth)
+    /// Fee breakdown. For holder: 2% creator, 2% protocol, 1% depth.
+    /// For creator sell: 0% creator, 5% protocol, 1% depth.
     pub fee_creator: u64,
     pub fee_protocol: u64,
     pub fee_depth: u64,
@@ -68,18 +65,35 @@ pub struct SellResult {
     pub new_k: u128,
 }
 
+/// Result of a Founder Buy calculation (used in create_token)
+#[derive(Debug, Clone)]
+pub struct FounderBuyResult {
+    /// Tokens minted to the creator (locked via CreatorVault)
+    pub tokens_creator: u64,
+    /// SOL staying in the vault as curve reserve
+    pub sol_to_curve: u64,
+    /// Protocol fee leaving the vault → Protocol Treasury
+    pub fee_protocol: u64,
+    /// Depth fee staying in vault (k-deepening)
+    pub fee_depth: u64,
+    /// New curve state after Founder Buy
+    pub new_x: u128,
+    pub new_y: u128,
+    pub new_k: u128,
+}
+
 /// Result of a Price Stabilizer calculation
+/// v3.6: Dormant — protocol never accumulates tokens (Merit removed).
+/// Kept for future bidirectional market maker activation.
 #[derive(Debug, Clone)]
 pub struct StabilizerResult {
     /// Tokens the protocol burns to stabilize the price
     pub tokens_to_sell: u64,
     /// Gross SOL extracted from the curve
     pub sol_extracted: u64,
-    /// SOL net after 6% fees
+    /// SOL net → protocol treasury (only depth fee deducted)
     pub sol_net: u64,
-    /// Fee breakdown (3% creator, 2% protocol, 1% depth)
-    pub fee_creator: u64,
-    pub fee_protocol: u64,
+    /// Depth fee (1%) stays in vault (k-deepening)
     pub fee_depth: u64,
     /// New curve state after stabilization
     pub new_x: u128,
@@ -119,10 +133,10 @@ pub struct BondingCurve {
     /// Tokens held by public holders (buyers)
     pub supply_public: u64,
 
-    /// Tokens held by the creator (Merit Reward, locked)
+    /// Tokens held by the creator (Founder Buy tokens, locked via CreatorVault)
     pub supply_creator: u64,
 
-    /// Tokens held by protocol vault (Merit Fee, used by Stabilizer)
+    /// Tokens held by protocol vault (always 0 in v3.6 — Merit removed)
     pub supply_protocol: u64,
 
     // ---- SOL tracking ----
@@ -227,16 +241,15 @@ impl BondingCurve {
     /// Calculate the result of a buy for `sol_brut` lamports.
     ///
     /// Order of operations:
-    ///   1. Calculate fees (6% total)
+    ///   1. Calculate fees (5% total = 2% creator + 2% protocol + 1% depth)
     ///   2. Apply k-deepening: x += depth, k = x * y
     ///   3. Remaining SOL enters the curve
-    ///   4. Curve produces Δy_total tokens
-    ///   5. Split: 86% buyer, 10% creator, 4% protocol
+    ///   4. Curve produces Δy tokens — 100% goes to buyer
     pub fn calculate_buy(&self, sol_brut: u64) -> Result<BuyResult> {
         require!(sol_brut > 0, HumanofiError::ZeroPurchaseAmount);
         require!(self.y > 0, HumanofiError::PoolDepleted);
 
-        // ── Step 1: Calculate fees (6% = 3% creator + 2% protocol + 1% depth) ──
+        // ── Step 1: Calculate fees (5% = 2% creator + 2% protocol + 1% depth) ──
         let fee_total = crate::utils::ceil_div_u64(
             sol_brut.checked_mul(TOTAL_FEE_BPS).ok_or(HumanofiError::FeeOverflow)?,
             BPS_DENOMINATOR,
@@ -271,7 +284,7 @@ impl BondingCurve {
             .checked_add(sol_to_curve as u128)
             .ok_or(HumanofiError::MathOverflow)?;
 
-        // ── Step 4: Curve produces tokens ──
+        // ── Step 4: Curve produces tokens — 100% to buyer ──
         let y_new = k_after_depth
             .checked_div(x_new)
             .ok_or(HumanofiError::PoolDepleted)?;
@@ -282,41 +295,12 @@ impl BondingCurve {
 
         require!(dy_total > 0, HumanofiError::PriceCalculationZero);
 
-        // ── Step 5: Merit Reward split (10% creator + 4% protocol) ──
-        let dy_total_u64 = u64::try_from(dy_total)
+        let tokens_buyer = u64::try_from(dy_total)
             .map_err(|_| HumanofiError::MathOverflow)?;
-
-        // tokens_creator = 10% of dy_total
-        let tokens_creator = (dy_total as u128)
-            .checked_mul(ALPHA_CREATOR_BPS as u128)
-            .ok_or(HumanofiError::MathOverflow)?
-            .checked_div(BPS_DENOMINATOR as u128)
-            .ok_or(HumanofiError::MathOverflow)?;
-        let tokens_creator_u64 = u64::try_from(tokens_creator)
-            .map_err(|_| HumanofiError::MathOverflow)?;
-
-        // tokens_protocol = 4% of dy_total
-        let tokens_protocol = (dy_total as u128)
-            .checked_mul(ALPHA_PROTOCOL_BPS as u128)
-            .ok_or(HumanofiError::MathOverflow)?
-            .checked_div(BPS_DENOMINATOR as u128)
-            .ok_or(HumanofiError::MathOverflow)?;
-        let tokens_protocol_u64 = u64::try_from(tokens_protocol)
-            .map_err(|_| HumanofiError::MathOverflow)?;
-
-        // tokens_buyer = remainder (avoids rounding errors)
-        let tokens_buyer = dy_total_u64
-            .checked_sub(tokens_creator_u64)
-            .ok_or(HumanofiError::MathOverflow)?
-            .checked_sub(tokens_protocol_u64)
-            .ok_or(HumanofiError::MathOverflow)?;
 
         Ok(BuyResult {
             sol_to_curve,
-            tokens_total: dy_total_u64,
             tokens_buyer,
-            tokens_creator: tokens_creator_u64,
-            tokens_protocol: tokens_protocol_u64,
             fee_creator,
             fee_protocol,
             fee_depth,
@@ -335,12 +319,6 @@ impl BondingCurve {
         self.supply_public = self.supply_public
             .checked_add(result.tokens_buyer)
             .ok_or(HumanofiError::MathOverflow)?;
-        self.supply_creator = self.supply_creator
-            .checked_add(result.tokens_creator)
-            .ok_or(HumanofiError::MathOverflow)?;
-        self.supply_protocol = self.supply_protocol
-            .checked_add(result.tokens_protocol)
-            .ok_or(HumanofiError::MathOverflow)?;
 
         self.sol_reserve = self.sol_reserve
             .checked_add(result.sol_to_curve)
@@ -356,7 +334,11 @@ impl BondingCurve {
     // ────────────────────────────────────────
 
     /// Calculate the result of selling `token_amount` base units.
-    pub fn calculate_sell(&self, token_amount: u64) -> Result<SellResult> {
+    ///
+    /// Dual fee structure (v3.6):
+    ///   Holder sell: 5% (2% creator + 2% protocol + 1% depth)
+    ///   Creator sell: 6% (5% protocol + 1% depth, no self-fee)
+    pub fn calculate_sell(&self, token_amount: u64, is_creator: bool) -> Result<SellResult> {
         require!(token_amount > 0, HumanofiError::ZeroAmount);
         require!(self.y > 0, HumanofiError::PoolDepleted);
 
@@ -381,20 +363,32 @@ impl BondingCurve {
 
         require!(sol_gross > 0, HumanofiError::PriceCalculationZero);
 
-        // ── Step 3: Calculate fees (6% = 3% creator + 2% protocol + 1% depth) ──
+        // ── Step 3: Calculate fees (dual structure) ──
+        let (total_bps, creator_bps, depth_bps) = if is_creator {
+            // Creator sell: 6% = 5% protocol + 1% depth (no self-fee)
+            (CREATOR_SELL_FEE_BPS, 0u64, CREATOR_SELL_DEPTH_BPS)
+        } else {
+            // Holder sell: 5% = 2% creator + 2% protocol + 1% depth
+            (TOTAL_FEE_BPS, FEE_CREATOR_BPS, FEE_DEPTH_BPS)
+        };
+
         let fee_total = crate::utils::ceil_div_u64(
-            sol_gross.checked_mul(TOTAL_FEE_BPS).ok_or(HumanofiError::FeeOverflow)?,
+            sol_gross.checked_mul(total_bps).ok_or(HumanofiError::FeeOverflow)?,
             BPS_DENOMINATOR,
         );
-        let fee_creator = crate::utils::ceil_div_u64(
-            sol_gross.checked_mul(FEE_CREATOR_BPS).ok_or(HumanofiError::FeeOverflow)?,
-            BPS_DENOMINATOR,
-        );
+        let fee_creator = if creator_bps > 0 {
+            crate::utils::ceil_div_u64(
+                sol_gross.checked_mul(creator_bps).ok_or(HumanofiError::FeeOverflow)?,
+                BPS_DENOMINATOR,
+            )
+        } else {
+            0
+        };
         let fee_depth = crate::utils::ceil_div_u64(
-            sol_gross.checked_mul(FEE_DEPTH_BPS).ok_or(HumanofiError::FeeOverflow)?,
+            sol_gross.checked_mul(depth_bps).ok_or(HumanofiError::FeeOverflow)?,
             BPS_DENOMINATOR,
         );
-        // Protocol gets the remainder (2%)
+        // Protocol gets the remainder
         let fee_protocol = fee_total
             .saturating_sub(fee_creator)
             .saturating_sub(fee_depth);
@@ -472,15 +466,102 @@ impl BondingCurve {
     }
 
     // ────────────────────────────────────────
-    // Price Stabilizer
+    // Founder Buy
+    // ────────────────────────────────────────
+
+    /// Calculate the Founder Buy: creator gets tokens at P₀ using initial liquidity V.
+    ///
+    /// Called during create_token. V SOL is already in the PDA.
+    /// Fee: 3% total (2% protocol + 1% depth). No creator self-fee.
+    ///
+    /// The curve starts with x₀ = D (depth only), then V enters the curve.
+    /// This gives the creator tokens at the very first (lowest) price.
+    pub fn calculate_founder_buy(&self, initial_liquidity: u64) -> Result<FounderBuyResult> {
+        require!(initial_liquidity > 0, HumanofiError::ZeroPurchaseAmount);
+        require!(self.y > 0, HumanofiError::PoolDepleted);
+
+        // ── Fees: 3% total (2% protocol + 1% depth) ──
+        let fee_total = crate::utils::ceil_div_u64(
+            initial_liquidity.checked_mul(FOUNDER_BUY_FEE_BPS).ok_or(HumanofiError::FeeOverflow)?,
+            BPS_DENOMINATOR,
+        );
+        let fee_depth = crate::utils::ceil_div_u64(
+            initial_liquidity.checked_mul(FOUNDER_BUY_DEPTH_BPS).ok_or(HumanofiError::FeeOverflow)?,
+            BPS_DENOMINATOR,
+        );
+        let fee_protocol = fee_total.saturating_sub(fee_depth);
+
+        let sol_to_curve = initial_liquidity
+            .checked_sub(fee_total)
+            .ok_or(HumanofiError::FeeOverflow)?;
+
+        // ── k-deepening ──
+        let x_after_depth = self.x
+            .checked_add(fee_depth as u128)
+            .ok_or(HumanofiError::MathOverflow)?;
+        let k_after_depth = x_after_depth
+            .checked_mul(self.y)
+            .ok_or(HumanofiError::MathOverflow)?;
+
+        // ── SOL enters the curve ──
+        let x_new = x_after_depth
+            .checked_add(sol_to_curve as u128)
+            .ok_or(HumanofiError::MathOverflow)?;
+
+        // ── Curve produces tokens ──
+        let y_new = k_after_depth
+            .checked_div(x_new)
+            .ok_or(HumanofiError::PoolDepleted)?;
+
+        let dy = self.y
+            .checked_sub(y_new)
+            .ok_or(HumanofiError::PoolDepleted)?;
+
+        require!(dy > 0, HumanofiError::PriceCalculationZero);
+
+        let tokens_creator = u64::try_from(dy)
+            .map_err(|_| HumanofiError::MathOverflow)?;
+
+        Ok(FounderBuyResult {
+            tokens_creator,
+            sol_to_curve,
+            fee_protocol,
+            fee_depth,
+            new_x: x_new,
+            new_y: y_new,
+            new_k: k_after_depth,
+        })
+    }
+
+    /// Apply a Founder Buy result to the curve state
+    pub fn apply_founder_buy(&mut self, result: &FounderBuyResult) -> Result<()> {
+        self.x = result.new_x;
+        self.y = result.new_y;
+        self.k = result.new_k;
+
+        self.supply_creator = result.tokens_creator;
+
+        // sol_reserve = sol_to_curve + fee_depth (depth stays in vault)
+        // fee_protocol already left the vault via transfer
+        self.sol_reserve = result.sol_to_curve
+            .checked_add(result.fee_depth)
+            .ok_or(HumanofiError::MathOverflow)?;
+
+        Ok(())
+    }
+
+    // ────────────────────────────────────────
+    // Price Stabilizer (DORMANT in v3.6)
     // ────────────────────────────────────────
 
     /// Check if stabilization is needed and calculate the sell.
     ///
-    /// The Stabilizer activates when P_spot deviates > ρ from the TWAP.
-    /// It sells protocol tokens to push price back toward TWAP.
+    /// v3.6: DORMANT — protocol never accumulates tokens (Merit removed).
+    /// protocol_balance will always be 0 → returns None.
+    /// Kept for future bidirectional market maker activation.
     ///
-    /// Returns None if no stabilization needed or T_protocol = 0.
+    /// When activated, the Stabilizer sells protocol tokens to push
+    /// price back toward TWAP. Only depth fee applies (no self-fees).
     pub fn calculate_stabilization(&self, protocol_balance: u64) -> Result<Option<StabilizerResult>> {
         // Skip if no protocol tokens or no TWAP history
         if protocol_balance == 0 || self.trade_count < 2 {
@@ -490,8 +571,6 @@ impl BondingCurve {
         let p_spot = self.get_spot_price()?;
 
         // Check if price deviated above TWAP by more than ρ
-        // Condition: (P_spot - P_ref) / P_ref > ρ
-        // Equivalent: P_spot * BPS > P_ref * (BPS + ρ)
         let threshold = self.twap_price
             .checked_mul((BPS_DENOMINATOR as u128).checked_add(STABILIZER_THRESHOLD_BPS as u128).ok_or(HumanofiError::MathOverflow)?)
             .ok_or(HumanofiError::MathOverflow)?
@@ -514,15 +593,7 @@ impl BondingCurve {
             .ok_or(HumanofiError::MathOverflow)?;
 
         // Calculate δ tokens to sell to reach P_target
-        // P = x/y and k = x·y → x = k/y → P = k/y²
-        // P_target = k / y_target² → y_target² = k / P_unscaled
-        // where P_unscaled = P_target / PRICE_PRECISION
-        //
-        // To avoid overflow: y_target = √(k · PRICE_PRECISION / P_target)
-        // But k · PRICE_PRECISION can overflow.
-        //
-        // Alternative: y_target = √(k) · √(PRICE_PRECISION) / √(P_target)
-        // This is safe because each sqrt fits in u128.
+        // y_target = √(k) · √(PRICE_PRECISION) / √(P_target)
         let sqrt_k = crate::utils::isqrt_u128(self.k);
         let sqrt_prec = crate::utils::isqrt_u128(PRICE_PRECISION); // = 10^9
         let sqrt_p_target = crate::utils::isqrt_u128(p_target);
@@ -563,7 +634,6 @@ impl BondingCurve {
         }
 
         // Calculate the sell result for δ tokens
-        // This is equivalent to a regular sell executed by the protocol
         let y_new = self.y
             .checked_add(delta)
             .ok_or(HumanofiError::MathOverflow)?;
@@ -582,7 +652,6 @@ impl BondingCurve {
         }
 
         // Constraint 2: max 1% price impact from stabilizer
-        // Check: dx_brut / x ≤ 1%
         let max_impact = self.x
             .checked_mul(STABILIZER_MAX_IMPACT_BPS as u128)
             .ok_or(HumanofiError::MathOverflow)?
@@ -592,26 +661,15 @@ impl BondingCurve {
             return Ok(None); // Would exceed max impact, skip
         }
 
-        // Standard 6% fees on the extracted SOL (3% creator, 2% protocol, 1% depth)
-        let fee_total = crate::utils::ceil_div_u64(
-            sol_extracted.checked_mul(TOTAL_FEE_BPS).ok_or(HumanofiError::FeeOverflow)?,
-            BPS_DENOMINATOR,
-        );
-        let fee_creator = crate::utils::ceil_div_u64(
-            sol_extracted.checked_mul(FEE_CREATOR_BPS).ok_or(HumanofiError::FeeOverflow)?,
-            BPS_DENOMINATOR,
-        );
+        // Only depth fee applies (protocol is the seller — no self-fees)
         let fee_depth = crate::utils::ceil_div_u64(
             sol_extracted.checked_mul(FEE_DEPTH_BPS).ok_or(HumanofiError::FeeOverflow)?,
             BPS_DENOMINATOR,
         );
-        let fee_protocol = fee_total
-            .saturating_sub(fee_creator)
-            .saturating_sub(fee_depth);
 
-        let sol_net = sol_extracted.saturating_sub(fee_total);
+        let sol_net = sol_extracted.saturating_sub(fee_depth);
 
-        // k-deepening on stabilizer sell too
+        // k-deepening on stabilizer sell
         let x_final = self.x
             .checked_sub(dx_brut)
             .ok_or(HumanofiError::MathOverflow)?
@@ -631,11 +689,8 @@ impl BondingCurve {
             return Ok(None); // Would push below TWAP, abort
         }
 
-        // Verify solvency
-        let total_out = sol_net
-            .checked_add(fee_creator).ok_or(HumanofiError::MathOverflow)?
-            .checked_add(fee_protocol).ok_or(HumanofiError::MathOverflow)?;
-        if self.sol_reserve < total_out {
+        // Verify solvency (only sol_net leaves the vault)
+        if self.sol_reserve < sol_net {
             return Ok(None);
         }
 
@@ -643,8 +698,6 @@ impl BondingCurve {
             tokens_to_sell: delta_u64,
             sol_extracted,
             sol_net,
-            fee_creator,
-            fee_protocol,
             fee_depth,
             new_x: x_final,
             new_y: y_new,
@@ -662,14 +715,9 @@ impl BondingCurve {
             .checked_sub(result.tokens_to_sell)
             .ok_or(HumanofiError::InsufficientTokenBalance)?;
 
-        // SOL leaving the vault: sol_net + creator + protocol fees
-        // fee_depth stays in the vault
-        let total_out = result.sol_net
-            .checked_add(result.fee_creator).ok_or(HumanofiError::MathOverflow)?
-            .checked_add(result.fee_protocol).ok_or(HumanofiError::MathOverflow)?;
-
+        // Only sol_net leaves the vault (fee_depth stays via k-deepening)
         self.sol_reserve = self.sol_reserve
-            .checked_sub(total_out)
+            .checked_sub(result.sol_net)
             .ok_or(HumanofiError::InsufficientReserve)?;
 
         Ok(())

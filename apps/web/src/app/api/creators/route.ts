@@ -26,8 +26,10 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const category = searchParams.get("category");
   const mint = searchParams.get("mint");
-  const sortBy = searchParams.get("sort") || "activity_score";
-  const limit = parseInt(searchParams.get("limit") || "50");
+  const ALLOWED_SORTS = ["activity_score", "created_at", "display_name", "holder_count"];
+  const rawSort = searchParams.get("sort") || "activity_score";
+  const sortBy = ALLOWED_SORTS.includes(rawSort) ? rawSort : "activity_score";
+  const limit = Math.min(parseInt(searchParams.get("limit") || "50") || 50, 200);
 
   let query = supabase
     .from("creator_tokens")

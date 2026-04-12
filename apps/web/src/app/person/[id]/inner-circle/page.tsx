@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { usePerson } from "../layout";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
+import { useAuthFetch } from "@/lib/authFetch";
 import { useRealtimeChannel } from "@/hooks/useRealtimeChannel";
 import PostCard, { PostData } from "@/components/inner-circle/PostCard";
 import PostComposer from "@/components/inner-circle/PostComposer";
@@ -16,6 +17,7 @@ export default function InnerCirclePage() {
   const { creator, isHolder, isCreator, loading: layoutLoading } = usePerson();
   const { authenticated, login } = usePrivy();
   const { walletAddress } = useHumanofi();
+  const authFetch = useAuthFetch();
 
   const [posts, setPosts] = useState<PostData[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(true);
@@ -41,9 +43,7 @@ export default function InnerCirclePage() {
     setLoadingPosts(true);
     try {
       const archiveParam = isCreator ? "&include_archived=true" : "";
-      const res = await fetch(`/api/inner-circle/${creator.mint_address}/posts?${archiveParam}`, {
-        headers: { "x-wallet-address": walletAddress || "" },
-      });
+      const res = await authFetch(`/api/inner-circle/${creator.mint_address}/posts?${archiveParam}`);
       if (!res.ok) { setLoadingPosts(false); return; }
 
       const data = await res.json();
@@ -70,9 +70,8 @@ export default function InnerCirclePage() {
       // Fetch reactions in bulk
       if (fetchedPosts.length > 0) {
         const postIds = fetchedPosts.map((p) => p.id).join(",");
-        const reactRes = await fetch(
-          `/api/inner-circle/${creator.mint_address}/reactions?postIds=${postIds}`,
-          { headers: { "x-wallet-address": walletAddress || "" } }
+        const reactRes = await authFetch(
+          `/api/inner-circle/${creator.mint_address}/reactions?postIds=${postIds}`
         );
         if (reactRes.ok) {
           const reactData = await reactRes.json();
@@ -129,9 +128,9 @@ export default function InnerCirclePage() {
   const handleVote = useCallback(
     async (postId: string, optionIndex: number) => {
       if (!creator?.mint_address) return;
-      const res = await fetch(`/api/inner-circle/${creator.mint_address}/poll`, {
+      const res = await authFetch(`/api/inner-circle/${creator.mint_address}/poll`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-wallet-address": walletAddress || "" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ postId, optionIndex }),
       });
       if (res.ok) {
@@ -149,9 +148,9 @@ export default function InnerCirclePage() {
   const handleRsvp = useCallback(
     async (postId: string, status: string) => {
       if (!creator?.mint_address) return;
-      const res = await fetch(`/api/inner-circle/${creator.mint_address}/event`, {
+      const res = await authFetch(`/api/inner-circle/${creator.mint_address}/event`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-wallet-address": walletAddress || "" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ postId, status }),
       });
       if (res.ok) {

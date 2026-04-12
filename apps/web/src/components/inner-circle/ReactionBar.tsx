@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { useAuthFetch } from "@/lib/authFetch";
 
 const REACTIONS = [
   { emoji: "🔥", label: "Fire" },
@@ -36,6 +37,7 @@ export default function ReactionBar({
 }: ReactionBarProps) {
   const [loading, setLoading] = useState<string | null>(null);
   const [showPicker, setShowPicker] = useState(false);
+  const authFetch = useAuthFetch();
 
   const totalReactions = Object.values(reactions).reduce((a, b) => a + b, 0);
 
@@ -45,9 +47,9 @@ export default function ReactionBar({
       setLoading(emoji);
 
       try {
-        const res = await fetch(`/api/inner-circle/${mintAddress}/reactions`, {
+        const res = await authFetch(`/api/inner-circle/${mintAddress}/reactions`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-wallet-address": walletAddress },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ postId, emoji }),
         });
 

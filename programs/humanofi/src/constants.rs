@@ -1,10 +1,15 @@
 // ========================================
-// Humanofi — Protocol Constants
+// Humanofi — Protocol Constants (v3.6)
 // ========================================
 //
 // The Human Curve™ — All protocol parameters in one place.
-// Every value here maps directly to the mathematical spec
-// in docs/humanofi-mathematiques.md
+// Every value here maps directly to the mathematical spec.
+//
+// v3.6 changes:
+//   - Holder fees: 6% → 5% (2% creator + 2% protocol + 1% depth)
+//   - Merit Reward: REMOVED (buyer gets 100% of tokens)
+//   - Creator sell: separate 6% fee (5% protocol + 1% depth, no self-fee)
+//   - Founder Buy: creator gets tokens at P₀ during creation (locked)
 
 use anchor_lang::prelude::*;
 
@@ -18,34 +23,32 @@ pub const ONE_TOKEN: u64 = 1_000_000;
 
 // ---- Human Curve™ ----
 
-/// Depth multiplier: x₀ = (1 + DEPTH_RATIO) × V = 21 × V
-/// D = DEPTH_RATIO × V is a mathematical parameter (not real SOL)
-/// It gives the curve depth from day 1 — like Curve's A parameter.
-pub const DEPTH_TOTAL_MULTIPLIER: u64 = 21;
-
-/// Depth ratio: D = 20 × V (the depth parameter, never withdrawable)
+/// Depth ratio: D = 20 × V (the depth parameter, never withdrawable).
+/// D is a mathematical parameter that gives the curve depth from day 1
+/// — like Curve Finance's amplification factor A.
+/// Nobody can ever withdraw D. It only exists in the x · y = k formula.
+/// ⚠️ IMMUTABLE AFTER CREATION — modifying D breaks solvency invariant
 pub const DEPTH_RATIO: u64 = 20;
 
 /// Initial token reserve: y₀ = 1,000,000 tokens (in base units with 6 decimals)
 /// All tokens in Humanofi start with this same reserve.
-/// x₀ = DEPTH_TOTAL_MULTIPLIER × V
-/// k₀ = x₀ × y₀
+/// At creation: x₀ = D = DEPTH_RATIO × V, k₀ = x₀ × y₀
+/// After Founder Buy: x = D + sol_to_curve + depth_fee ≈ 20.98V
 pub const INITIAL_Y: u128 = 1_000_000 * 1_000_000; // 1M × 10^6 = 10^12
 
-// ---- Fees (6% total) ----
+// ---- Holder Trade Fees (5% total) ----
 //
-// v2: Simplified fee structure for legal compliance.
-//     Holder rewards REMOVED to avoid securities classification.
+// v3.6: Reduced from 6% to 5%. Creator share reduced from 3% to 2%.
 //
-// 3% → Creator Fee Vault (PDA, claimable every 15 days)
+// 2% → Creator Fee Vault (PDA, claimable every 15 days)
 // 2% → Protocol Treasury (immediate)
 // 1% → k-Deepening (stays in x, state update only)
 
-/// Total fee in basis points (6%)
-pub const TOTAL_FEE_BPS: u64 = 600;
+/// Total fee in basis points (5%)
+pub const TOTAL_FEE_BPS: u64 = 500;
 
-/// Creator's share of fees: 3% of transaction volume → Creator Fee Vault PDA
-pub const FEE_CREATOR_BPS: u64 = 300;
+/// Creator's share of fees: 2% of transaction volume → Creator Fee Vault PDA
+pub const FEE_CREATOR_BPS: u64 = 200;
 
 /// Protocol treasury share: 2% of transaction volume → immediate
 pub const FEE_PROTOCOL_BPS: u64 = 200;
@@ -56,20 +59,38 @@ pub const FEE_DEPTH_BPS: u64 = 100;
 /// Precision for basis points calculations
 pub const BPS_DENOMINATOR: u64 = 10_000;
 
-// ---- Merit Reward (α = 14% total: 10% creator + 4% protocol) ----
+// ---- Creator Sell Fees (6% total, no self-fee) ----
 //
-// v2: Rebalanced to boost the Price Stabilizer.
-//     Creator reduced from 12.6% → 10% (keeps skin-in-the-game)
-//     Protocol increased from 1.4% → 4% (Stabilizer ~3× more powerful)
+// When the creator sells their own tokens, they don't earn creator fees
+// on their own transactions. The protocol takes a higher cut instead.
+//
+// 5% → Protocol Treasury (immediate)
+// 1% → k-Deepening (stays in x, state update only)
 
-/// Creator portion of Merit Reward: 10% of tokens produced
-pub const ALPHA_CREATOR_BPS: u64 = 1_000;
+/// Total fee for creator sells (6%)
+pub const CREATOR_SELL_FEE_BPS: u64 = 600;
 
-/// Protocol portion of Merit Reward: 4% of tokens produced (→ ProtocolVault)
-pub const ALPHA_PROTOCOL_BPS: u64 = 400;
+/// Protocol share on creator sell: 5% → Protocol Treasury
+pub const CREATOR_SELL_PROTOCOL_BPS: u64 = 500;
 
-/// Buyer token share: 100% - α = 86%
-pub const BUYER_SHARE_BPS: u64 = 8_600;
+/// k-Deepening share on creator sell: 1% → stays in x
+pub const CREATOR_SELL_DEPTH_BPS: u64 = 100;
+
+// ---- Founder Buy ----
+//
+// At token creation, the creator buys tokens at P₀ using their initial
+// liquidity deposit V. This gives them skin-in-the-game at the lowest price.
+//
+// Fee structure: 3% total (2% protocol + 1% depth). No creator self-fee.
+
+/// Founder Buy total fee (3%)
+pub const FOUNDER_BUY_FEE_BPS: u64 = 300;
+
+/// Founder Buy protocol fee (2%) → Protocol Treasury
+pub const FOUNDER_BUY_PROTOCOL_BPS: u64 = 200;
+
+/// Founder Buy depth fee (1%) → k-deepening
+pub const FOUNDER_BUY_DEPTH_BPS: u64 = 100;
 
 // ---- Smart Sell Limiter ----
 
@@ -89,6 +110,10 @@ pub const CREATOR_LOCK_DURATION: i64 = 365 * 24 * 60 * 60; // 31_536_000
 pub const CREATOR_FEE_CLAIM_COOLDOWN: i64 = 15 * 24 * 60 * 60; // 1_296_000
 
 // ---- Price Stabilizer ----
+//
+// v3.6: The Stabilizer is DORMANT because Merit Reward is removed.
+// Protocol never accumulates tokens → protocol_balance = 0 always.
+// These constants are kept for future bidirectional market maker activation.
 
 /// Trigger threshold: Stabilizer activates if price deviates > ρ from TWAP
 pub const STABILIZER_THRESHOLD_BPS: u64 = 200; // 2%
@@ -125,7 +150,7 @@ pub const SEED_PROTOCOL_VAULT: &[u8] = b"protocol_vault";
 
 // ---- Treasury ----
 
-/// Protocol treasury wallet (receives 2% of fees).
+/// Protocol treasury wallet (receives fees from trades + Founder Buy).
 /// Pubkey: 6Jiop19yLzazX6vig4i4jKMRXRjFJumTWBZNgU2cAodM
 pub const TREASURY_WALLET: Pubkey = Pubkey::new_from_array([
     78, 212, 148, 109, 151, 133, 91, 234, 175, 199, 198, 69, 217, 119, 90, 107,

@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChatText, Megaphone, ChartBar, CalendarBlank, Paperclip, Microphone, Stop, Play, Trash, ImageSquare, VideoCamera, Globe, YoutubeLogo, Question, Crown } from "@phosphor-icons/react";
 import { toast } from "sonner";
+import { useAuthFetch } from "@/lib/authFetch";
 
 type PostType = "text" | "announcement" | "poll" | "event" | "youtube" | "question" | "premium";
 
@@ -20,13 +21,12 @@ function PublicPostToggle({
   const [canPost, setCanPost] = useState<boolean | null>(null);
   const [nextPostAt, setNextPostAt] = useState<string | null>(null);
   const [countdown, setCountdown] = useState("");
+  const authFetch = useAuthFetch();
 
   useEffect(() => {
     const check = async () => {
       try {
-        const res = await fetch("/api/public-posts/status", {
-          headers: { "x-wallet-address": walletAddress },
-        });
+        const res = await authFetch("/api/public-posts/status");
         const data = await res.json();
         setCanPost(data.canPost ?? false);
         if (!data.canPost && data.nextPostAt) {
@@ -114,6 +114,7 @@ export default function PostComposer({ mintAddress, walletAddress, onPublished }
   const [eventTitle, setEventTitle] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [premiumThreshold, setPremiumThreshold] = useState(100);
+  const authFetch = useAuthFetch();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -200,9 +201,8 @@ export default function PostComposer({ mintAddress, walletAddress, onPublished }
       if (selectedFiles.length > 0) {
         const formData = new FormData();
         selectedFiles.forEach((f) => formData.append("files", f));
-        const uploadRes = await fetch(`/api/inner-circle/${mintAddress}/upload`, {
+        const uploadRes = await authFetch(`/api/inner-circle/${mintAddress}/upload`, {
           method: "POST",
-          headers: { "x-wallet-address": walletAddress },
           body: formData,
         });
         if (uploadRes.ok) {
@@ -241,9 +241,9 @@ export default function PostComposer({ mintAddress, walletAddress, onPublished }
         metadata.is_public = true;
       }
 
-      const res = await fetch(`/api/inner-circle/${mintAddress}/posts`, {
+      const res = await authFetch(`/api/inner-circle/${mintAddress}/posts`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-wallet-address": walletAddress },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           content: content.trim() || (mediaUrls.length > 0 ? "Shared media" : ""),
           post_type: postType,
@@ -256,9 +256,9 @@ export default function PostComposer({ mintAddress, walletAddress, onPublished }
         // Also publish as public post if checkbox is checked
         if (isPublic && (postType === "text" || postType === "youtube")) {
           try {
-            const pubRes = await fetch("/api/public-posts", {
+            const pubRes = await authFetch("/api/public-posts", {
               method: "POST",
-              headers: { "Content-Type": "application/json", "x-wallet-address": walletAddress },
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ content: content.trim(), mediaUrls }),
             });
             if (pubRes.ok) {
