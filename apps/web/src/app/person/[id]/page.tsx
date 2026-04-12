@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import BondingCurveChart, { type BondingCurveChartHandle } from "@/components/BondingCurveChart";
 import TradeModal, { type TradeStep } from "@/components/TradeModal";
+import TradeWidget from "@/components/TradeWidget";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
 import { useSolPrice } from "@/hooks/useSolPrice";
@@ -54,8 +55,9 @@ function getYouTubeEmbedUrl(url: string): string | null {
 }
 
 export default function PersonPublicPage() {
-  const [activeTab, setActiveTab] = useState<"buy" | "sell">("buy");
-  const [amount, setAmount] = useState("");
+  // Trade state (managed by TradeWidget, only modal state here)
+  const [tradeActiveTab, setTradeActiveTab] = useState<"buy" | "sell">("buy");
+  const [tradeAmount, setTradeAmount] = useState(0);
 
   const { creator, curveData, liveCurve, mockPerson, isCreator, tokenColor, refreshCurve, chartRef } = usePerson();
   const { authenticated, login } = usePrivy();
@@ -92,15 +94,7 @@ export default function PersonPublicPage() {
   const solReserve = liveCurve ? liveCurve.solReserve / 1e9 : curveData ? curveData.solReserve.toNumber() / 1e9 : 0;
   const marketCap = totalSupply > 0 ? totalSupply * priceNum : solReserve;
 
-  const parsedAmt = parseFloat(amount) || 0;
-  const estimateReceive =
-    activeTab === "buy"
-      ? curveData
-        ? (estimateBuy(rawX, rawY, rawK, parsedAmt * 1e9).tokensBuyer / 1e6).toFixed(2)
-        : (parsedAmt / (priceNum || 1)).toFixed(2)
-      : curveData
-        ? (estimateSell(rawX, rawY, rawK, parsedAmt * 1e6).solNet / 1e9).toFixed(4)
-        : (parsedAmt * (priceNum || 0)).toFixed(4);
+
 
   // Lock info
   const lockUntil = creator?.token_lock_until || "";
@@ -151,11 +145,13 @@ export default function PersonPublicPage() {
     }
   }, [creator, walletAddress, refreshCurve, liveCurve, priceNum, rawX, rawY, rawK, solReserve, supplyPublic]);
 
-  const handleTrade = useCallback(async () => {
+  const handleTrade = useCallback(async (tab: "buy" | "sell", parsedAmount: number) => {
     if (!authenticated) { login(); return; }
-    const parsedAmount = parseFloat(amount);
     if (!parsedAmount || parsedAmount <= 0) { toast.error("Enter a valid amount."); return; }
     if (!creator) { toast.error("This is a demo profile — trading not available."); return; }
+
+    setTradeActiveTab(tab);
+    setTradeAmount(parsedAmount);
 
     // Open modal
     setTradeModalOpen(true);
@@ -166,7 +162,7 @@ export default function PersonPublicPage() {
     try {
       let txSig: string | null = null;
 
-      if (activeTab === "buy") {
+      if (tab === "buy") {
         txSig = await buyTokens({
           mint: new PublicKey(creator.mint_address),
           solAmount: parsedAmount,
@@ -188,27 +184,21 @@ export default function PersonPublicPage() {
         return;
       }
 
-      // TX signed → confirming
       setTradeStep("confirming");
       setTradeTxSig(txSig);
-
-      // Wait for confirmation (TX is already confirmed when .rpc() resolves)
-      // Now verify and record
       setTradeStep("verifying");
 
-      // Record with cryptographic proof
-      const tokenAmt = activeTab === "buy" ? parsedAmount / (priceNum || 1) : parsedAmount;
-      await recordTrade(txSig, activeTab, parsedAmount, tokenAmt);
+      const tokenAmt = tab === "buy" ? parsedAmount / (priceNum || 1) : parsedAmount;
+      await recordTrade(txSig, tab, parsedAmount, tokenAmt);
 
       setTradeStep("complete");
-      setAmount("");
 
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Transaction failed";
       setTradeStep("error");
       setTradeError(msg);
     }
-  }, [authenticated, login, amount, creator, activeTab, buyTokens, sellTokens, recordTrade, priceNum]);
+  }, [authenticated, login, creator, buyTokens, sellTokens, recordTrade, priceNum]);
 
   /* ════════════════════════════════════════════
      CREATOR DASHBOARD VIEW
@@ -391,62 +381,20 @@ export default function PersonPublicPage() {
       {/* ── SIDEBAR: Trade Widget (sticky) + Score ── */}
       <div className="profile-sidebar">
         {/* Trade Widget — FIRST, most visible */}
-        <div className="trade-widget" style={{ borderColor: tokenColor }}>
-          <div className="trade-widget__header">
-            <span className="trade-widget__title">{isReal ? "Trade" : "Demo Mode"}</span>
-            <span className="trade-widget__price" style={{ color: tokenColor }}>{priceNum > 0 ? formatSol(priceNum) : "—"} SOL</span>
-          </div>
-
-          <div className="trade-widget__tabs">
-            <button className={`trade-tab ${activeTab === "buy" ? "active" : ""}`} style={activeTab === "buy" ? { background: tokenColor, borderColor: tokenColor } : {}} onClick={() => setActiveTab("buy")}>Buy</button>
-            <button className={`trade-tab ${activeTab === "sell" ? "active" : ""}`} style={activeTab === "sell" ? { background: "#e53e3e", borderColor: "#e53e3e" } : {}} onClick={() => setActiveTab("sell")}>Sell</button>
-          </div>
-
-          <div className="trade-widget__input-group">
-            <label className="trade-widget__label">
-              {activeTab === "buy" ? "Amount in SOL" : `Amount of ${displayNameShort.toUpperCase()}`}
-            </label>
-            <input type="number" className="trade-input" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} />
-
-          </div>
-
-          <div className="trade-widget__estimate">
-            <span>You will {activeTab === "buy" ? "receive" : "get"}</span>
-            <span style={{ color: "var(--text)", fontWeight: 800 }}>
-              ~{estimateReceive} {activeTab === "buy" ? "tokens" : "SOL"}
-              {activeTab === "sell" && solPriceUsd > 0 ? ` (${formatUsd(solToUsd(parseFloat(estimateReceive) || 0, solPriceUsd))})` : ""}
-            </span>
-          </div>
-
-          <button 
-            className="trade-widget__btn" 
-            style={{ background: activeTab === "buy" ? tokenColor : "#e53e3e", opacity: isReal ? 1 : 0.5 }} 
-            onClick={handleTrade} 
-            disabled={!isReal}
-          >
-            {!authenticated ? "Connect Wallet" : !isReal ? "Demo — Create a Token First" : activeTab === "buy" ? `Buy ${displayNameShort}` : `Sell ${displayNameShort}`}
-          </button>
-
-          {/* Quick Stats — inline in trade widget */}
-          <div className="trade-widget__stats">
-            <div className="trade-widget__stat">
-              <CurrencyDollar size={14} weight="bold" />
-              <span>Price</span>
-              <strong>{curveData ? `${formatSol(priceNum)} SOL` : mockPerson?.price || "—"}</strong>
-              {solPriceUsd > 0 && <span className="trade-widget__stat-sub">{formatUsd(solToUsd(priceNum, solPriceUsd))}</span>}
-            </div>
-            <div className="trade-widget__stat">
-              <ChartLineUp size={14} weight="bold" />
-              <span>Market Cap</span>
-              <strong>{curveData ? `${marketCap.toFixed(2)} SOL` : mockPerson?.marketCap || "—"}</strong>
-            </div>
-            <div className="trade-widget__stat">
-              <Users size={14} weight="bold" />
-              <span>Holders</span>
-              <strong>{mockPerson?.holders?.toLocaleString("en-US") || "—"}</strong>
-            </div>
-          </div>
-        </div>
+        <TradeWidget
+          tokenColor={tokenColor}
+          displayName={creator?.display_name || mockPerson?.name || "Token"}
+          priceNum={priceNum}
+          mintAddress={creator?.mint_address}
+          isReal={isReal}
+          authenticated={authenticated}
+          rawX={rawX}
+          rawY={rawY}
+          rawK={rawK}
+          hasCurveData={!!curveData}
+          onTrade={handleTrade}
+          onLogin={login}
+        />
 
 
         {/* How it works — trust & fairness */}
@@ -573,8 +521,8 @@ export default function PersonPublicPage() {
       <TradeModal
         isOpen={tradeModalOpen}
         step={tradeStep}
-        tradeType={activeTab}
-        amount={amount || "0"}
+        tradeType={tradeActiveTab}
+        amount={String(tradeAmount)}
         tokenSymbol={creator?.display_name?.split(" ")[0] || mockPerson?.name?.split(" ")[0] || "TOKEN"}
         txSignature={tradeTxSig}
         errorMessage={tradeError}

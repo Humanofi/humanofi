@@ -56,6 +56,8 @@ export function PrivyWalletProvider({ children }: PrivyWalletProviderProps) {
         },
         // Privy v3: Solana RPC config via @solana/kit
         solana: {
+          // @ts-expect-error — defaultChain exists at runtime but Privy types don't export it yet
+          defaultChain: "solana:devnet",
           rpcs: {
             "solana:mainnet": {
               rpc: createSolanaRpc(MAINNET_RPC),
