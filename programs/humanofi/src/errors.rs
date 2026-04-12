@@ -52,12 +52,18 @@ pub enum HumanofiError {
     #[msg("Only the creator can perform this action")]
     UnauthorizedCreator,
 
-    // ---- Rewards (6040-6049) ----
+    // ---- Rewards / Fees (6040-6049) ----
     #[msg("No rewards available to claim")]
     NoRewardsToClaim,
 
     #[msg("Holder must have a positive token balance to claim rewards")]
     ZeroHolderBalance,
+
+    #[msg("No fees available to claim")]
+    NoFeesToClaim,
+
+    #[msg("Creator must wait 15 days between fee claims")]
+    CreatorClaimCooldown,
 
     // ---- Fees (6050-6059) ----
     #[msg("Fee calculation overflow")]
@@ -76,16 +82,6 @@ pub enum HumanofiError {
     #[msg("Token amount must be greater than zero")]
     ZeroAmount,
 
-    // ---- Engagement (6070-6079) ----
-    #[msg("Engagement record expired — must be from current epoch")]
-    EngagementExpired,
-
-    #[msg("Insufficient engagement — minimum actions required this month")]
-    InsufficientEngagement,
-
-    #[msg("Unauthorized: only protocol authority can record engagement")]
-    UnauthorizedOracle,
-
     // ---- Initial Liquidity (6080-6089) ----
     #[msg("Initial liquidity below minimum — inject more SOL to give your token value")]
     InsufficientInitialLiquidity,
@@ -93,12 +89,9 @@ pub enum HumanofiError {
     #[msg("Initial liquidity exceeds maximum")]
     ExcessiveInitialLiquidity,
 
-    // ---- Treasury / Oracle (6090-6099) ----
+    // ---- Treasury (6090-6099) ----
     #[msg("Invalid treasury wallet — must match protocol treasury")]
     InvalidTreasury,
-
-    #[msg("Invalid epoch — must match current epoch")]
-    InvalidEpoch,
 
     // ---- Slippage Protection (6100-6109) ----
     #[msg("Slippage exceeded — received less than minimum specified")]

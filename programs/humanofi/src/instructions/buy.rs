@@ -2,19 +2,18 @@
 // Humanofi — Buy Tokens (Human Curve™)
 // ========================================
 //
-// Buy flow (matches humanofi-mathematiques.md §5):
+// Buy flow v2 (simplified fees — no holder rewards):
 //   1. CPI Guard: reject bot/program calls
 //   2. Calculate buy via Human Curve (fees + k-deepening + merit split)
 //   3. Slippage protection
 //   4. Transfer SOL: buyer → curve reserve (net)
-//   5. Distribute fees: 2% creator, 2% holder pool, 1% protocol
+//   5. Distribute fees: 3% creator fee vault, 2% protocol, 1% depth (state)
 //   6. Mint tokens_buyer → buyer ATA (thaw/mint/freeze)
-//   7. Mint tokens_creator → creator ATA (12.6% Merit Reward, frozen)
-//   8. Mint tokens_protocol → protocol ATA (1.4% Merit Fee, frozen)
-//   9. Update reward pool (MasterChef pattern)
-//  10. Update curve state (x, y, k, supplies)
-//  11. Update EMA TWAP
-//  12. Price Stabilizer: auto-sell protocol tokens if price spiked
+//   7. Mint tokens_creator → creator ATA (10% Merit Reward, frozen)
+//   8. Mint tokens_protocol → protocol ATA (4% Merit Fee, frozen)
+//   9. Update curve state (x, y, k, supplies)
+//  10. Update EMA TWAP
+//  11. Price Stabilizer: auto-sell protocol tokens if price spiked
 //
 // The depth fee (1%) stays in the vault as a state update —
 // no CPI transfer needed.
@@ -88,37 +87,25 @@ pub fn handler(ctx: Context<Buy>, sol_amount: u64, min_tokens_out: u64) -> Resul
         sol_to_vault,
     )?;
 
-    // ── Transfer fees: buyer → recipients (5% total exits vault) ──
+    // ── Transfer fees: buyer → recipients (5% total exits to destinations) ──
 
-    // 2% → Creator wallet (SOL, immediate)
+    // 3% → Creator Fee Vault PDA (accumulated, claimable every 15 days)
     if result.fee_creator > 0 {
         system_program::transfer(
             CpiContext::new(
                 ctx.accounts.system_program.to_account_info(),
                 system_program::Transfer {
                     from: ctx.accounts.buyer.to_account_info(),
-                    to: ctx.accounts.creator_wallet.to_account_info(),
+                    to: ctx.accounts.creator_fee_vault.to_account_info(),
                 },
             ),
             result.fee_creator,
         )?;
+        // Update vault accounting
+        ctx.accounts.creator_fee_vault.record_deposit(result.fee_creator)?;
     }
 
-    // 2% → Holder reward pool
-    if result.fee_holders > 0 {
-        system_program::transfer(
-            CpiContext::new(
-                ctx.accounts.system_program.to_account_info(),
-                system_program::Transfer {
-                    from: ctx.accounts.buyer.to_account_info(),
-                    to: ctx.accounts.reward_pool.to_account_info(),
-                },
-            ),
-            result.fee_holders,
-        )?;
-    }
-
-    // 1% → Protocol treasury
+    // 2% → Protocol treasury
     if result.fee_protocol > 0 {
         system_program::transfer(
             CpiContext::new(
@@ -174,7 +161,7 @@ pub fn handler(ctx: Context<Buy>, sol_amount: u64, min_tokens_out: u64) -> Resul
         signer_seeds,
     ))?;
 
-    // ── Mint creator's Merit Reward (12.6%) → creator ATA ──
+    // ── Mint creator's Merit Reward (10%) → creator ATA ──
     if result.tokens_creator > 0 {
         if ctx.accounts.creator_token_account.is_frozen() {
             thaw_account(CpiContext::new_with_signer(
@@ -212,7 +199,7 @@ pub fn handler(ctx: Context<Buy>, sol_amount: u64, min_tokens_out: u64) -> Resul
         ))?;
     }
 
-    // ── Mint protocol's Merit Fee (1.4%) → protocol ATA ──
+    // ── Mint protocol's Merit Fee (4%) → protocol ATA ──
     if result.tokens_protocol > 0 {
         if ctx.accounts.protocol_token_account.is_frozen() {
             thaw_account(CpiContext::new_with_signer(
@@ -259,41 +246,19 @@ pub fn handler(ctx: Context<Buy>, sol_amount: u64, min_tokens_out: u64) -> Resul
             .ok_or(HumanofiError::MathOverflow)?;
     }
 
-    // ── Update reward pool BEFORE supply change (MasterChef pattern) ──
-    // On first buy: supply_public == 0, but after this buy the buyer will have tokens.
-    // We use tokens_buyer as denominator so the first buyer gets their fair share
-    // of the holders fee (otherwise those fees are locked forever — S-04 fix).
-    {
-        let curve = &ctx.accounts.bonding_curve;
-        if result.fee_holders > 0 {
-            let denominator = if curve.supply_public > 0 {
-                curve.supply_public
-            } else {
-                // First buy: attribute fees to the incoming buyer's token count
-                result.tokens_buyer
-            };
-            ctx.accounts
-                .reward_pool
-                .update_reward_per_token(result.fee_holders, denominator)?;
-        }
-    }
-
     // ── Update curve state ──
     let curve = &mut ctx.accounts.bonding_curve;
     curve.apply_buy(&result)?;
     curve.update_twap()?;
 
     // ── Price Stabilizer ──
-    // Pre-compute stabilization BEFORE CPI to avoid borrow conflicts
     let protocol_balance = ctx.accounts.protocol_vault.token_balance;
     let stab_result = curve.calculate_stabilization(protocol_balance)?;
 
     if let Some(stab) = stab_result {
-        // Apply state changes first (while we have &mut)
-        let supply_public_for_rewards = curve.supply_public;
+        let curve = &mut ctx.accounts.bonding_curve;
         curve.apply_stabilization(&stab)?;
 
-        // Now drop the mut ref for CPI
         let _ = curve;
 
         // Burn protocol tokens from the protocol ATA
@@ -336,16 +301,8 @@ pub fn handler(ctx: Context<Buy>, sol_amount: u64, min_tokens_out: u64) -> Resul
         let curve_info = ctx.accounts.bonding_curve.to_account_info();
         if stab.fee_creator > 0 {
             **curve_info.try_borrow_mut_lamports()? -= stab.fee_creator;
-            **ctx.accounts.creator_wallet.to_account_info().try_borrow_mut_lamports()? += stab.fee_creator;
-        }
-        if stab.fee_holders > 0 {
-            **curve_info.try_borrow_mut_lamports()? -= stab.fee_holders;
-            **ctx.accounts.reward_pool.to_account_info().try_borrow_mut_lamports()? += stab.fee_holders;
-
-            if supply_public_for_rewards > 0 {
-                ctx.accounts.reward_pool
-                    .update_reward_per_token(stab.fee_holders, supply_public_for_rewards)?;
-            }
+            **ctx.accounts.creator_fee_vault.to_account_info().try_borrow_mut_lamports()? += stab.fee_creator;
+            ctx.accounts.creator_fee_vault.record_deposit(stab.fee_creator)?;
         }
         if stab.fee_protocol > 0 {
             **curve_info.try_borrow_mut_lamports()? -= stab.fee_protocol;
@@ -375,7 +332,7 @@ pub fn handler(ctx: Context<Buy>, sol_amount: u64, min_tokens_out: u64) -> Resul
             stab.sol_net,
         );
 
-        // Update TWAP after stabilization so EMA reflects the stabilized price (S-10 fix)
+        // Update TWAP after stabilization
         let curve = &mut ctx.accounts.bonding_curve;
         curve.update_twap()?;
     }
@@ -387,7 +344,7 @@ pub fn handler(ctx: Context<Buy>, sol_amount: u64, min_tokens_out: u64) -> Resul
         result.tokens_buyer,
         result.tokens_creator,
         result.tokens_protocol,
-        result.fee_creator + result.fee_holders + result.fee_protocol + result.fee_depth
+        result.fee_creator + result.fee_protocol + result.fee_depth
     );
 
     Ok(())
@@ -412,14 +369,14 @@ pub struct Buy<'info> {
     )]
     pub bonding_curve: Box<Account<'info, BondingCurve>>,
 
-    /// Reward Pool PDA
+    /// Creator Fee Vault PDA — accumulates 3% creator fees
     #[account(
         mut,
-        seeds = [SEED_REWARDS, mint.key().as_ref()],
-        bump = reward_pool.bump,
+        seeds = [SEED_CREATOR_FEES, mint.key().as_ref()],
+        bump = creator_fee_vault.bump,
         has_one = mint,
     )]
-    pub reward_pool: Box<Account<'info, RewardPool>>,
+    pub creator_fee_vault: Box<Account<'info, CreatorFeeVault>>,
 
     /// Protocol Vault PDA — tracks protocol token balance
     #[account(
@@ -471,7 +428,7 @@ pub struct Buy<'info> {
     )]
     pub protocol_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    /// Creator's wallet (receives 2% SOL fee + ATA authority for Merit tokens)
+    /// Creator's wallet (ATA authority for Merit tokens)
     /// CHECK: validated via bonding_curve.creator
     #[account(
         mut,
@@ -479,7 +436,7 @@ pub struct Buy<'info> {
     )]
     pub creator_wallet: UncheckedAccount<'info>,
 
-    /// Protocol treasury wallet (receives 1% of fees + Stabilizer revenue)
+    /// Protocol treasury wallet (receives 2% of fees + Stabilizer revenue)
     /// CHECK: Validated against hardcoded TREASURY_WALLET constant
     #[account(
         mut,

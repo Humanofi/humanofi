@@ -1,5 +1,5 @@
 {
-  "address": "C88xL1xsuSi4g8yXDY3MtZUKiAcH1RTs9eQSLVpm4YiR",
+  "address": "4u14FtDEdr1UqSXbwhDXDLi552Skm1TPodrtjKje2pmQ",
   "metadata": {
     "name": "humanofi",
     "version": "0.1.0",
@@ -14,10 +14,10 @@
         "",
         "- CPI Guard: rejects program-to-program calls (anti-bot)",
         "- SOL → Human Curve calculation (k-deepening + merit split)",
-        "- Fees: 2% creator SOL + 2% holder pool + 1% protocol + 1% k-depth",
+        "- Fees: 3% creator vault + 2% protocol + 1% k-depth",
         "- Mint 86% tokens → buyer ATA (frozen)",
-        "- Mint 12.6% tokens → creator ATA (Merit Reward, frozen)",
-        "- Mint 1.4% tokens → protocol ATA (Merit Fee, frozen)",
+        "- Mint 10% tokens → creator ATA (Merit Reward, frozen)",
+        "- Mint 4% tokens → protocol ATA (Merit Fee, frozen)",
         "- Price Stabilizer: auto-sells protocol tokens if price spiked > 2%",
         "- Slippage protection: reverts if tokens received < min_tokens_out"
       ],
@@ -48,7 +48,7 @@
           "writable": true,
           "relations": [
             "bonding_curve",
-            "reward_pool",
+            "creator_fee_vault",
             "protocol_vault"
           ]
         },
@@ -78,9 +78,9 @@
           }
         },
         {
-          "name": "reward_pool",
+          "name": "creator_fee_vault",
           "docs": [
-            "Reward Pool PDA"
+            "Creator Fee Vault PDA — accumulates 3% creator fees"
           ],
           "writable": true,
           "pda": {
@@ -88,12 +88,17 @@
               {
                 "kind": "const",
                 "value": [
+                  99,
                   114,
                   101,
-                  119,
                   97,
+                  116,
+                  111,
                   114,
-                  100,
+                  95,
+                  102,
+                  101,
+                  101,
                   115
                 ]
               },
@@ -353,14 +358,14 @@
         {
           "name": "creator_wallet",
           "docs": [
-            "Creator's wallet (receives 2% SOL fee + ATA authority for Merit tokens)"
+            "Creator's wallet (ATA authority for Merit tokens)"
           ],
           "writable": true
         },
         {
           "name": "treasury",
           "docs": [
-            "Protocol treasury wallet (receives 1% of fees + Stabilizer revenue)"
+            "Protocol treasury wallet (receives 2% of fees + Stabilizer revenue)"
           ],
           "writable": true
         },
@@ -397,31 +402,29 @@
       ]
     },
     {
-      "name": "claim_rewards",
+      "name": "claim_creator_fees",
       "docs": [
-        "Claim accumulated rewards from the holder fee pool.",
+        "Claim accumulated creator fees from the CreatorFeeVault PDA.",
         "",
-        "ENGAGEMENT GATED: Holder must have >= MIN_ENGAGEMENT_ACTIONS",
-        "in the current epoch (month) to qualify.",
-        "",
-        "Uses reward-per-token pattern (MasterChef, gas-efficient, O(1)):",
-        "pending = balance × (global_rpt - personal_rpt) / precision"
+        "- Only the creator of the token can call this",
+        "- 15-day cooldown between claims",
+        "- All unclaimed fees transferred to creator's wallet as SOL"
       ],
       "discriminator": [
-        4,
-        144,
-        132,
-        71,
-        116,
+        0,
         23,
-        151,
-        80
+        125,
+        234,
+        156,
+        118,
+        134,
+        89
       ],
       "accounts": [
         {
-          "name": "holder",
+          "name": "creator",
           "docs": [
-            "The holder claiming rewards"
+            "The creator claiming fees"
           ],
           "writable": true,
           "signer": true
@@ -432,13 +435,13 @@
             "The Token-2022 Mint"
           ],
           "relations": [
-            "reward_pool"
+            "creator_fee_vault"
           ]
         },
         {
-          "name": "reward_pool",
+          "name": "creator_fee_vault",
           "docs": [
-            "Reward Pool PDA (SOL is stored as lamports here)"
+            "Creator Fee Vault PDA (SOL stored as lamports)"
           ],
           "writable": true,
           "pda": {
@@ -446,12 +449,17 @@
               {
                 "kind": "const",
                 "value": [
+                  99,
                   114,
                   101,
-                  119,
                   97,
+                  116,
+                  111,
                   114,
-                  100,
+                  95,
+                  102,
+                  101,
+                  101,
                   115
                 ]
               },
@@ -463,144 +471,6 @@
           }
         },
         {
-          "name": "holder_reward_state",
-          "docs": [
-            "Holder's reward state (init_if_needed for first claim)"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  114,
-                  101,
-                  119,
-                  97,
-                  114,
-                  100,
-                  95,
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "mint"
-              },
-              {
-                "kind": "account",
-                "path": "holder"
-              }
-            ]
-          }
-        },
-        {
-          "name": "engagement_record",
-          "docs": [
-            "Engagement record for current epoch (proves holder was active)"
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  110,
-                  103,
-                  97,
-                  103,
-                  101,
-                  109,
-                  101,
-                  110,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "mint"
-              },
-              {
-                "kind": "account",
-                "path": "holder"
-              },
-              {
-                "kind": "arg",
-                "path": "epoch"
-              }
-            ]
-          }
-        },
-        {
-          "name": "holder_token_account",
-          "docs": [
-            "Holder's token account (to verify balance)"
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "holder"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            }
-          }
-        },
-        {
-          "name": "token_program",
-          "docs": [
-            "Token-2022 Program"
-          ]
-        },
-        {
           "name": "system_program",
           "docs": [
             "System Program"
@@ -608,12 +478,7 @@
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": [
-        {
-          "name": "epoch",
-          "type": "u64"
-        }
-      ]
+      "args": []
     },
     {
       "name": "create_token",
@@ -624,14 +489,14 @@
         "- Token-2022 Mint (freeze_authority = bonding_curve PDA)",
         "- BondingCurve PDA (Human Curve™: x · y = k, SOL reserve)",
         "- CreatorVault PDA (vesting + Smart Sell Limiter tracker)",
-        "- RewardPool PDA (holder fee accumulator)",
+        "- CreatorFeeVault PDA (accumulates 3% of trading fees)",
         "- ProtocolVault PDA (Stabilizer token treasury)",
         "- On-chain metadata (name, symbol, image URI)",
         "- Initial SOL liquidity injected into bonding curve reserve",
         "",
         "No tokens are minted at creation. Creator earns tokens",
-        "via the Merit Reward (12.6%) on each subsequent buy.",
-        "Protocol earns 1.4% for the Price Stabilizer."
+        "via the Merit Reward (10%) on each subsequent buy.",
+        "Protocol earns 4% for the Price Stabilizer."
       ],
       "discriminator": [
         84,
@@ -713,9 +578,9 @@
           }
         },
         {
-          "name": "reward_pool",
+          "name": "creator_fee_vault",
           "docs": [
-            "Reward Pool PDA — accumulates holder fees."
+            "Creator Fee Vault PDA — accumulates 3% of trading fees."
           ],
           "writable": true,
           "pda": {
@@ -723,12 +588,17 @@
               {
                 "kind": "const",
                 "value": [
+                  99,
                   114,
                   101,
-                  119,
                   97,
+                  116,
+                  111,
                   114,
-                  100,
+                  95,
+                  102,
+                  101,
+                  101,
                   115
                 ]
               },
@@ -814,102 +684,6 @@
       ]
     },
     {
-      "name": "record_engagement",
-      "docs": [
-        "Record a holder's engagement score on-chain (ORACLE ONLY).",
-        "",
-        "Called by the API server (protocol authority) to attest",
-        "that a holder has been active in the Inner Circle this month."
-      ],
-      "discriminator": [
-        41,
-        176,
-        233,
-        105,
-        106,
-        185,
-        47,
-        42
-      ],
-      "accounts": [
-        {
-          "name": "authority",
-          "docs": [
-            "Protocol oracle authority (API signer)"
-          ],
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "holder",
-          "docs": [
-            "The holder whose engagement is being recorded"
-          ]
-        },
-        {
-          "name": "mint",
-          "docs": [
-            "The Token-2022 Mint"
-          ]
-        },
-        {
-          "name": "engagement_record",
-          "docs": [
-            "Engagement record PDA (init_if_needed for first record)"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  110,
-                  103,
-                  97,
-                  103,
-                  101,
-                  109,
-                  101,
-                  110,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "mint"
-              },
-              {
-                "kind": "account",
-                "path": "holder"
-              },
-              {
-                "kind": "arg",
-                "path": "epoch"
-              }
-            ]
-          }
-        },
-        {
-          "name": "system_program",
-          "docs": [
-            "System Program"
-          ],
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "actions_count",
-          "type": "u16"
-        },
-        {
-          "name": "epoch",
-          "type": "u64"
-        }
-      ]
-    },
-    {
       "name": "sell",
       "docs": [
         "Sell tokens back via the Human Curve™.",
@@ -917,7 +691,7 @@
         "- CPI Guard: rejects program-to-program calls (anti-bot)",
         "- If creator: verify vesting (Year 1 lock) + Smart Sell Limiter (5% impact max) + cooldown (30 days)",
         "- Thaw → Burn → Calculate SOL return → Distribute fees → Transfer → Re-freeze",
-        "- k-deepening: 1% of gross SOL stays in curve (k grows)",
+        "- Fees: 3% creator vault + 2% protocol + 1% k-depth",
         "- Slippage protection: reverts if SOL received < min_sol_out"
       ],
       "discriminator": [
@@ -947,7 +721,7 @@
           "writable": true,
           "relations": [
             "bonding_curve",
-            "reward_pool",
+            "creator_fee_vault",
             "creator_vault"
           ]
         },
@@ -977,9 +751,9 @@
           }
         },
         {
-          "name": "reward_pool",
+          "name": "creator_fee_vault",
           "docs": [
-            "Reward Pool PDA"
+            "Creator Fee Vault PDA — receives 3% of sell fees"
           ],
           "writable": true,
           "pda": {
@@ -987,12 +761,17 @@
               {
                 "kind": "const",
                 "value": [
+                  99,
                   114,
                   101,
-                  119,
                   97,
+                  116,
+                  111,
                   114,
-                  100,
+                  95,
+                  102,
+                  101,
+                  101,
                   115
                 ]
               },
@@ -1004,47 +783,9 @@
           }
         },
         {
-          "name": "holder_reward_state",
-          "docs": [
-            "Holder's reward state — snapshot pending rewards before balance change"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  114,
-                  101,
-                  119,
-                  97,
-                  114,
-                  100,
-                  95,
-                  115,
-                  116,
-                  97,
-                  116,
-                  101
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "mint"
-              },
-              {
-                "kind": "account",
-                "path": "seller"
-              }
-            ]
-          }
-        },
-        {
           "name": "creator_vault",
           "docs": [
-            "Creator Vault PDA — OPTIONAL. Only needed when seller = creator.",
-            "Used to verify vesting and enforce sell cooldown.",
-            "has_one = mint provides defense-in-depth (seeds already validate)."
+            "Creator Vault PDA — OPTIONAL. Only needed when seller = creator."
           ],
           "writable": true,
           "optional": true,
@@ -1130,7 +871,7 @@
         {
           "name": "creator_wallet",
           "docs": [
-            "Creator's wallet (receives 2% of fees)"
+            "Creator's wallet (for validation only now — fees go to vault)"
           ],
           "writable": true
         },
@@ -1182,6 +923,19 @@
       ]
     },
     {
+      "name": "CreatorFeeVault",
+      "discriminator": [
+        21,
+        14,
+        215,
+        247,
+        197,
+        137,
+        200,
+        121
+      ]
+    },
+    {
       "name": "CreatorVault",
       "discriminator": [
         200,
@@ -1192,32 +946,6 @@
         236,
         238,
         12
-      ]
-    },
-    {
-      "name": "EngagementRecord",
-      "discriminator": [
-        234,
-        28,
-        96,
-        202,
-        59,
-        32,
-        240,
-        7
-      ]
-    },
-    {
-      "name": "HolderRewardState",
-      "discriminator": [
-        115,
-        218,
-        10,
-        143,
-        211,
-        77,
-        178,
-        35
       ]
     },
     {
@@ -1244,19 +972,6 @@
         89,
         68,
         119
-      ]
-    },
-    {
-      "name": "RewardPool",
-      "discriminator": [
-        134,
-        121,
-        197,
-        211,
-        133,
-        154,
-        82,
-        32
       ]
     }
   ],
@@ -1343,66 +1058,56 @@
     },
     {
       "code": 6016,
+      "name": "NoFeesToClaim",
+      "msg": "No fees available to claim"
+    },
+    {
+      "code": 6017,
+      "name": "CreatorClaimCooldown",
+      "msg": "Creator must wait 15 days between fee claims"
+    },
+    {
+      "code": 6018,
       "name": "FeeOverflow",
       "msg": "Fee calculation overflow"
     },
     {
-      "code": 6017,
+      "code": 6019,
       "name": "UnauthorizedTransfer",
       "msg": "Unauthorized: transfer blocked — tokens can only be traded via Humanofi"
     },
     {
-      "code": 6018,
+      "code": 6020,
       "name": "CpiGuard",
       "msg": "CPI guard: only direct wallet transactions are allowed — no bots or programs"
     },
     {
-      "code": 6019,
+      "code": 6021,
       "name": "InvalidMint",
       "msg": "Invalid mint for this operation"
     },
     {
-      "code": 6020,
+      "code": 6022,
       "name": "ZeroAmount",
       "msg": "Token amount must be greater than zero"
     },
     {
-      "code": 6021,
-      "name": "EngagementExpired",
-      "msg": "Engagement record expired — must be from current epoch"
-    },
-    {
-      "code": 6022,
-      "name": "InsufficientEngagement",
-      "msg": "Insufficient engagement — minimum actions required this month"
-    },
-    {
       "code": 6023,
-      "name": "UnauthorizedOracle",
-      "msg": "Unauthorized: only protocol authority can record engagement"
-    },
-    {
-      "code": 6024,
       "name": "InsufficientInitialLiquidity",
       "msg": "Initial liquidity below minimum — inject more SOL to give your token value"
     },
     {
-      "code": 6025,
+      "code": 6024,
       "name": "ExcessiveInitialLiquidity",
       "msg": "Initial liquidity exceeds maximum"
     },
     {
-      "code": 6026,
+      "code": 6025,
       "name": "InvalidTreasury",
       "msg": "Invalid treasury wallet — must match protocol treasury"
     },
     {
-      "code": 6027,
-      "name": "InvalidEpoch",
-      "msg": "Invalid epoch — must match current epoch"
-    },
-    {
-      "code": 6028,
+      "code": 6026,
       "name": "SlippageExceeded",
       "msg": "Slippage exceeded — received less than minimum specified"
     }
@@ -1531,6 +1236,63 @@
       }
     },
     {
+      "name": "CreatorFeeVault",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "mint",
+            "docs": [
+              "The Token-2022 mint this vault belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "docs": [
+              "The creator's wallet address (only they can claim)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "total_accumulated",
+            "docs": [
+              "Total SOL accumulated in the vault (lamports)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_claimed",
+            "docs": [
+              "Total SOL claimed by the creator (lamports)"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "last_claim_at",
+            "docs": [
+              "Timestamp of the last successful claim"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "created_at",
+            "docs": [
+              "Timestamp when this vault was created"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
       "name": "CreatorVault",
       "type": {
         "kind": "struct",
@@ -1567,104 +1329,6 @@
             "name": "total_sold",
             "docs": [
               "Total tokens the creator has sold lifetime"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "bump",
-            "docs": [
-              "PDA bump seed"
-            ],
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "EngagementRecord",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "mint",
-            "docs": [
-              "The Token-2022 mint this record belongs to"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "holder",
-            "docs": [
-              "The holder's wallet address"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "epoch",
-            "docs": [
-              "Epoch number (unix_timestamp / EPOCH_DURATION)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "actions_count",
-            "docs": [
-              "Number of qualified actions this epoch",
-              "(reactions, replies, votes, etc.)"
-            ],
-            "type": "u16"
-          },
-          {
-            "name": "last_recorded_at",
-            "docs": [
-              "Last time engagement was recorded by oracle"
-            ],
-            "type": "i64"
-          },
-          {
-            "name": "bump",
-            "docs": [
-              "PDA bump seed"
-            ],
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "HolderRewardState",
-      "docs": [
-        "Per-holder state for tracking claimed rewards.",
-        "Seeds: [\"reward_state\", mint_pubkey, holder_pubkey]"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "mint",
-            "docs": [
-              "The mint this state belongs to"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "holder",
-            "docs": [
-              "The holder's wallet"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "reward_per_token_paid",
-            "docs": [
-              "The reward_per_token value at last claim"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "rewards_owed",
-            "docs": [
-              "Unclaimed rewards (lamports)"
             ],
             "type": "u64"
           },
@@ -1767,57 +1431,6 @@
               "Total number of purchases"
             ],
             "type": "u32"
-          },
-          {
-            "name": "bump",
-            "docs": [
-              "PDA bump seed"
-            ],
-            "type": "u8"
-          }
-        ]
-      }
-    },
-    {
-      "name": "RewardPool",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "mint",
-            "docs": [
-              "The Token-2022 mint this pool belongs to"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "reward_per_token_stored",
-            "docs": [
-              "Cumulative reward per token stored (scaled by 10^18)",
-              "This increases every time fees are added to the pool"
-            ],
-            "type": "u128"
-          },
-          {
-            "name": "total_accumulated",
-            "docs": [
-              "Total SOL accumulated in the pool (lamports)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "total_distributed",
-            "docs": [
-              "Total SOL distributed to holders (lamports)"
-            ],
-            "type": "u64"
-          },
-          {
-            "name": "last_updated_at",
-            "docs": [
-              "Last time the pool was updated"
-            ],
-            "type": "i64"
           },
           {
             "name": "bump",

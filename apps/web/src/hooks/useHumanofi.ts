@@ -1,10 +1,14 @@
 // ========================================
-// Humanofi — Protocol Interaction Hook (v2 — Human Curve™)
+// Humanofi — Protocol Interaction Hook (v3 — Simplified Fees)
 // ========================================
 // High-level hook wrapping all Anchor instructions
 // with proper PDA derivation, error handling, and toast notifications.
 //
-// Now uses useHumanofiProgram() internally — no wallet prop needed.
+// v3 changes:
+//   - Removed holder rewards (no RewardPool, no EngagementRecord)
+//   - Added CreatorFeeVault (3% of fees, claimable every 15 days)
+//   - Merit Reward: 10% creator + 4% protocol (was 12.6% + 1.4%)
+//   - Fees: 3% creator vault + 2% protocol + 1% depth
 
 "use client";
 
@@ -37,9 +41,9 @@ function deriveCreatorVaultPDA(mint: PublicKey) {
   );
 }
 
-function deriveRewardPoolPDA(mint: PublicKey) {
+function deriveCreatorFeeVaultPDA(mint: PublicKey) {
   return PublicKey.findProgramAddressSync(
-    [Buffer.from("rewards"), mint.toBuffer()],
+    [Buffer.from("creator_fees"), mint.toBuffer()],
     PROGRAM_ID
   );
 }
@@ -58,32 +62,13 @@ function derivePurchaseLimiterPDA(buyer: PublicKey, mint: PublicKey) {
   );
 }
 
-function deriveRewardStatePDA(mint: PublicKey, holder: PublicKey) {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("reward_state"), mint.toBuffer(), holder.toBuffer()],
-    PROGRAM_ID
-  );
-}
-
-const ENGAGEMENT_EPOCH_DURATION = 2_592_000; // 30 days in seconds
-
-function deriveEngagementRecordPDA(mint: PublicKey, holder: PublicKey) {
-  const epoch = Math.floor(Date.now() / 1000 / ENGAGEMENT_EPOCH_DURATION);
-  const epochBytes = Buffer.alloc(8);
-  epochBytes.writeBigUInt64LE(BigInt(epoch));
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("engagement"), mint.toBuffer(), holder.toBuffer(), epochBytes],
-    PROGRAM_ID
-  );
-}
-
 /**
  * useHumanofi — Master hook for all protocol interactions.
  *
  * No wallet prop needed — uses useHumanofiProgram() internally.
  *
  * Usage:
- *   const { createToken, buyTokens, connected, publicKey } = useHumanofi();
+ *   const { createToken, buyTokens, sellTokens, claimCreatorFees, connected } = useHumanofi();
  */
 export function useHumanofi() {
   const { program, connection, publicKey, walletAddress, connected } = useHumanofiProgram();
@@ -113,7 +98,7 @@ export function useHumanofi() {
       const mint = Keypair.generate();
       const [bondingCurve] = deriveBondingCurvePDA(mint.publicKey);
       const [creatorVault] = deriveCreatorVaultPDA(mint.publicKey);
-      const [rewardPool] = deriveRewardPoolPDA(mint.publicKey);
+      const [creatorFeeVault] = deriveCreatorFeeVaultPDA(mint.publicKey);
       const [protocolVault] = deriveProtocolVaultPDA(mint.publicKey);
 
       const txPromise = program.methods
@@ -128,7 +113,7 @@ export function useHumanofi() {
           mint: mint.publicKey,
           bondingCurve,
           creatorVault,
-          rewardPool,
+          creatorFeeVault,
           protocolVault,
           tokenProgram: TOKEN_2022_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -165,7 +150,7 @@ export function useHumanofi() {
 
       const lamports = Math.floor(params.solAmount * LAMPORTS_PER_SOL);
       const [bondingCurve] = deriveBondingCurvePDA(params.mint);
-      const [rewardPool] = deriveRewardPoolPDA(params.mint);
+      const [creatorFeeVault] = deriveCreatorFeeVaultPDA(params.mint);
       const [protocolVault] = deriveProtocolVaultPDA(params.mint);
       const [purchaseLimiter] = derivePurchaseLimiterPDA(publicKey, params.mint);
 
@@ -176,7 +161,7 @@ export function useHumanofi() {
         TOKEN_2022_PROGRAM_ID
       );
 
-      // Creator's ATA for Merit Reward (12.6%)
+      // Creator's ATA for Merit Reward (10%)
       const creatorTokenAccount = getAssociatedTokenAddressSync(
         params.mint,
         params.creatorWallet,
@@ -184,7 +169,7 @@ export function useHumanofi() {
         TOKEN_2022_PROGRAM_ID
       );
 
-      // Protocol's ATA for Merit Fee (1.4%) — authority = bonding_curve PDA
+      // Protocol's ATA for Merit Fee (4%) — authority = bonding_curve PDA
       const protocolTokenAccount = getAssociatedTokenAddressSync(
         params.mint,
         bondingCurve,
@@ -201,7 +186,7 @@ export function useHumanofi() {
           buyer: publicKey,
           mint: params.mint,
           bondingCurve,
-          rewardPool,
+          creatorFeeVault,
           protocolVault,
           purchaseLimiter,
           buyerTokenAccount,
@@ -241,8 +226,7 @@ export function useHumanofi() {
       }
 
       const [bondingCurve] = deriveBondingCurvePDA(params.mint);
-      const [rewardPool] = deriveRewardPoolPDA(params.mint);
-      const [holderRewardState] = deriveRewardStatePDA(params.mint, publicKey);
+      const [creatorFeeVault] = deriveCreatorFeeVaultPDA(params.mint);
 
       const sellerTokenAccount = getAssociatedTokenAddressSync(
         params.mint,
@@ -264,8 +248,7 @@ export function useHumanofi() {
           seller: publicKey,
           mint: params.mint,
           bondingCurve,
-          rewardPool,
-          holderRewardState,
+          creatorFeeVault,
           creatorVault: isCreator ? creatorVaultPda : (null as unknown as PublicKey),
           sellerTokenAccount,
           creatorWallet: params.creatorWallet,
@@ -286,66 +269,29 @@ export function useHumanofi() {
     [program, publicKey]
   );
 
-  // ─── CLAIM REWARDS (ENGAGEMENT-GATED) ───
-  const claimRewards = useCallback(
+  // ─── CLAIM CREATOR FEES ───
+  const claimCreatorFees = useCallback(
     async (mint: PublicKey) => {
       if (!program || !publicKey) {
         toast.error("Connect your wallet first.");
         return null;
       }
 
-      // Step 1: Sync engagement on-chain via oracle API
-      toast.loading("Syncing engagement...", { id: "engagement-sync" });
-      try {
-        const syncRes = await fetch("/api/engagement/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "x-wallet-address": publicKey.toBase58() },
-          body: JSON.stringify({ mint: mint.toBase58() }),
-        });
-        const syncData = await syncRes.json();
-        toast.dismiss("engagement-sync");
-
-        if (!syncRes.ok) {
-          toast.error(syncData.error || "Engagement sync failed");
-          return null;
-        }
-      } catch {
-        toast.dismiss("engagement-sync");
-        toast.error("Failed to sync engagement");
-        return null;
-      }
-
-      // Step 2: Now claim on-chain (engagement record exists)
-      const [rewardPool] = deriveRewardPoolPDA(mint);
-      const [holderRewardState] = deriveRewardStatePDA(mint, publicKey);
-      const [engagementRecord] = deriveEngagementRecordPDA(mint, publicKey);
-
-      const holderTokenAccount = getAssociatedTokenAddressSync(
-        mint,
-        publicKey,
-        false,
-        TOKEN_2022_PROGRAM_ID
-      );
-
-      const epoch = Math.floor(Date.now() / 1000 / ENGAGEMENT_EPOCH_DURATION);
+      const [creatorFeeVault] = deriveCreatorFeeVaultPDA(mint);
 
       const txPromise = program.methods
-        .claimRewards(new BN(epoch))
+        .claimCreatorFees()
         .accountsStrict({
-          holder: publicKey,
+          creator: publicKey,
           mint,
-          rewardPool,
-          holderRewardState,
-          engagementRecord,
-          holderTokenAccount,
-          tokenProgram: TOKEN_2022_PROGRAM_ID,
+          creatorFeeVault,
           systemProgram: SystemProgram.programId,
         })
         .rpc();
 
       toast.promise(txPromise, {
-        loading: "Claiming rewards...",
-        success: (sig) => `Rewards claimed! Tx: ${sig.slice(0, 8)}...`,
+        loading: "Claiming accumulated fees...",
+        success: (sig) => `Fees claimed! Tx: ${sig.slice(0, 8)}...`,
         error: (err) => `Claim failed: ${parseAnchorError(err)}`,
       });
 
@@ -354,24 +300,44 @@ export function useHumanofi() {
     [program, publicKey]
   );
 
-  // ─── FETCH ENGAGEMENT STATUS ───
-  const fetchEngagement = useCallback(
-    async (mint: string) => {
-      if (!walletAddress) return null;
+  // ─── FETCH CREATOR FEE VAULT STATE ───
+  const fetchCreatorFeeVault = useCallback(
+    async (mint: PublicKey) => {
+      if (!program) return null;
+      const [pda] = deriveCreatorFeeVaultPDA(mint);
       try {
-        const res = await fetch(
-          `/api/engagement/sync?wallet=${walletAddress}&mint=${mint}`
-        );
-        if (!res.ok) return null;
-        return await res.json();
-      } catch {
+        const account = await (program.account as Record<string, { fetch: (addr: PublicKey) => Promise<unknown> }>)
+          .creatorFeeVault.fetch(pda);
+        return account;
+      } catch (err) {
+        console.error("[Humanofi] fetchCreatorFeeVault FAILED for", mint.toBase58(), err);
         return null;
       }
     },
-    [walletAddress]
+    [program]
   );
 
-  // ─── CHECK-IN (engagement fallback if creator is inactive) ───
+  // ─── FETCH BONDING CURVE STATE ───
+  const fetchBondingCurve = useCallback(
+    async (mint: PublicKey) => {
+      if (!program) {
+        console.warn("[Humanofi] fetchBondingCurve: program not ready");
+        return null;
+      }
+      const [pda] = deriveBondingCurvePDA(mint);
+      try {
+        const account = await (program.account as Record<string, { fetch: (addr: PublicKey) => Promise<unknown> }>)
+          .bondingCurve.fetch(pda);
+        return account;
+      } catch (err) {
+        console.error("[Humanofi] fetchBondingCurve FAILED for", mint.toBase58(), err);
+        return null;
+      }
+    },
+    [program]
+  );
+
+  // ─── CHECK-IN (engagement for inner circle — no on-chain component) ───
   const checkIn = useCallback(
     async (mint: string) => {
       if (!walletAddress) {
@@ -407,34 +373,14 @@ export function useHumanofi() {
     [walletAddress]
   );
 
-  // ─── FETCH BONDING CURVE STATE ───
-  const fetchBondingCurve = useCallback(
-    async (mint: PublicKey) => {
-      if (!program) {
-        console.warn("[Humanofi] fetchBondingCurve: program not ready");
-        return null;
-      }
-      const [pda] = deriveBondingCurvePDA(mint);
-      try {
-        const account = await (program.account as Record<string, { fetch: (addr: PublicKey) => Promise<unknown> }>)
-          .bondingCurve.fetch(pda);
-        return account;
-      } catch (err) {
-        console.error("[Humanofi] fetchBondingCurve FAILED for", mint.toBase58(), err);
-        return null;
-      }
-    },
-    [program]
-  );
-
   return {
     createToken,
     buyTokens,
     sellTokens,
-    claimRewards,
+    claimCreatorFees,
+    fetchCreatorFeeVault,
     checkIn,
     fetchBondingCurve,
-    fetchEngagement,
     program,
     connection,
     connected,
@@ -465,7 +411,7 @@ function parseAnchorError(err: unknown): string {
     }
     // Check for common wallet/network errors
     if (msg.includes("User rejected")) return "Transaction cancelled.";
-    // Check simulation errors FIRST (they may contain "insufficient" as a substring)
+    // Check simulation errors FIRST
     if (msg.includes("Simulation failed"))
       return extractSimError(msg);
     if (msg.includes("no record of a prior credit"))
@@ -492,6 +438,10 @@ function extractSimError(msg: string): string {
     return "Your tokens are locked for Year 1.";
   if (msg.includes("CreatorSellCooldown"))
     return "Cooldown active — wait 30 days between sells.";
+  if (msg.includes("CreatorClaimCooldown"))
+    return "Claim cooldown — wait 15 days between fee claims.";
+  if (msg.includes("NoFeesToClaim"))
+    return "No fees available to claim.";
   // Generic simulation fail
   const innerMatch = msg.match(/Message: (.+?)(\.|$)/);
   if (innerMatch) return innerMatch[1];
@@ -517,19 +467,17 @@ const ERROR_MAP: Record<number, string> = {
   6013: "Unauthorized — only the creator can perform this action.",
   6014: "No rewards available to claim.",
   6015: "You must hold tokens to claim rewards.",
-  6016: "Fee calculation error.",
-  6017: "Transfer blocked — Trade via Humanofi only.",
-  6018: "Bots not allowed — only direct wallet transactions.",
-  6019: "Invalid mint.",
-  6020: "Token amount must be greater than zero.",
-  6021: "Engagement data expired — must be from this month.",
-  6022: "Insufficient engagement — Minimum actions required this month.",
-  6023: "Unauthorized oracle.",
-  6024: "Initial liquidity below minimum.",
-  6025: "Initial liquidity above maximum.",
-  6026: "Invalid treasury wallet.",
-  6027: "Invalid epoch.",
-  6028: "Slippage exceeded — received less than minimum.",
+  6016: "No fees available to claim.",
+  6017: "Claim cooldown — wait 15 days between fee claims.",
+  6018: "Fee calculation error.",
+  6019: "Transfer blocked — Trade via Humanofi only.",
+  6020: "Bots not allowed — only direct wallet transactions.",
+  6021: "Invalid mint.",
+  6022: "Token amount must be greater than zero.",
+  6023: "Initial liquidity below minimum.",
+  6024: "Initial liquidity above maximum.",
+  6025: "Invalid treasury wallet.",
+  6026: "Slippage exceeded — received less than minimum.",
 };
 
 // Map Anchor error names for "Error Code: XXX" format
@@ -540,19 +488,17 @@ const NAMED_ERROR_MAP: Record<string, string> = {
   CurveNotActive: "This token is no longer active.",
   MathOverflow: "Math overflow error.",
   InvalidTreasury: "Invalid treasury.",
-  InvalidEpoch: "Invalid epoch.",
   ExcessiveInitialLiquidity: "Initial liquidity too high.",
   InsufficientInitialLiquidity: "Initial liquidity below minimum.",
   SlippageExceeded: "Price moved — try again with higher slippage tolerance.",
   CreatorVestingLocked: "Your tokens are locked for Year 1.",
   SellImpactExceeded: "Sell would impact price > 5% — reduce amount.",
   CreatorSellCooldown: "Cooldown active — wait 30 days between sells.",
+  CreatorClaimCooldown: "Claim cooldown — wait 15 days between fee claims.",
+  NoFeesToClaim: "No fees available to claim.",
   PoolDepleted: "Pool depleted — no more tokens available.",
   UnauthorizedCreator: "Only the creator can perform this action.",
   CpiGuard: "Transaction blocked — bots not allowed.",
-  EngagementExpired: "Engagement data expired — sync again this month.",
-  InsufficientEngagement: "Not enough engagement this month to claim rewards.",
-  UnauthorizedOracle: "Unauthorized oracle call.",
   ZeroAmount: "Amount must be greater than zero.",
   ZeroPurchaseAmount: "Purchase amount must be greater than zero.",
   PriceCalculationZero: "Amount too small — price would be zero.",

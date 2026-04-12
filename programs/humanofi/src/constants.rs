@@ -33,18 +33,22 @@ pub const DEPTH_RATIO: u64 = 20;
 pub const INITIAL_Y: u128 = 1_000_000 * 1_000_000; // 1M × 10^6 = 10^12
 
 // ---- Fees (6% total) ----
+//
+// v2: Simplified fee structure for legal compliance.
+//     Holder rewards REMOVED to avoid securities classification.
+//
+// 3% → Creator Fee Vault (PDA, claimable every 15 days)
+// 2% → Protocol Treasury (immediate)
+// 1% → k-Deepening (stays in x, state update only)
 
 /// Total fee in basis points (6%)
 pub const TOTAL_FEE_BPS: u64 = 600;
 
-/// Creator's share of fees: 2% of transaction volume → SOL, immediate
-pub const FEE_CREATOR_BPS: u64 = 200;
+/// Creator's share of fees: 3% of transaction volume → Creator Fee Vault PDA
+pub const FEE_CREATOR_BPS: u64 = 300;
 
-/// Holders' share of fees: 2% of transaction volume → reward pool
-pub const FEE_HOLDERS_BPS: u64 = 200;
-
-/// Protocol treasury share: 1% of transaction volume
-pub const FEE_PROTOCOL_BPS: u64 = 100;
+/// Protocol treasury share: 2% of transaction volume → immediate
+pub const FEE_PROTOCOL_BPS: u64 = 200;
 
 /// k-Deepening share: 1% of transaction volume → stays in x (state update only)
 pub const FEE_DEPTH_BPS: u64 = 100;
@@ -52,13 +56,17 @@ pub const FEE_DEPTH_BPS: u64 = 100;
 /// Precision for basis points calculations
 pub const BPS_DENOMINATOR: u64 = 10_000;
 
-// ---- Merit Reward (α = 14% total: 12.6% creator + 1.4% protocol) ----
+// ---- Merit Reward (α = 14% total: 10% creator + 4% protocol) ----
+//
+// v2: Rebalanced to boost the Price Stabilizer.
+//     Creator reduced from 12.6% → 10% (keeps skin-in-the-game)
+//     Protocol increased from 1.4% → 4% (Stabilizer ~3× more powerful)
 
-/// Creator portion of Merit Reward: 12.6% of tokens produced
-pub const ALPHA_CREATOR_BPS: u64 = 1_260;
+/// Creator portion of Merit Reward: 10% of tokens produced
+pub const ALPHA_CREATOR_BPS: u64 = 1_000;
 
-/// Protocol portion of Merit Reward: 1.4% of tokens produced (→ ProtocolVault)
-pub const ALPHA_PROTOCOL_BPS: u64 = 140;
+/// Protocol portion of Merit Reward: 4% of tokens produced (→ ProtocolVault)
+pub const ALPHA_PROTOCOL_BPS: u64 = 400;
 
 /// Buyer token share: 100% - α = 86%
 pub const BUYER_SHARE_BPS: u64 = 8_600;
@@ -74,6 +82,11 @@ pub const CREATOR_SELL_COOLDOWN: i64 = 30 * 24 * 60 * 60; // 2_592_000
 
 /// Creator lock period: Year 1 = 0% vendable (in seconds)
 pub const CREATOR_LOCK_DURATION: i64 = 365 * 24 * 60 * 60; // 31_536_000
+
+// ---- Creator Fee Claim ----
+
+/// Cooldown between creator fee claims: 15 days (in seconds)
+pub const CREATOR_FEE_CLAIM_COOLDOWN: i64 = 15 * 24 * 60 * 60; // 1_296_000
 
 // ---- Price Stabilizer ----
 
@@ -107,31 +120,14 @@ pub const MAX_INITIAL_LIQUIDITY: u64 = 10_000_000_000; // 10 SOL
 
 pub const SEED_CURVE: &[u8] = b"curve";
 pub const SEED_VAULT: &[u8] = b"vault";
-pub const SEED_REWARDS: &[u8] = b"rewards";
-pub const SEED_REWARD_STATE: &[u8] = b"reward_state";
-pub const SEED_ENGAGEMENT: &[u8] = b"engagement";
+pub const SEED_CREATOR_FEES: &[u8] = b"creator_fees";
 pub const SEED_PROTOCOL_VAULT: &[u8] = b"protocol_vault";
 
 // ---- Treasury ----
 
-/// Protocol treasury wallet (receives 1% of fees).
+/// Protocol treasury wallet (receives 2% of fees).
 /// Pubkey: 6Jiop19yLzazX6vig4i4jKMRXRjFJumTWBZNgU2cAodM
 pub const TREASURY_WALLET: Pubkey = Pubkey::new_from_array([
     78, 212, 148, 109, 151, 133, 91, 234, 175, 199, 198, 69, 217, 119, 90, 107,
     114, 0, 59, 119, 164, 109, 203, 109, 23, 150, 2, 88, 102, 171, 22, 44,
-]);
-
-// ---- Engagement Rewards ----
-
-/// Minimum actions per epoch to qualify for reward claims
-pub const MIN_ENGAGEMENT_ACTIONS: u16 = 4;
-
-/// Epoch duration in seconds (30 days)
-pub const ENGAGEMENT_EPOCH_DURATION: i64 = 30 * 24 * 60 * 60; // 2_592_000
-
-/// Protocol authority pubkey (oracle API signer)
-/// Pubkey: HwjhotCERc13H1HVpmejq9mEjJAKUccutx9LzVLQshkH
-pub const PROTOCOL_AUTHORITY: Pubkey = Pubkey::new_from_array([
-    251, 192, 163, 189, 237, 131, 160, 77, 242, 237, 73, 235, 117, 30, 198, 23,
-    111, 140, 246, 93, 102, 215, 206, 245, 18, 173, 24, 243, 242, 50, 247, 14,
 ]);

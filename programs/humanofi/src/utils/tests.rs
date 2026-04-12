@@ -160,8 +160,8 @@ mod human_curve_tests {
         let protocol_pct = r.tokens_protocol as f64 / total as f64;
 
         assert!(buyer_pct > 0.85 && buyer_pct < 0.87, "Buyer ~86%, got {:.1}%", buyer_pct * 100.0);
-        assert!(creator_pct > 0.12 && creator_pct < 0.13, "Creator ~12.6%, got {:.1}%", creator_pct * 100.0);
-        assert!(protocol_pct > 0.013 && protocol_pct < 0.015, "Protocol ~1.4%, got {:.2}%", protocol_pct * 100.0);
+        assert!(creator_pct > 0.09 && creator_pct < 0.11, "Creator ~10%, got {:.1}%", creator_pct * 100.0);
+        assert!(protocol_pct > 0.035 && protocol_pct < 0.045, "Protocol ~4%, got {:.2}%", protocol_pct * 100.0);
 
         // Sum must equal total
         assert_eq!(r.tokens_buyer + r.tokens_creator + r.tokens_protocol, r.tokens_total);
@@ -179,12 +179,11 @@ mod human_curve_tests {
 
         let r = c.calculate_buy(buy_sol).unwrap();
 
-        let total_fee = r.fee_creator + r.fee_holders + r.fee_protocol + r.fee_depth;
+        let total_fee = r.fee_creator + r.fee_protocol + r.fee_depth;
         let expected = crate::utils::ceil_div_u64(buy_sol * 600, 10_000);
         assert_eq!(total_fee, expected, "Total fee = 6%");
 
-        assert_eq!(r.fee_creator, crate::utils::ceil_div_u64(buy_sol * 200, 10_000));
-        assert_eq!(r.fee_holders, crate::utils::ceil_div_u64(buy_sol * 200, 10_000));
+        assert_eq!(r.fee_creator, crate::utils::ceil_div_u64(buy_sol * 300, 10_000));
         assert_eq!(r.fee_depth, crate::utils::ceil_div_u64(buy_sol * 100, 10_000));
     }
 
@@ -282,7 +281,7 @@ mod human_curve_tests {
         let sr = c.calculate_sell(total_public).unwrap();
 
         // Solvency: vault must have enough
-        let total_out = sr.sol_net + sr.fee_creator + sr.fee_holders + sr.fee_protocol;
+        let total_out = sr.sol_net + sr.fee_creator + sr.fee_protocol;
         assert!(c.sol_reserve >= total_out, "SOLVENCY FAILURE: reserve={} < needed={}", c.sol_reserve, total_out);
 
         c.apply_sell(&sr).unwrap();
@@ -307,7 +306,7 @@ mod human_curve_tests {
         // Here we just verify the math doesn't panic
         if let Ok(sr) = sr {
             // The solvency check should catch it
-            let total_out = sr.sol_net + sr.fee_creator + sr.fee_holders + sr.fee_protocol;
+            let total_out = sr.sol_net + sr.fee_creator + sr.fee_protocol;
             // May or may not pass depending on amounts
             let _ = total_out;
         }
@@ -357,7 +356,7 @@ mod human_curve_tests {
         // Try to sell ALL public supply
         let total = c.supply_public;
         let sr = c.calculate_sell(total).unwrap();
-        let total_out = sr.sol_net + sr.fee_creator + sr.fee_holders + sr.fee_protocol;
+        let total_out = sr.sol_net + sr.fee_creator + sr.fee_protocol;
         assert!(
             c.sol_reserve >= total_out,
             "SOLVENCY FAILURE after 50 buys: sol_reserve={}, needed={}",
@@ -380,7 +379,7 @@ mod human_curve_tests {
             if sell_amount == 0 { continue; }
             let sr = c.calculate_sell(sell_amount).unwrap();
 
-            let total_out = sr.sol_net + sr.fee_creator + sr.fee_holders + sr.fee_protocol;
+            let total_out = sr.sol_net + sr.fee_creator + sr.fee_protocol;
             assert!(c.sol_reserve >= total_out, "Solvency at iter {}", i);
 
             c.apply_sell(&sr).unwrap();

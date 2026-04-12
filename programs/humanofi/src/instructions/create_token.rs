@@ -6,14 +6,14 @@
 //   - Token-2022 Mint with MetadataPointer extension
 //   - Token Metadata (name, symbol, uri — visible in wallets)
 //   - BondingCurve PDA initialized with Human Curve™ (x · y = k)
-//   - RewardPool PDA initialized
+//   - CreatorFeeVault PDA initialized (accumulates 3% of fees)
 //   - CreatorVault PDA initialized (vesting + sell limiter tracker)
 //   - ProtocolVault PDA initialized (Stabilizer token treasury)
 //   - Initial SOL liquidity deposited in bonding curve reserve
 //
 // IMPORTANT: No tokens are minted at creation!
 // The creator's tokens arrive progressively via the Merit Reward
-// mechanism (12.6% of each buy). Protocol gets 1.4%.
+// mechanism (10% of each buy). Protocol gets 4%.
 //
 // x₀ = 21 × V (D = 20×V depth parameter + V real SOL)
 // freeze_authority = bonding_curve PDA → tokens only tradable on Humanofi.
@@ -182,14 +182,15 @@ pub fn handler(
     vault.total_sold = 0;
     vault.bump = ctx.bumps.creator_vault;
 
-    // ---- Initialize Reward Pool PDA ----
-    let pool = &mut ctx.accounts.reward_pool;
-    pool.mint = mint_key;
-    pool.reward_per_token_stored = 0;
-    pool.total_accumulated = 0;
-    pool.total_distributed = 0;
-    pool.last_updated_at = now;
-    pool.bump = ctx.bumps.reward_pool;
+    // ---- Initialize Creator Fee Vault PDA ----
+    let cfv = &mut ctx.accounts.creator_fee_vault;
+    cfv.mint = mint_key;
+    cfv.creator = ctx.accounts.creator.key();
+    cfv.total_accumulated = 0;
+    cfv.total_claimed = 0;
+    cfv.last_claim_at = 0;
+    cfv.created_at = now;
+    cfv.bump = ctx.bumps.creator_fee_vault;
 
     // ---- Initialize Protocol Vault PDA ----
     let pv = &mut ctx.accounts.protocol_vault;
@@ -258,15 +259,15 @@ pub struct CreateToken<'info> {
     )]
     pub creator_vault: Box<Account<'info, CreatorVault>>,
 
-    /// Reward Pool PDA — accumulates holder fees.
+    /// Creator Fee Vault PDA — accumulates 3% of trading fees.
     #[account(
         init,
         payer = creator,
-        space = 8 + RewardPool::INIT_SPACE,
-        seeds = [SEED_REWARDS, mint.key().as_ref()],
+        space = 8 + CreatorFeeVault::INIT_SPACE,
+        seeds = [SEED_CREATOR_FEES, mint.key().as_ref()],
         bump,
     )]
-    pub reward_pool: Box<Account<'info, RewardPool>>,
+    pub creator_fee_vault: Box<Account<'info, CreatorFeeVault>>,
 
     /// Protocol Vault PDA — holds protocol's Merit Fee tokens.
     #[account(

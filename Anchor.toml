@@ -5,10 +5,10 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-humanofi = "C88xL1xsuSi4g8yXDY3MtZUKiAcH1RTs9eQSLVpm4YiR"
+humanofi = "4u14FtDEdr1UqSXbwhDXDLi552Skm1TPodrtjKje2pmQ"
 
 [programs.devnet]
-humanofi = "C88xL1xsuSi4g8yXDY3MtZUKiAcH1RTs9eQSLVpm4YiR"
+humanofi = "4u14FtDEdr1UqSXbwhDXDLi552Skm1TPodrtjKje2pmQ"
 
 [registry]
 url = "https://api.apr.dev"

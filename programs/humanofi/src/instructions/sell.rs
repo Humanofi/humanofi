@@ -2,16 +2,15 @@
 // Humanofi — Sell Tokens (Human Curve™)
 // ========================================
 //
-// Sell flow (matches humanofi-mathematiques.md §6):
+// Sell flow v2 (simplified — no holder rewards):
 //   1. CPI Guard: reject bot/program calls
 //   2. If seller = creator: verify vesting + Smart Sell Limiter + cooldown
-//   3. Snapshot holder rewards (MasterChef pattern)
-//   4. Calculate sell via Human Curve (fees + k-deepening)
-//   5. Thaw seller's ATA → Burn tokens
-//   6. Distribute fees from bonding curve PDA
-//   7. Transfer net SOL to seller
-//   8. Re-freeze ATA if balance remains
-//   9. Update curve state (x, y, k, supplies)
+//   3. Calculate sell via Human Curve (fees + k-deepening)
+//   4. Thaw seller's ATA → Burn tokens
+//   5. Distribute fees from bonding curve PDA (3% creator vault, 2% protocol)
+//   6. Transfer net SOL to seller
+//   7. Re-freeze ATA if balance remains
+//   8. Update curve state (x, y, k, supplies)
 //
 // Creator-specific rules:
 //   - Year 1: 0% sellable (hard lock)
@@ -54,45 +53,15 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64, min_sol_out: u64) -> Resul
     let is_creator = ctx.accounts.seller.key() == curve.creator;
 
     // ── CREATOR-SPECIFIC: Vesting + Smart Sell Limiter + Cooldown ──
-    // Regular holders can sell freely — creators have additional restrictions:
-    //   - Year 1: hard lock (0% sellable)
-    //   - Year 2+: max 5% price impact per sell (Smart Sell Limiter)
-    //   - 30-day cooldown between creator sells
     if is_creator {
-        // Verify creator vault is provided
         let vault = ctx.accounts.creator_vault.as_ref()
             .ok_or(HumanofiError::UnauthorizedCreator)?;
-
-        // Year 1: hard lock (0% sellable)
         vault.can_sell(now)?;
-
-        // Smart Sell Limiter: max 5% price impact
         let max_sell = curve.get_max_sell_amount()?;
         require!(
             token_amount <= max_sell,
             HumanofiError::SellImpactExceeded
         );
-    }
-
-    // ── REWARD SNAPSHOT (MasterChef pattern) ──
-    // MUST happen BEFORE balance changes.
-    {
-        let pool = &ctx.accounts.reward_pool;
-        let state = &mut ctx.accounts.holder_reward_state;
-
-        // Initialize state if first interaction
-        if state.mint == Pubkey::default() {
-            state.mint = ctx.accounts.mint.key();
-            state.holder = ctx.accounts.seller.key();
-            state.reward_per_token_paid = pool.reward_per_token_stored;
-            state.rewards_owed = 0;
-            state.bump = ctx.bumps.holder_reward_state;
-        }
-
-        // Calculate and snapshot pending rewards at current balance (before burn)
-        let pending = pool.calculate_pending_rewards(state, seller_balance)?;
-        state.rewards_owed = pending;
-        state.reward_per_token_paid = pool.reward_per_token_stored;
     }
 
     // ── Calculate sell via Human Curve™ ──
@@ -160,19 +129,14 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64, min_sol_out: u64) -> Resul
     **curve_info.try_borrow_mut_lamports()? -= result.sol_net;
     **ctx.accounts.seller.to_account_info().try_borrow_mut_lamports()? += result.sol_net;
 
-    // 2% → creator wallet
+    // 3% → Creator Fee Vault PDA
     if result.fee_creator > 0 {
         **curve_info.try_borrow_mut_lamports()? -= result.fee_creator;
-        **ctx.accounts.creator_wallet.to_account_info().try_borrow_mut_lamports()? += result.fee_creator;
+        **ctx.accounts.creator_fee_vault.to_account_info().try_borrow_mut_lamports()? += result.fee_creator;
+        ctx.accounts.creator_fee_vault.record_deposit(result.fee_creator)?;
     }
 
-    // 2% → holder reward pool
-    if result.fee_holders > 0 {
-        **curve_info.try_borrow_mut_lamports()? -= result.fee_holders;
-        **ctx.accounts.reward_pool.to_account_info().try_borrow_mut_lamports()? += result.fee_holders;
-    }
-
-    // 1% → protocol treasury
+    // 2% → Protocol treasury
     if result.fee_protocol > 0 {
         **curve_info.try_borrow_mut_lamports()? -= result.fee_protocol;
         **ctx.accounts.treasury.to_account_info().try_borrow_mut_lamports()? += result.fee_protocol;
@@ -180,17 +144,10 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64, min_sol_out: u64) -> Resul
 
     // 1% depth stays in vault (already in x via calculate_sell)
 
-    // ── Update bonding curve state (via apply_sell, same pattern as buy.rs → apply_buy) ──
+    // ── Update bonding curve state ──
     let curve = &mut ctx.accounts.bonding_curve;
     curve.apply_sell(&result)?;
     curve.deduct_supply(token_amount, is_creator)?;
-
-    // ── Update reward pool (AFTER supply deduction for accurate RPT) ──
-    if result.fee_holders > 0 && curve.supply_public > 0 {
-        ctx.accounts
-            .reward_pool
-            .update_reward_per_token(result.fee_holders, curve.supply_public)?;
-    }
 
     // ── Update EMA TWAP ──
     curve.update_twap()?;
@@ -208,7 +165,7 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64, min_sol_out: u64) -> Resul
         token_amount,
         result.sol_net,
         is_creator,
-        result.fee_creator + result.fee_holders + result.fee_protocol + result.fee_depth
+        result.fee_creator + result.fee_protocol + result.fee_depth
     );
 
     Ok(())
@@ -233,28 +190,16 @@ pub struct Sell<'info> {
     )]
     pub bonding_curve: Account<'info, BondingCurve>,
 
-    /// Reward Pool PDA
+    /// Creator Fee Vault PDA — receives 3% of sell fees
     #[account(
         mut,
-        seeds = [SEED_REWARDS, mint.key().as_ref()],
-        bump = reward_pool.bump,
+        seeds = [SEED_CREATOR_FEES, mint.key().as_ref()],
+        bump = creator_fee_vault.bump,
         has_one = mint,
     )]
-    pub reward_pool: Account<'info, RewardPool>,
-
-    /// Holder's reward state — snapshot pending rewards before balance change
-    #[account(
-        init_if_needed,
-        payer = seller,
-        space = 8 + HolderRewardState::INIT_SPACE,
-        seeds = [SEED_REWARD_STATE, mint.key().as_ref(), seller.key().as_ref()],
-        bump,
-    )]
-    pub holder_reward_state: Account<'info, HolderRewardState>,
+    pub creator_fee_vault: Account<'info, CreatorFeeVault>,
 
     /// Creator Vault PDA — OPTIONAL. Only needed when seller = creator.
-    /// Used to verify vesting and enforce sell cooldown.
-    /// has_one = mint provides defense-in-depth (seeds already validate).
     #[account(
         mut,
         seeds = [SEED_VAULT, mint.key().as_ref()],
@@ -272,7 +217,7 @@ pub struct Sell<'info> {
     )]
     pub seller_token_account: InterfaceAccount<'info, TokenAccount>,
 
-    /// Creator's wallet (receives 2% of fees)
+    /// Creator's wallet (for validation only now — fees go to vault)
     /// CHECK: validated via bonding_curve.creator
     #[account(
         mut,
