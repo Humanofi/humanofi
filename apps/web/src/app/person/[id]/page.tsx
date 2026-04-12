@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import BondingCurveChart, { type BondingCurveChartHandle } from "@/components/BondingCurveChart";
 import TradeModal, { type TradeStep } from "@/components/TradeModal";
 import TradeWidget from "@/components/TradeWidget";
@@ -61,7 +61,7 @@ export default function PersonPublicPage() {
 
   const { creator, curveData, liveCurve, mockPerson, isCreator, tokenColor, refreshCurve, chartRef } = usePerson();
   const { authenticated, login } = usePrivy();
-  const { buyTokens, sellTokens, walletAddress } = useHumanofi();
+  const { buyTokens, sellTokens, claimCreatorFees, fetchCreatorFeeVault, walletAddress } = useHumanofi();
   const { priceUsd: solPriceUsd } = useSolPrice();
 
   // Trade modal state
@@ -110,6 +110,42 @@ export default function PersonPublicPage() {
   // Score ring
   const scoreColor = activityScore >= 85 ? "#22c55e" : activityScore >= 65 ? "#3b82f6" : activityScore >= 45 ? "#f59e0b" : activityScore >= 25 ? "#ef4444" : "#6b7280";
   const scoreLabel = activityScore >= 85 ? "Thriving" : activityScore >= 65 ? "Active" : activityScore >= 45 ? "Moderate" : activityScore >= 25 ? "Low" : "Dormant";
+
+  // ── Creator Fee Vault state ──
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [feeVault, setFeeVault] = useState<any>(null);
+  const [claiming, setClaiming] = useState(false);
+
+  useEffect(() => {
+    if (!isCreator || !creator?.mint_address || !fetchCreatorFeeVault) return;
+    fetchCreatorFeeVault(new PublicKey(creator.mint_address)).then(setFeeVault).catch(() => {});
+  }, [isCreator, creator?.mint_address, fetchCreatorFeeVault]);
+
+  const feeAccumulatedSol = feeVault ? Number(feeVault.totalAccumulated?.toString?.() || feeVault.totalAccumulated || 0) / 1e9 : 0;
+  const feeClaimedSol = feeVault ? Number(feeVault.totalClaimed?.toString?.() || feeVault.totalClaimed || 0) / 1e9 : 0;
+  const feeUnclaimedSol = feeAccumulatedSol - feeClaimedSol;
+  const lastClaimAt = feeVault ? Number(feeVault.lastClaimAt?.toString?.() || feeVault.lastClaimAt || 0) : 0;
+  const CLAIM_COOLDOWN = 15 * 24 * 60 * 60; // 15 days in seconds
+  const now = Math.floor(Date.now() / 1000);
+  const nextClaimAt = lastClaimAt > 0 ? lastClaimAt + CLAIM_COOLDOWN : 0;
+  const canClaimNow = lastClaimAt === 0 || now >= nextClaimAt;
+  const daysUntilClaim = canClaimNow ? 0 : Math.ceil((nextClaimAt - now) / 86400);
+
+  const handleClaimFees = useCallback(async () => {
+    if (!creator?.mint_address || !claimCreatorFees) return;
+    setClaiming(true);
+    try {
+      await claimCreatorFees(new PublicKey(creator.mint_address));
+      // Refresh vault data after claim
+      setTimeout(async () => {
+        const updated = await fetchCreatorFeeVault(new PublicKey(creator.mint_address));
+        setFeeVault(updated);
+        setClaiming(false);
+      }, 3000);
+    } catch {
+      setClaiming(false);
+    }
+  }, [creator?.mint_address, claimCreatorFees, fetchCreatorFeeVault]);
 
   /** Record a verified trade in Supabase */
   const recordTrade = useCallback(async (txSig: string, tradeType: "buy" | "sell", solAmt: number, tokenAmt: number) => {
@@ -285,6 +321,70 @@ export default function PersonPublicPage() {
                     {creator.mint_address.slice(0, 6)}...{creator.mint_address.slice(-4)}
                   </span>
                 </div>
+              </div>
+            </section>
+
+            {/* ── Creator Fee Revenue Card ── */}
+            <section className="dashboard__card" style={{ borderLeft: `3px solid #22c55e` }}>
+              <div className="dashboard__card-header">
+                <Wallet size={16} weight="bold" /> Fee Revenue (3% of trades)
+              </div>
+              <div className="dashboard__token-grid">
+                <div className="dashboard__token-stat">
+                  <span className="dashboard__token-label">Total Earned</span>
+                  <span className="dashboard__token-value" style={{ color: "#22c55e" }}>
+                    {formatSol(feeAccumulatedSol)} SOL
+                  </span>
+                  {solPriceUsd > 0 && <span className="dashboard__token-label">{formatUsd(solToUsd(feeAccumulatedSol, solPriceUsd))}</span>}
+                </div>
+                <div className="dashboard__token-stat">
+                  <span className="dashboard__token-label">Already Claimed</span>
+                  <span className="dashboard__token-value">{formatSol(feeClaimedSol)} SOL</span>
+                </div>
+                <div className="dashboard__token-stat">
+                  <span className="dashboard__token-label">Available to Claim</span>
+                  <span className="dashboard__token-value" style={{ color: feeUnclaimedSol > 0 ? "#22c55e" : "var(--text-muted)", fontWeight: 900 }}>
+                    {formatSol(feeUnclaimedSol)} SOL
+                  </span>
+                  {solPriceUsd > 0 && feeUnclaimedSol > 0 && <span className="dashboard__token-label">{formatUsd(solToUsd(feeUnclaimedSol, solPriceUsd))}</span>}
+                </div>
+                <div className="dashboard__token-stat" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <span className="dashboard__token-label">Claim Cooldown</span>
+                  {canClaimNow ? (
+                    <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#22c55e" }}>✅ Ready to claim</span>
+                  ) : (
+                    <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#f59e0b" }}>
+                      ⏳ {daysUntilClaim} days remaining
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Claim button */}
+              <button
+                onClick={handleClaimFees}
+                disabled={!canClaimNow || feeUnclaimedSol <= 0 || claiming}
+                style={{
+                  width: "100%",
+                  marginTop: 16,
+                  padding: "12px 0",
+                  fontWeight: 800,
+                  fontSize: "0.85rem",
+                  border: "2px solid #22c55e",
+                  background: canClaimNow && feeUnclaimedSol > 0 ? "#22c55e" : "transparent",
+                  color: canClaimNow && feeUnclaimedSol > 0 ? "#fff" : "var(--text-muted)",
+                  cursor: canClaimNow && feeUnclaimedSol > 0 && !claiming ? "pointer" : "not-allowed",
+                  transition: "all 0.2s",
+                  opacity: claiming ? 0.6 : 1,
+                }}
+              >
+                <Wallet size={16} weight="bold" style={{ marginRight: 8, verticalAlign: "middle" }} />
+                {claiming ? "Claiming..." : feeUnclaimedSol <= 0 ? "No fees to claim" : canClaimNow ? `Claim ${formatSol(feeUnclaimedSol)} SOL` : `Cooldown — ${daysUntilClaim} days`}
+              </button>
+
+              <div style={{ marginTop: 12, fontSize: "0.7rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
+                <Lightning size={12} weight="bold" style={{ verticalAlign: "middle", marginRight: 4 }} />
+                You earn 3% of every buy/sell as SOL fees. Claimable every 15 days directly to your wallet.
               </div>
             </section>
 
