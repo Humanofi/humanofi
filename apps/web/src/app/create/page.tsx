@@ -6,41 +6,57 @@ import Footer from "@/components/Footer";
 import { LivePreviewCard } from "@/components/LivePreviewCard";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
+import { useSolPrice } from "@/hooks/useSolPrice";
 import { PublicKey } from "@solana/web3.js";
 import { toast } from "sonner";
+import FilterDropdown, { type DropdownOption } from "@/components/FilterDropdown";
+import Flag from "@/components/Flag";
+import {
+  Rocket, PaintBrush, Code, ChartLineUp, Palette, MusicNotes,
+  Megaphone, Flask, Lightbulb, CurrencyDollar, PencilLine,
+  Article, FilmSlate, Camera, GraduationCap, HandFist, CookingPot,
+  GameController, Gear, Dna, Newspaper, User, Heart, Scales,
+  Headphones, Globe, VideoCamera, Barbell, Stethoscope, Books,
+} from "@phosphor-icons/react";
 
 const TREASURY = new PublicKey(
   process.env.NEXT_PUBLIC_TREASURY_WALLET || "11111111111111111111111111111111"
 );
 
-const SOL_PRICE_USD = 170; // Approximate SOL/USD for display
 const LAMPORTS_PER_SOL_CONST = 1_000_000_000;
 
-// ── Expanded categories ──
-const CATEGORIES = [
-  { value: "founder", label: "Founder", emoji: "🚀" },
-  { value: "creator", label: "Creator", emoji: "🎨" },
-  { value: "developer", label: "Developer", emoji: "💻" },
-  { value: "trader", label: "Trader", emoji: "📊" },
-  { value: "artist", label: "Artist", emoji: "🎭" },
-  { value: "musician", label: "Musician", emoji: "🎵" },
-  { value: "athlete", label: "Athlete", emoji: "⚡" },
-  { value: "influencer", label: "Influencer", emoji: "📱" },
-  { value: "researcher", label: "Researcher", emoji: "🔬" },
-  { value: "thinker", label: "Thinker", emoji: "💡" },
-  { value: "investor", label: "Investor", emoji: "💰" },
-  { value: "designer", label: "Designer", emoji: "✏️" },
-  { value: "writer", label: "Writer", emoji: "📝" },
-  { value: "filmmaker", label: "Filmmaker", emoji: "🎬" },
-  { value: "photographer", label: "Photographer", emoji: "📸" },
-  { value: "educator", label: "Educator", emoji: "📚" },
-  { value: "activist", label: "Activist", emoji: "✊" },
-  { value: "chef", label: "Chef", emoji: "👨‍🍳" },
-  { value: "streamer", label: "Streamer", emoji: "🎮" },
-  { value: "engineer", label: "Engineer", emoji: "⚙️" },
-  { value: "scientist", label: "Scientist", emoji: "🧬" },
-  { value: "journalist", label: "Journalist", emoji: "📰" },
-  { value: "other", label: "Other", emoji: "◈" },
+// ── Expanded categories with icons ──
+const CATEGORIES: DropdownOption[] = [
+  { value: "founder", label: "Founder", icon: <Rocket size={14} weight="bold" /> },
+  { value: "creator", label: "Creator", icon: <PaintBrush size={14} weight="bold" /> },
+  { value: "developer", label: "Developer", icon: <Code size={14} weight="bold" /> },
+  { value: "trader", label: "Trader", icon: <ChartLineUp size={14} weight="bold" /> },
+  { value: "artist", label: "Artist", icon: <Palette size={14} weight="bold" /> },
+  { value: "musician", label: "Musician", icon: <MusicNotes size={14} weight="bold" /> },
+  { value: "athlete", label: "Athlete", icon: <Barbell size={14} weight="bold" /> },
+  { value: "influencer", label: "Influencer", icon: <Megaphone size={14} weight="bold" /> },
+  { value: "researcher", label: "Researcher", icon: <Flask size={14} weight="bold" /> },
+  { value: "thinker", label: "Thinker", icon: <Lightbulb size={14} weight="bold" /> },
+  { value: "investor", label: "Investor", icon: <CurrencyDollar size={14} weight="bold" /> },
+  { value: "designer", label: "Designer", icon: <PencilLine size={14} weight="bold" /> },
+  { value: "writer", label: "Writer", icon: <Article size={14} weight="bold" /> },
+  { value: "filmmaker", label: "Filmmaker", icon: <FilmSlate size={14} weight="bold" /> },
+  { value: "photographer", label: "Photographer", icon: <Camera size={14} weight="bold" /> },
+  { value: "educator", label: "Educator", icon: <GraduationCap size={14} weight="bold" /> },
+  { value: "activist", label: "Activist", icon: <HandFist size={14} weight="bold" /> },
+  { value: "chef", label: "Chef", icon: <CookingPot size={14} weight="bold" /> },
+  { value: "streamer", label: "Streamer", icon: <GameController size={14} weight="bold" /> },
+  { value: "engineer", label: "Engineer", icon: <Gear size={14} weight="bold" /> },
+  { value: "scientist", label: "Scientist", icon: <Dna size={14} weight="bold" /> },
+  { value: "journalist", label: "Journalist", icon: <Newspaper size={14} weight="bold" /> },
+  { value: "doctor", label: "Doctor", icon: <Stethoscope size={14} weight="bold" /> },
+  { value: "lawyer", label: "Lawyer", icon: <Scales size={14} weight="bold" /> },
+  { value: "podcaster", label: "Podcaster", icon: <Headphones size={14} weight="bold" /> },
+  { value: "vlogger", label: "Vlogger", icon: <VideoCamera size={14} weight="bold" /> },
+  { value: "coach", label: "Coach", icon: <Heart size={14} weight="bold" /> },
+  { value: "author", label: "Author", icon: <Books size={14} weight="bold" /> },
+  { value: "diplomat", label: "Diplomat", icon: <Globe size={14} weight="bold" /> },
+  { value: "other", label: "Other", icon: <User size={14} weight="bold" /> },
 ];
 
 // ── Countries ──
@@ -68,7 +84,7 @@ const COUNTRIES = [
 ];
 
 // Pre-built lookup Maps for O(1) access (no .find() on every render)
-const CATEGORY_EMOJI_MAP = new Map(CATEGORIES.map(c => [c.value, c.emoji]));
+const CATEGORY_LABEL_MAP = new Map(CATEGORIES.map(c => [c.value, c.label]));
 const COUNTRY_NAME_MAP = new Map(COUNTRIES.map(c => [c.code, c.name]));
 
 // ── Styles ──
@@ -121,13 +137,80 @@ export default function CreatePage() {
   const [step, setStep] = useState<"connect" | "form" | "launching" | "done">("connect");
   const [currentSection, setCurrentSection] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [hasDraft, setHasDraft] = useState(false);
 
   // Privy auth
   const { authenticated, login } = usePrivy();
 
   // Humanofi hook — handles Privy → Anchor bridge internally
   const { createToken, walletAddress, connected } = useHumanofi();
+  const { priceUsd: solPriceUsd } = useSolPrice();
   const [launchStep, setLaunchStep] = useState(0); // 0=idle, 1=uploading, 2=creating, 3=registering, 4=done
+
+  // ── Draft auto-save / restore (Supabase) ──
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftLoadedRef = useRef(false);
+
+  // Restore draft from DB when wallet is available
+  useEffect(() => {
+    if (!walletAddress || draftLoadedRef.current) return;
+    draftLoadedRef.current = true;
+
+    fetch(`/api/drafts?wallet=${walletAddress}`)
+      .then(r => r.json())
+      .then(({ draft }) => {
+        if (!draft) return;
+        if (draft.token_name) setTokenName(draft.token_name);
+        if (draft.token_symbol) setTokenSymbol(draft.token_symbol);
+        if (draft.category) setCategory(draft.category);
+        if (draft.bio) setBio(draft.bio);
+        if (draft.story) setStory(draft.story);
+        if (draft.offer) setOffer(draft.offer);
+        if (draft.country) setCountry(draft.country);
+        if (draft.twitter) setTwitter(draft.twitter);
+        if (draft.linkedin) setLinkedin(draft.linkedin);
+        if (draft.website) setWebsite(draft.website);
+        if (draft.instagram) setInstagram(draft.instagram);
+        if (draft.initial_liquidity_usd) setInitialLiquidityUSD(draft.initial_liquidity_usd);
+        if (draft.current_section !== undefined && draft.current_section !== null) setCurrentSection(draft.current_section);
+        setHasDraft(true);
+        toast.success("Draft restored");
+      })
+      .catch(() => { /* silently fail */ });
+  }, [walletAddress]);
+
+  // Auto-save draft to DB (debounced 2s)
+  useEffect(() => {
+    if (!walletAddress || step !== "form") return;
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      const hasData = tokenName || tokenSymbol || category || bio || story || offer || country;
+      if (!hasData) return;
+      fetch("/api/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          walletAddress,
+          tokenName, tokenSymbol, category, bio, story, offer, country,
+          twitter, linkedin, website, instagram, initialLiquidityUSD, currentSection,
+        }),
+      }).then(() => setHasDraft(true)).catch(() => {});
+    }, 2000);
+    return () => { if (draftTimerRef.current) clearTimeout(draftTimerRef.current); };
+  }, [tokenName, tokenSymbol, category, bio, story, offer, country, twitter, linkedin, website, instagram, initialLiquidityUSD, currentSection, step, walletAddress]);
+
+  const clearDraft = useCallback(() => {
+    if (walletAddress) {
+      fetch(`/api/drafts?wallet=${walletAddress}`, { method: "DELETE" }).catch(() => {});
+    }
+    setHasDraft(false);
+    setTokenName(""); setTokenSymbol(""); setCategory(""); setBio("");
+    setStory(""); setOffer(""); setCountry(""); setTwitter("");
+    setLinkedin(""); setWebsite(""); setInstagram("");
+    setAvatarPreview(null); setAvatarFile(null);
+    setInitialLiquidityUSD(20); setCurrentSection(0);
+    toast.success("Draft cleared");
+  }, [walletAddress]);
 
   // Auto-switch to form when authenticated
   useEffect(() => {
@@ -145,7 +228,7 @@ export default function CreatePage() {
   const deferredAvatar = useDeferredValue(avatarPreview);
 
   // Pre-resolved lookups (primitive strings for memo comparison)
-  const deferredCategoryEmoji = CATEGORY_EMOJI_MAP.get(deferredCategory) || "";
+  const deferredCategoryLabel = CATEGORY_LABEL_MAP.get(deferredCategory) || "";
   const deferredCountryName = COUNTRY_NAME_MAP.get(deferredCountry) || "";
 
   // Handle avatar selection — use objectURL for instant lag-free preview
@@ -243,7 +326,7 @@ export default function CreatePage() {
         name: tokenName,
         symbol: tokenSymbol.toUpperCase(),
         uri: metadataUrl,
-        initialLiquidity: Math.floor((initialLiquidityUSD / SOL_PRICE_USD) * LAMPORTS_PER_SOL_CONST),
+        initialLiquidity: Math.floor((initialLiquidityUSD / solPriceUsd) * LAMPORTS_PER_SOL_CONST),
         treasury: TREASURY,
       });
 
@@ -283,8 +366,49 @@ export default function CreatePage() {
         // Non-blocking — token is already created on-chain
       }
 
+      // ── STEP 3.5: Record Founder Buy as a trade ──
+      // This makes the sparkline chart show the initial price movement
+      // and the creator appear as the first holder.
+      try {
+        const mintPk = result.mint.toBase58();
+        const solLamports = Math.floor((initialLiquidityUSD / solPriceUsd) * LAMPORTS_PER_SOL_CONST);
+
+        // Estimate post-creation price from curve math
+        // Founder Buy fee = 3% → sol_to_curve ≈ 97% of V
+        const founderFeeRate = 0.03;
+        const solToCurve = solLamports * (1 - founderFeeRate);
+        // x = D + sol_to_curve, where D = 20 × V
+        const depthRatio = 20;
+        const initialX = depthRatio * solLamports + solToCurve;
+        const initialY = 1_000_000 * 1_000_000; // 1M tokens in base units
+        const spotPriceAfter = (initialX / initialY) * 1_000_000; // lamports per whole token
+
+        await fetch("/api/trades", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mintAddress: mintPk,
+            tradeType: "buy",
+            walletAddress: walletAddress,
+            solAmount: solLamports,
+            tokenAmount: 0, // Will be filled by API from on-chain data
+            priceSol: spotPriceAfter / 1e9, // Convert lamports to SOL
+            txSignature: result.signature,
+            xAfter: initialX,
+            yAfter: initialY,
+            kAfter: initialX * initialY,
+            solReserve: solLamports,
+            supplyPublic: 0,
+          }),
+        });
+      } catch (err) {
+        console.warn("[Create] Failed to record founder buy trade:", err);
+        // Non-blocking
+      }
+
       setLaunchStep(4);
       setStep("done");
+      if (walletAddress) fetch(`/api/drafts?wallet=${walletAddress}`, { method: "DELETE" }).catch(() => {}); // Clear draft on success
       toast.success(`Token $${tokenSymbol.toUpperCase()} created!`);
     } catch {
       setStep("form");
@@ -315,16 +439,40 @@ export default function CreatePage() {
       <div className="halftone-bg" />
       <Topbar />
       <main className="page">
-        <div className="page__header" style={{ display: "block" }}>
-          <h1 className="page__title">Create your token</h1>
-          <p className="page__subtitle">
-            One token per human. Verified. Permanent. Impossible to duplicate.
-          </p>
+        <div className="page__header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
+          <div>
+            <h1 className="page__title">Create your token</h1>
+            <p className="page__subtitle">
+              One token per human. Verified. Permanent. Impossible to duplicate.
+            </p>
+          </div>
+          {hasDraft && step === "form" && (
+            <div style={{
+              display: "flex", alignItems: "center", gap: 12,
+              padding: "8px 16px",
+              border: "2px solid var(--border)",
+              background: "#f0fdf4",
+              fontSize: "0.75rem",
+              fontWeight: 700,
+            }}>
+              <span style={{ color: "#16a34a" }}>Draft saved</span>
+              <button
+                onClick={clearDraft}
+                style={{
+                  background: "none", border: "none", color: "var(--text-muted)",
+                  fontSize: "0.7rem", fontWeight: 600, cursor: "pointer",
+                  textDecoration: "underline",
+                }}
+              >
+                Clear draft
+              </button>
+            </div>
+          )}
         </div>
 
         {/* ── STEP: CONNECT ── */}
         {step === "connect" && (
-          <div style={{ maxWidth: 680 }}>
+          <div style={{ maxWidth: 680, margin: "0 auto" }}>
             <div className="trade-widget" style={{ marginBottom: 32, padding: 48, textAlign: "center" }}>
               <div style={{ fontSize: "2.4rem", marginBottom: 16 }}>◈</div>
               <h2 style={{ fontSize: "1.4rem", fontWeight: 800, marginBottom: 12 }}>
@@ -369,7 +517,7 @@ export default function CreatePage() {
 
         {/* ── STEP: FORM ── */}
         {step === "form" && (
-          <div style={{ maxWidth: 780, display: "grid", gridTemplateColumns: "1fr 280px", gap: 32, alignItems: "start" }}>
+          <div className="create-layout">
 
             {/* Left: Form */}
             <div>
@@ -430,7 +578,7 @@ export default function CreatePage() {
                         <img src={avatarPreview} alt="Avatar" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       ) : (
                         <div style={{ textAlign: "center" }}>
-                          <div style={{ fontSize: "2rem", marginBottom: 4 }}>📸</div>
+                          <div style={{ fontSize: "0.85rem", fontWeight: 700, marginBottom: 4 }}>+</div>
                           <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)" }}>
                             Upload photo
                           </div>
@@ -499,45 +647,30 @@ export default function CreatePage() {
                   {/* Category */}
                   <div style={sectionStyle}>
                     <label style={labelStyle}>Category *</label>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                      {CATEGORIES.map((cat) => (
-                        <button
-                          key={cat.value}
-                          onClick={() => setCategory(cat.value)}
-                          style={{
-                            padding: "10px 8px",
-                            border: category === cat.value ? "2px solid var(--accent)" : "2px solid var(--border)",
-                            background: category === cat.value ? "var(--accent)" : "#fff",
-                            color: category === cat.value ? "#fff" : "var(--text)",
-                            fontWeight: 700,
-                            fontSize: "0.75rem",
-                            cursor: "pointer",
-                            transition: "all 0.15s",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 6,
-                          }}
-                        >
-                          <span>{cat.emoji}</span>
-                          <span>{cat.label}</span>
-                        </button>
-                      ))}
-                    </div>
+                    <FilterDropdown
+                      label=""
+                      options={CATEGORIES}
+                      value={category}
+                      onChange={setCategory}
+                    />
                   </div>
 
                   {/* Country */}
                   <div style={sectionStyle}>
                     <label style={labelStyle}>Country</label>
-                    <select
-                      style={{ ...inputStyle, cursor: "pointer" }}
+                    <FilterDropdown
+                      label=""
+                      options={[
+                        { value: "", label: "Select your country" },
+                        ...COUNTRIES.map((c) => ({
+                          value: c.code,
+                          label: c.name,
+                          icon: <Flag code={c.code} size={13} />,
+                        })),
+                      ]}
                       value={country}
-                      onChange={(e) => setCountry(e.target.value)}
-                    >
-                      <option value="">Select your country</option>
-                      {COUNTRIES.map((c) => (
-                        <option key={c.code} value={c.code}>{c.name}</option>
-                      ))}
-                    </select>
+                      onChange={setCountry}
+                    />
                   </div>
                 </div>
               )}
@@ -600,8 +733,8 @@ export default function CreatePage() {
                   {[
                     { label: "Twitter / X", value: twitter, set: setTwitter, placeholder: "@yourhandle", icon: "𝕏" },
                     { label: "LinkedIn", value: linkedin, set: setLinkedin, placeholder: "https://linkedin.com/in/yourprofile", icon: "in" },
-                    { label: "Instagram", value: instagram, set: setInstagram, placeholder: "@yourhandle", icon: "📷" },
-                    { label: "Website", value: website, set: setWebsite, placeholder: "https://yourwebsite.com", icon: "🌐" },
+                    { label: "Instagram", value: instagram, set: setInstagram, placeholder: "@yourhandle", icon: "IG" },
+                    { label: "Website", value: website, set: setWebsite, placeholder: "https://yourwebsite.com", icon: "WEB" },
                   ].map((social) => (
                     <div key={social.label} style={sectionStyle}>
                       <label style={labelStyle}>{social.label}</label>
@@ -651,7 +784,7 @@ export default function CreatePage() {
                       { label: "Story", value: story ? "✅ Written" : "❌ Missing (recommended)" },
                       { label: "Offer", value: offer ? "✅ Written" : "❌ Missing (recommended)" },
                       { label: "Photo", value: avatarPreview ? "✅ Uploaded" : "❌ Missing (required)" },
-                      { label: "Socials", value: [twitter && "𝕏", linkedin && "in", instagram && "📷", website && "🌐"].filter(Boolean).join(" ") || "None" },
+                      { label: "Socials", value: [twitter && "𝕏", linkedin && "in", instagram && "IG", website && "WEB"].filter(Boolean).join(" ") || "None" },
                     ].map((item) => (
                       <div key={item.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: "1px solid #eee" }}>
                         <span style={{ fontWeight: 800, fontSize: "0.8rem", textTransform: "uppercase" }}>{item.label}</span>
@@ -667,7 +800,7 @@ export default function CreatePage() {
                       <li>A <strong>Token-2022 mint</strong> is created on Solana (with metadata &amp; freeze)</li>
                       <li>A <strong>Human Curve™ bonding curve</strong> is activated — anyone can buy/sell</li>
                       <li><strong>${initialLiquidityUSD}</strong> injected as initial liquidity — your token starts with real value</li>
-                      <li>You get <strong>Founder tokens</strong> at the initial price (locked 1 year) + earn <strong>2% fees</strong> in SOL on every trade</li>
+                      <li>You get <strong>Founder tokens</strong> at the initial price (locked 1 year) + earn <strong>up to 3% fees</strong> in SOL on every trade</li>
                       <li>Your profile goes <strong>live on the marketplace</strong></li>
                       <li>You can start posting in your <strong>Inner Circle</strong> (token-gated feed)</li>
                     </ul>
@@ -681,7 +814,7 @@ export default function CreatePage() {
                     marginBottom: 28,
                   }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                      <span style={{ fontSize: "1.3rem" }}>💎</span>
+                      <span style={{ fontWeight: 800, fontSize: "1rem" }}>◈</span>
                       <span style={{ fontWeight: 800, fontSize: "0.9rem" }}>Initial Liquidity</span>
                     </div>
 
@@ -726,14 +859,14 @@ export default function CreatePage() {
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", color: "var(--text-muted)", marginTop: 4 }}>
                       <span>$5 (minimum)</span>
                       <span style={{ fontWeight: 800, color: "var(--text)", fontSize: "0.85rem" }}>
-                        ${initialLiquidityUSD} ≈ {(initialLiquidityUSD / SOL_PRICE_USD).toFixed(3)} SOL
+                        ${initialLiquidityUSD} ≈ {(initialLiquidityUSD / solPriceUsd).toFixed(3)} SOL
                       </span>
                       <span>$100</span>
                     </div>
 
                     {initialLiquidityUSD < 20 && (
                       <div style={{ marginTop: 12, padding: "8px 12px", background: "#fff3cd", fontSize: "0.72rem", color: "#856404", fontWeight: 600 }}>
-                        💡 We recommend at least $20 for a strong initial token value.
+                        We recommend at least $20 for a strong initial token value.
                       </div>
                     )}
                   </div>
@@ -751,7 +884,7 @@ export default function CreatePage() {
                     }}
                     onClick={handleLaunch}
                   >
-                    🚀 Launch My Token (${initialLiquidityUSD} + ~$2 fees)
+                    Launch My Token (${initialLiquidityUSD} + ~$2 fees)
                   </button>
                 </div>
               )}
@@ -791,7 +924,7 @@ export default function CreatePage() {
               symbol={deferredSymbol}
               bio={deferredBio}
               category={deferredCategory}
-              categoryEmoji={deferredCategoryEmoji}
+              categoryLabel={deferredCategoryLabel}
               country={deferredCountry}
               countryName={deferredCountryName}
               avatar={deferredAvatar}
@@ -805,7 +938,7 @@ export default function CreatePage() {
 
         {/* ── STEP: LAUNCHING ── */}
         {step === "launching" && (
-          <div style={{ maxWidth: 640, textAlign: "center", padding: "80px 0" }}>
+          <div style={{ maxWidth: 640, textAlign: "center", padding: "80px 0", margin: "0 auto" }}>
             <div style={{ fontSize: "2.4rem", marginBottom: 16, animation: "pulse 1.5s infinite" }}>◈</div>
             <h2 style={{ fontSize: "1.4rem", fontWeight: 800, marginBottom: 12 }}>
               {launchStep === 1 && "Uploading your photo & metadata..."}
@@ -861,7 +994,7 @@ export default function CreatePage() {
 
         {/* ── STEP: DONE ── */}
         {step === "done" && (
-          <div style={{ maxWidth: 640, textAlign: "center", padding: "80px 0" }}>
+          <div style={{ maxWidth: 640, textAlign: "center", padding: "80px 0", margin: "0 auto" }}>
             <div style={{ fontSize: "2.4rem", marginBottom: 16 }}>✓</div>
             <h2 style={{ fontSize: "1.4rem", fontWeight: 800, marginBottom: 12 }}>
               Token Created Successfully!
@@ -871,8 +1004,8 @@ export default function CreatePage() {
               and people can start investing in you. Post in your Inner Circle to engage your holders.
             </p>
             <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
-              <a href="/" className="btn-solid" style={{ background: "var(--accent)" }}>View Marketplace</a>
-              <a href="/leaderboard" className="btn-solid" style={{ background: "#fff", color: "var(--text)", border: "2px solid var(--border)" }}>Leaderboard</a>
+              <a href="/explore" className="btn-solid" style={{ background: "var(--accent)" }}>Explore Marketplace</a>
+              <a href="/" className="btn-solid" style={{ background: "#fff", color: "var(--text)", border: "2px solid var(--border)" }}>Go to Feed</a>
             </div>
           </div>
         )}

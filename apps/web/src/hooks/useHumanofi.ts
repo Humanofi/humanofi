@@ -1,13 +1,14 @@
 // ========================================
-// Humanofi — Protocol Interaction Hook (v3.6)
+// Humanofi — Protocol Interaction Hook (v3.7)
 // ========================================
 // High-level hook wrapping all Anchor instructions
 // with proper PDA derivation, error handling, and toast notifications.
 //
-// v3.6 changes:
+// v3.7 changes:
 //   - Merit Reward REMOVED: buyer gets 100% of tokens
 //   - Founder Buy: creator gets tokens at P₀ during creation
-//   - Holder fees: 2% creator vault + 2% protocol + 1% depth (5%)
+//   - Holder buy fees: 3% creator vault + 1% protocol + 1% depth (5%)
+//   - Holder sell fees: 1% creator vault + 3% protocol + 1% depth (5%)
 //   - Creator sell: 5% protocol + 1% depth (6%, no self-fee)
 //   - Removed creatorTokenAccount/protocolTokenAccount from buy
 
@@ -64,6 +65,13 @@ function derivePurchaseLimiterPDA(buyer: PublicKey, mint: PublicKey) {
   );
 }
 
+function deriveProtocolConfigPDA() {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("protocol_config")],
+    PROGRAM_ID
+  );
+}
+
 /**
  * useHumanofi — Master hook for all protocol interactions.
  *
@@ -103,6 +111,7 @@ export function useHumanofi() {
       const [creatorVault] = deriveCreatorVaultPDA(mint.publicKey);
       const [creatorFeeVault] = deriveCreatorFeeVaultPDA(mint.publicKey);
       const [protocolVault] = deriveProtocolVaultPDA(mint.publicKey);
+      const [protocolConfig] = deriveProtocolConfigPDA();
 
       // v3.6: creatorTokenAccount + treasury needed for Founder Buy
       const creatorTokenAccount = getAssociatedTokenAddressSync(
@@ -122,6 +131,7 @@ export function useHumanofi() {
         .accountsStrict({
           creator: publicKey,
           mint: mint.publicKey,
+          config: protocolConfig,
           bondingCurve,
           creatorVault,
           creatorFeeVault,
@@ -164,6 +174,7 @@ export function useHumanofi() {
       const [bondingCurve] = deriveBondingCurvePDA(params.mint);
       const [creatorFeeVault] = deriveCreatorFeeVaultPDA(params.mint);
       const [purchaseLimiter] = derivePurchaseLimiterPDA(publicKey, params.mint);
+      const [protocolConfig] = deriveProtocolConfigPDA();
 
       const buyerTokenAccount = getAssociatedTokenAddressSync(
         params.mint,
@@ -183,6 +194,7 @@ export function useHumanofi() {
         .accountsStrict({
           buyer: publicKey,
           mint: params.mint,
+          config: protocolConfig,
           bondingCurve,
           creatorFeeVault,
           purchaseLimiter,
@@ -221,6 +233,7 @@ export function useHumanofi() {
 
       const [bondingCurve] = deriveBondingCurvePDA(params.mint);
       const [creatorFeeVault] = deriveCreatorFeeVaultPDA(params.mint);
+      const [protocolConfig] = deriveProtocolConfigPDA();
 
       const sellerTokenAccount = getAssociatedTokenAddressSync(
         params.mint,
@@ -241,6 +254,7 @@ export function useHumanofi() {
         .accountsStrict({
           seller: publicKey,
           mint: params.mint,
+          config: protocolConfig,
           bondingCurve,
           creatorFeeVault,
           creatorVault: isCreator ? creatorVaultPda : (null as unknown as PublicKey),
@@ -272,12 +286,16 @@ export function useHumanofi() {
       }
 
       const [creatorFeeVault] = deriveCreatorFeeVaultPDA(mint);
+      const [protocolConfig] = deriveProtocolConfigPDA();
+      const [bondingCurve] = deriveBondingCurvePDA(mint);
 
       const txPromise = program.methods
         .claimCreatorFees()
         .accountsStrict({
           creator: publicKey,
           mint,
+          config: protocolConfig,
+          bondingCurve,
           creatorFeeVault,
           systemProgram: SystemProgram.programId,
         })
@@ -481,6 +499,9 @@ const ERROR_MAP: Record<number, string> = {
   6024: "Initial liquidity above maximum.",
   6025: "Invalid treasury wallet.",
   6026: "Slippage exceeded — received less than minimum.",
+  6027: "Protocol is frozen — all operations suspended.",
+  6028: "Creator is suspended — sell and claim operations blocked.",
+  6029: "Unauthorized — only the protocol authority can perform this action.",
 };
 
 // Map Anchor error names for "Error Code: XXX" format
@@ -506,4 +527,7 @@ const NAMED_ERROR_MAP: Record<string, string> = {
   ZeroPurchaseAmount: "Purchase amount must be greater than zero.",
   PriceCalculationZero: "Amount too small — price would be zero.",
   FeeOverflow: "Fee calculation error.",
+  ProtocolFrozen: "Protocol is frozen — all operations suspended.",
+  CreatorSuspended: "Creator is suspended — sell and claim blocked.",
+  UnauthorizedAdmin: "Unauthorized — only admin can do this.",
 };

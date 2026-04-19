@@ -135,7 +135,7 @@ export default function ManagePage() {
         <input
           type="text"
           className="manage-input"
-          placeholder="Ex: Building the future of social tokens 🚀"
+          placeholder="Ex: Building the future of social tokens"
           value={subtitle}
           onChange={(e) => setSubtitle(e.target.value.slice(0, 80))}
           maxLength={80}

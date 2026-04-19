@@ -87,6 +87,7 @@ export default function PortfolioPage() {
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(true);
   const [pricesLoaded, setPricesLoaded] = useState(false);
+  const [holderRanks, setHolderRanks] = useState<Record<string, { rank: number; is_early_believer: boolean; total: number }>>({});
 
   // ── 1. Fetch positions from API ──
   useEffect(() => {
@@ -160,6 +161,33 @@ export default function PortfolioPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, positions.length, pricesLoaded]);
 
+  // ── 3. Fetch holder ranks for all positions ──
+  useEffect(() => {
+    if (!walletAddress || positions.length === 0) return;
+    const fetchRanks = async () => {
+      const ranks: Record<string, { rank: number; is_early_believer: boolean; total: number }> = {};
+      await Promise.all(
+        positions.map(async (pos) => {
+          try {
+            const res = await fetch(`/api/holders/${pos.mint_address}?limit=1&wallet=${walletAddress}`);
+            if (res.ok) {
+              const data = await res.json();
+              if (data.myRank) {
+                ranks[pos.mint_address] = {
+                  rank: data.myRank.rank,
+                  is_early_believer: data.myRank.is_early_believer,
+                  total: data.totalHolders || 0,
+                };
+              }
+            }
+          } catch { /* ignore */ }
+        })
+      );
+      setHolderRanks(ranks);
+    };
+    fetchRanks();
+  }, [walletAddress, positions.length]);
+
   // ── Totals ──
   const totalValueSol = positions.reduce((sum, p) => sum + (p.value_sol || 0), 0);
   const totalInvestedSol = positions.reduce((sum, p) => sum + p.sol_invested / 1e9, 0);
@@ -221,204 +249,207 @@ export default function PortfolioPage() {
   }
 
   // ── Portfolio view ──
+  const sortedPositions = [...positions].sort((a, b) => (b.value_sol || 0) - (a.value_sol || 0));
+  const winningTrades = positions.filter(p => (p.pnl_sol || 0) > 0).length;
+  const losingTrades = positions.filter(p => (p.pnl_sol || 0) < 0).length;
+  const winRate = positions.length > 0 ? (winningTrades / positions.length) * 100 : 0;
+  const totalTradesCount = positions.reduce((s, p) => s + p.buy_count + p.sell_count, 0);
+
   return (
     <>
       <div className="halftone-bg" />
       <Topbar />
 
-      <main className="page" style={{ paddingTop: 40, maxWidth: 900 }}>
-        {/* Header */}
-        <div style={{ marginBottom: 32 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
-            <div>
-              <h1 className="page__title" style={{ marginBottom: 4 }}>
-                <Heartbeat size={28} weight="bold" style={{ verticalAlign: "middle", marginRight: 8 }} />
-                My Humans
-              </h1>
-              <p style={{ color: "var(--text-muted)", fontWeight: 700, fontSize: "0.85rem" }}>
-                {positions.length} {positions.length === 1 ? "person" : "people"} in your circle
-              </p>
-            </div>
-
-            {/* Total value card */}
-            <div style={{
-              background: "var(--card-bg)",
-              border: "1px solid var(--border-light)",
-              padding: "16px 24px",
-              borderRadius: 8,
-              minWidth: 220,
-              textAlign: "right",
-            }}>
-              <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                Sell Value
-              </div>
-              <div style={{ fontSize: "1.6rem", fontWeight: 900 }}>
-                {formatSol(totalValueSol)} SOL
-              </div>
-              {solPriceUsd > 0 && (
-                <div style={{ fontSize: "0.85rem", fontWeight: 700, color: "var(--text-muted)" }}>
-                  ~{formatUsd(solToUsd(totalValueSol, solPriceUsd))}
-                </div>
-              )}
-
-              {/* P&L */}
-              <div style={{
-                marginTop: 8, paddingTop: 8,
-                borderTop: "1px solid var(--border-light)",
-                display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8,
-              }}>
-                {totalPnlSol >= 0 ? <TrendUp size={18} weight="bold" color={totalPnlColor} /> : <TrendDown size={18} weight="bold" color={totalPnlColor} />}
-                <div>
-                  <div style={{ fontSize: "0.9rem", fontWeight: 900, color: totalPnlColor }}>
-                    {totalPnlSol >= 0 ? "+" : ""}{formatSol(totalPnlSol)} SOL
-                    <span style={{ fontSize: "0.75rem", opacity: 0.8, marginLeft: 6 }}>
-                      ({totalPnlPct >= 0 ? "+" : ""}{totalPnlPct.toFixed(1)}%)
-                    </span>
-                  </div>
-                  {solPriceUsd > 0 && (
-                    <div style={{ fontSize: "0.75rem", fontWeight: 700, color: totalPnlColor, opacity: 0.7 }}>
-                      {totalPnlSol >= 0 ? "+" : ""}{formatUsd(solToUsd(totalPnlSol, solPriceUsd))}
-                    </div>
-                  )}
-                </div>
-              </div>
+      <main className="page" style={{ display: "flex", flexDirection: "column", maxWidth: 1200, margin: "0 auto", padding: "40px 24px" }}>
+        
+        <div className="port-header">
+          <div>
+            <h1 className="page__title" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <Heartbeat size={32} weight="bold" /> My Humano
+            </h1>
+            <div style={{ color: "var(--text-muted)", fontWeight: 700, fontSize: "0.85rem", marginTop: 4 }}>
+              Terminal Portfolio Tracking
             </div>
           </div>
         </div>
 
-        {/* Positions list */}
-        <AnimatePresence>
-          {positions
-            .sort((a, b) => (b.value_sol || 0) - (a.value_sol || 0))
-            .map((pos, i) => {
+        {/* ── 1. KPI Grid ── */}
+        <div className="port-grid">
+          <div className="port-kpi">
+            <div className="port-kpi__title">Total Balance (Sell Value)</div>
+            <div className="port-kpi__val">{formatSol(totalValueSol)} SOL</div>
+            {solPriceUsd > 0 && <div className="port-kpi__sub">~{formatUsd(solToUsd(totalValueSol, solPriceUsd))}</div>}
+          </div>
+          <div className="port-kpi">
+            <div className="port-kpi__title">Total Invested</div>
+            <div className="port-kpi__val">{formatSol(totalInvestedSol)} SOL</div>
+            {solPriceUsd > 0 && <div className="port-kpi__sub">~{formatUsd(solToUsd(totalInvestedSol, solPriceUsd))}</div>}
+          </div>
+          <div className="port-kpi">
+            <div className="port-kpi__title">Net Profit (PnL)</div>
+            <div className="port-kpi__val" style={{ color: totalPnlColor }}>
+              {totalPnlSol >= 0 ? "+" : ""}{formatSol(totalPnlSol)} SOL
+            </div>
+            <div className="port-kpi__sub" style={{ color: totalPnlColor, opacity: 0.8 }}>
+              {totalPnlPct >= 0 ? "+" : ""}{totalPnlPct.toFixed(1)}%
+            </div>
+          </div>
+          <div className="port-kpi">
+            <div className="port-kpi__title">Win Rate & Activity</div>
+            <div className="port-kpi__val">{winRate.toFixed(0)}%</div>
+            <div className="port-kpi__sub">{winningTrades} W / {losingTrades} L · {totalTradesCount} Trades</div>
+          </div>
+        </div>
+
+        {/* ── 2. Allocation Bar ── */}
+        <div className="port-allocation">
+          <div className="port-allocation__header">
+            <span>Portfolio Allocation</span>
+            <span>{positions.length} Assets</span>
+          </div>
+          <div className="port-allocation__bar">
+            {sortedPositions.map((pos) => {
+              const allocationStr = totalValueSol > 0 ? ((pos.value_sol || 0) / totalValueSol) * 100 : 0;
+              if (allocationStr === 0) return null;
               const color = TOKEN_COLORS[pos.token_color] || TOKEN_COLORS.blue;
-              const tokens = pos.balance / 1e6;
-              const investedSol = pos.sol_invested / 1e9;
-              const pnlSol = pos.pnl_sol ?? 0;
-              const pnlPct = pos.pnl_pct ?? 0;
-              const pnlColor = pnlSol >= 0 ? "#22c55e" : "#ef4444";
-              const avgEntry = pos.tokens_bought > 0
-                ? (pos.sol_invested / pos.tokens_bought) * 1e6 / 1e9
-                : 0;
-
               return (
-                <motion.div
-                  key={pos.mint_address}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                >
-                  <Link
-                    href={`/person/${pos.mint_address}`}
-                    style={{ textDecoration: "none", color: "inherit" }}
-                  >
-                    <div
-                      style={{
-                        background: "var(--card-bg)",
-                        border: "1px solid var(--border-light)",
-                        borderLeft: `4px solid ${color}`,
-                        borderRadius: 8,
-                        padding: "16px 20px",
-                        marginBottom: 12,
-                        display: "grid",
-                        gridTemplateColumns: "auto 1fr auto",
-                        gap: 16,
-                        alignItems: "center",
-                        cursor: "pointer",
-                        transition: "all 0.15s ease",
-                      }}
-                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = color; e.currentTarget.style.transform = "translateX(2px)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-light)"; e.currentTarget.style.borderLeftColor = color; e.currentTarget.style.transform = ""; }}
-                    >
-                      {/* Avatar */}
-                      <div style={{ width: 52, height: 52, borderRadius: "50%", overflow: "hidden", flexShrink: 0, border: `2px solid ${color}` }}>
-                        <Image
-                          src={pos.avatar_url || "/default-avatar.png"}
-                          alt={pos.display_name}
-                          width={52}
-                          height={52}
-                          style={{ objectFit: "cover" }}
-                        />
-                      </div>
-
-                      {/* Info */}
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
-                          <span style={{ fontWeight: 900, fontSize: "0.95rem" }}>{pos.display_name}</span>
-                          <span style={{
-                            fontSize: "0.65rem", fontWeight: 800,
-                            color, border: `1px solid ${color}`,
-                            padding: "1px 6px", borderRadius: 2,
-                            textTransform: "uppercase", letterSpacing: "0.04em",
-                          }}>
-                            {pos.category}
-                          </span>
-                        </div>
-
-                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600, display: "flex", gap: 12, flexWrap: "wrap" }}>
-                          <span>
-                            <Coin size={13} weight="bold" style={{ verticalAlign: "middle", marginRight: 3 }} />
-                            {formatTokens(tokens)} tokens
-                          </span>
-                          <span>
-                            <Lightning size={13} weight="bold" style={{ verticalAlign: "middle", marginRight: 3 }} />
-                            Entry: {formatSol(avgEntry)} SOL
-                          </span>
-                          {pos.current_price !== undefined && (
-                            <span style={{ color: (pos.current_price || 0) > avgEntry ? "#22c55e" : avgEntry > 0 ? "#ef4444" : "var(--text-muted)" }}>
-                              Now: {formatSol(pos.current_price)} SOL
-                              {(pos.current_price || 0) > avgEntry ? " ↑" : avgEntry > 0 ? " ↓" : ""}
-                            </span>
-                          )}
-                          <span style={{ opacity: 0.6 }}>{timeAgo(pos.first_bought_at)}</span>
-                        </div>
-                      </div>
-
-                      {/* Value + P&L */}
-                      <div style={{ textAlign: "right", minWidth: 130 }}>
-                        <div style={{ fontSize: "1rem", fontWeight: 900 }}>
-                          {pos.value_sol !== undefined ? `${formatSol(pos.value_sol)} SOL` : "..."}
-                        </div>
-                        {solPriceUsd > 0 && pos.value_sol !== undefined && (
-                          <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)" }}>
-                            ~{formatUsd(solToUsd(pos.value_sol, solPriceUsd))}
-                          </div>
-                        )}
-                        <div style={{
-                          marginTop: 4, fontSize: "0.8rem", fontWeight: 900, color: pnlColor,
-                          display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4,
-                        }}>
-                          {pnlSol >= 0 ? <TrendUp size={14} weight="bold" /> : <TrendDown size={14} weight="bold" />}
-                          {pnlSol >= 0 ? "+" : ""}{formatSol(pnlSol)}
-                          <span style={{ fontSize: "0.7rem", opacity: 0.8 }}>
-                            ({pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%)
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
-                </motion.div>
+                <div 
+                  key={`alloc-${pos.mint_address}`}
+                  className="port-allocation__segment"
+                  style={{ width: `${allocationStr}%`, background: color }}
+                  title={`${pos.display_name}: ${allocationStr.toFixed(1)}%`}
+                />
               );
             })}
-        </AnimatePresence>
-
-        {/* Summary footer */}
-        <div style={{
-          marginTop: 24, padding: "12px 16px",
-          background: "var(--card-bg)", border: "1px solid var(--border-light)",
-          borderRadius: 8, display: "flex", justifyContent: "space-between",
-          fontSize: "0.75rem", fontWeight: 700, color: "var(--text-muted)",
-        }}>
-          <span>
-            <ChartLineUp size={14} weight="bold" style={{ verticalAlign: "middle", marginRight: 4 }} />
-            Total invested: {formatSol(totalInvestedSol)} SOL
-            {solPriceUsd > 0 && ` (~${formatUsd(solToUsd(totalInvestedSol, solPriceUsd))})`}
-          </span>
-          <span>
-            <ArrowRight size={14} weight="bold" style={{ verticalAlign: "middle", marginRight: 4 }} />
-            {positions.reduce((s, p) => s + p.buy_count, 0)} buys · {positions.reduce((s, p) => s + p.sell_count, 0)} sells
-          </span>
+          </div>
+          <div className="port-allocation__legend">
+            {sortedPositions.slice(0, 8).map((pos) => {
+              const allocationStr = totalValueSol > 0 ? ((pos.value_sol || 0) / totalValueSol) * 100 : 0;
+              if (allocationStr < 1) return null;
+              const color = TOKEN_COLORS[pos.token_color] || TOKEN_COLORS.blue;
+              return (
+                <div key={`legend-${pos.mint_address}`} className="port-allocation__legend-item">
+                  <div className="port-allocation__legend-color" style={{ background: color }} />
+                  <span>{pos.display_name} ({allocationStr.toFixed(1)}%)</span>
+                </div>
+              );
+            })}
+            {sortedPositions.length > 8 && (
+              <div className="port-allocation__legend-item">
+                <div className="port-allocation__legend-color" style={{ background: "var(--border-light)" }} />
+                <span>Others</span>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* ── 3. Data Table (Terminal Mode) ── */}
+        <div className="term-table" style={{ border: "2px solid var(--border)", boxShadow: "8px 8px 0px rgba(0,0,0,0.1)", background: "var(--bg)" }}>
+          {/* Header */}
+          <div className="term-th" style={{ background: "var(--bg-panel)", borderBottom: "2px solid var(--border)", padding: "12px 16px" }}>
+            <div className="term-cell term-cell--id">ASSET</div>
+            <div className="term-cell term-cell--stats">BALANCE</div>
+            <div className="term-cell term-cell--price">ENTRY PRICE</div>
+            <div className="term-cell term-cell--price">CURRENT PRICE</div>
+            <div className="term-cell term-cell--price">VALUE (SOL)</div>
+            <div className="term-cell term-cell--change">PNL</div>
+            <div className="term-cell" style={{ width: 80, justifyContent: "center" }}>ACTION</div>
+          </div>
+
+          {/* Body */}
+          <div className="term-tbody">
+            <AnimatePresence>
+              {sortedPositions.map((pos, i) => {
+                const color = TOKEN_COLORS[pos.token_color] || TOKEN_COLORS.blue;
+                const tokens = pos.balance / 1e6;
+                const pnlSol = pos.pnl_sol ?? 0;
+                const pnlPct = pos.pnl_pct ?? 0;
+                const pnlColor = pnlSol >= 0 ? "var(--green)" : "var(--red)";
+                const avgEntry = pos.tokens_bought > 0 ? (pos.sol_invested / pos.tokens_bought) * 1e6 / 1e9 : 0;
+                const rank = holderRanks[pos.mint_address]?.rank;
+
+                return (
+                  <motion.div
+                    key={pos.mint_address}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: i * 0.05 }}
+                  >
+                    <Link href={`/person/${pos.mint_address}`} className="screener-row" style={{ borderLeft: `4px solid ${color}` }}>
+                      
+                      {/* Asset & Avatar */}
+                      <div className="term-cell term-cell--id screener-row__identity">
+                        <div className="screener-row__avatar-wrap">
+                          <Image src={pos.avatar_url || "/default-avatar.png"} alt={pos.display_name} width={32} height={32} className="screener-row__avatar" />
+                        </div>
+                        <div className="screener-row__identity-info">
+                          <div className="screener-row__name-line">
+                            <span className="screener-row__name">{pos.display_name}</span>
+                            {rank && rank <= 3 && <span title={`Rank ${rank}`}>👑</span>}
+                          </div>
+                          <div className="screener-row__tag-line">
+                            <span style={{ textTransform: "uppercase" }}>{pos.category}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Balance Tokens */}
+                      <div className="term-cell term-cell--stats screener-row__stats">
+                        <span className="screener-row__val">{formatTokens(tokens)}</span>
+                        <span className="screener-row__subval">TOKENS</span>
+                      </div>
+
+                      {/* Entry Price */}
+                      <div className="term-cell term-cell--price screener-row__price">
+                        <div className="screener-row__price-col">
+                          <span className="screener-row__val">{formatSol(avgEntry)}</span>
+                        </div>
+                      </div>
+
+                      {/* Current Price */}
+                      <div className="term-cell term-cell--price screener-row__price">
+                        <div className="screener-row__price-col">
+                          <span className="screener-row__val" style={{ color: (pos.current_price || 0) > avgEntry ? "var(--green)" : avgEntry > 0 ? "var(--red)" : "inherit" }}>
+                            {pos.current_price !== undefined ? formatSol(pos.current_price) : "..."}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Value (SOL) */}
+                      <div className="term-cell term-cell--price screener-row__price">
+                        <div className="screener-row__price-col">
+                          <span className="screener-row__val">{pos.value_sol !== undefined ? formatSol(pos.value_sol) : "..."}</span>
+                          {solPriceUsd > 0 && pos.value_sol !== undefined && (
+                            <span className="screener-row__subval">~{formatUsd(solToUsd(pos.value_sol, solPriceUsd))}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* PNL */}
+                      <div className="term-cell term-cell--change screener-row__change">
+                        <div className="screener-row__price-col">
+                          <span className="screener-row__val" style={{ color: pnlColor }}>
+                            {pnlSol >= 0 ? "+" : ""}{formatSol(pnlSol)}
+                          </span>
+                          <span className="screener-row__subval" style={{ color: pnlColor }}>
+                            {pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(1)}%
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Action */}
+                      <div className="term-cell" style={{ width: 80, justifyContent: "center" }}>
+                        <button className="port-action-btn" onClick={(e) => { e.preventDefault(); window.location.href = `/person/${pos.mint_address}`; }}>TRADE</button>
+                      </div>
+
+                    </Link>
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
+          </div>
+        </div>
+
       </main>
 
       <Footer />

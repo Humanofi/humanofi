@@ -1,13 +1,14 @@
 "use client";
 
 import React from "react";
+import Flag from "@/components/Flag";
 
 interface PreviewCardProps {
   name: string;
   symbol: string;
   bio: string;
   category: string;
-  categoryEmoji: string;
+  categoryLabel: string;
   country: string;
   countryName: string;
   avatar: string | null;
@@ -22,7 +23,8 @@ function LivePreviewCardRaw({
   symbol,
   bio,
   category,
-  categoryEmoji,
+  categoryLabel,
+  country,
   countryName,
   avatar,
   twitter,
@@ -48,7 +50,7 @@ function LivePreviewCardRaw({
         <div className="preview-card__info">
           {category && (
             <div className="preview-card__badge">
-              {categoryEmoji} {category}
+              {categoryLabel || category}
             </div>
           )}
 
@@ -68,14 +70,14 @@ function LivePreviewCardRaw({
             <div className="preview-card__socials">
               {twitter && <span className="preview-card__social-tag">𝕏</span>}
               {linkedin && <span className="preview-card__social-tag">in</span>}
-              {instagram && <span className="preview-card__social-tag">📷</span>}
-              {website && <span className="preview-card__social-tag">🌐</span>}
+              {instagram && <span className="preview-card__social-tag">IG</span>}
+              {website && <span className="preview-card__social-tag">WEB</span>}
             </div>
           )}
 
-          {countryName && (
+          {(countryName || country) && (
             <div className="preview-card__country">
-              📍 {countryName}
+              <Flag code={country} size={12} /> {countryName}
             </div>
           )}
         </div>

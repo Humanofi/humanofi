@@ -20,7 +20,7 @@ export async function GET(
   const { mint } = await params;
   const supabase = createServerClient();
   if (!supabase) {
-    return NextResponse.json({ reactions: 0, posts: 0, views: 0 });
+    return NextResponse.json({ reactions: 0, posts: 0 });
   }
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -28,14 +28,11 @@ export async function GET(
   // ── 1. Inner Circle posts (last 24h + all post IDs for reactions) ──
   const { data: icPosts } = await supabase
     .from("inner_circle_posts")
-    .select("id, created_at, view_count")
+    .select("id, created_at")
     .eq("creator_mint", mint);
 
   const icPostIds = (icPosts || []).map(p => p.id);
   const icPostsLast24h = (icPosts || []).filter(p => p.created_at >= since).length;
-  
-  // Sum all view_count for this creator's posts
-  const totalViews = (icPosts || []).reduce((sum, p) => sum + (p.view_count || 0), 0);
 
   // ── 2. Public posts (last 24h + all post IDs for reactions) ──
   const { data: pubPosts } = await supabase
@@ -71,6 +68,5 @@ export async function GET(
   return NextResponse.json({
     reactions: icReactionCount + pubReactionCount,
     posts: icPostsLast24h + pubPostsLast24h,
-    views: totalViews,
   });
 }

@@ -143,6 +143,124 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`[Trades] ✅ ${tradeType.toUpperCase()} recorded | ${txSignature.slice(0, 12)}... | ${priceSol} SOL`);
+
+    // ── FEED EVENTS: Emit market signals (non-blocking) ──
+    try {
+      // 1. Always emit a trade event
+      await supabase.from("feed_events").insert({
+        event_type: "trade",
+        mint_address: mintAddress,
+        wallet_address: walletAddress,
+        data: {
+          trade_type: tradeType,
+          sol_amount: solAmount || 0,
+          token_amount: tokenAmount || 0,
+          price_sol: priceSol,
+        },
+      });
+
+      // 2. Whale Alert: buy OR sell >= 0.5 SOL (500_000_000 lamports)
+      // Sells are even more important — social pressure visible
+      if ((solAmount || 0) >= 500_000_000) {
+        await supabase.from("feed_events").insert({
+          event_type: "whale_alert",
+          mint_address: mintAddress,
+          wallet_address: walletAddress,
+          data: {
+            trade_type: tradeType,
+            sol_amount: solAmount,
+            token_amount: tokenAmount,
+          },
+        });
+      }
+
+      // 3. New holder detection: first buy by this wallet on this mint
+      if (tradeType === "buy") {
+        const { count } = await supabase
+          .from("trades")
+          .select("id", { count: "exact", head: true })
+          .eq("mint_address", mintAddress)
+          .eq("wallet_address", walletAddress)
+          .eq("trade_type", "buy");
+
+        if (count === 1) {
+          // This is their first buy → new holder
+          await supabase.from("feed_events").insert({
+            event_type: "new_holder",
+            mint_address: mintAddress,
+            wallet_address: walletAddress,
+            data: { sol_amount: solAmount },
+          });
+
+          // Early Believer: check if among first 10 unique buyers
+          const { data: uniqueWallets } = await supabase
+            .from("trades")
+            .select("wallet_address")
+            .eq("mint_address", mintAddress)
+            .eq("trade_type", "buy");
+
+          const uniqueCount = new Set((uniqueWallets || []).map(w => w.wallet_address)).size;
+
+          if (uniqueCount <= 10) {
+            await supabase
+              .from("token_holders")
+              .update({ is_early_believer: true })
+              .eq("mint_address", mintAddress)
+              .eq("wallet_address", walletAddress);
+          }
+        }
+      }
+
+      // ── Ensure token_holders is up-to-date (don't rely solely on Helius) ──
+      // Upsert the holder record based on trade data
+      if (tradeType === "buy") {
+        // On buy: increment balance
+        await supabase.rpc("update_holder_balance", {
+          p_wallet: walletAddress,
+          p_mint: mintAddress,
+          p_delta: tokenAmount || 0,
+        });
+      } else {
+        // On sell: decrement balance
+        await supabase.rpc("update_holder_balance", {
+          p_wallet: walletAddress,
+          p_mint: mintAddress,
+          p_delta: -(tokenAmount || 0),
+        });
+      }
+
+      // ── Sync holder_count to creator_tokens (runs on both buy AND sell) ──
+      const { count: holderCount } = await supabase
+        .from("token_holders")
+        .select("id", { count: "exact", head: true })
+        .eq("mint_address", mintAddress)
+        .gt("balance", 0);
+
+      if (holderCount !== null) {
+        await supabase
+          .from("creator_tokens")
+          .update({ holder_count: holderCount })
+          .eq("mint_address", mintAddress);
+      }
+
+      // Milestone detection
+      const milestones = [10, 25, 50, 100, 250, 500];
+      if (milestones.includes(holderCount || 0)) {
+        await supabase.from("feed_events").insert({
+          event_type: "milestone",
+          mint_address: mintAddress,
+          data: { milestone: holderCount, type: "holders" },
+        });
+      }
+
+      // 4. Recalculate holder ranks for this mint
+      await supabase.rpc("recalc_holder_ranks", { p_mint: mintAddress });
+
+    } catch (feedErr) {
+      // Non-blocking: don't fail the trade if feed events fail
+      console.warn("[Trades] Feed events error (non-blocking):", feedErr);
+    }
+
     return NextResponse.json({ ok: true, slot });
 
   } catch (error) {

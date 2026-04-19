@@ -1,15 +1,16 @@
 // ========================================
-// Humanofi — Protocol Constants (v3.6)
+// Humanofi — Protocol Constants (v3.7)
 // ========================================
 //
 // The Human Curve™ — All protocol parameters in one place.
 // Every value here maps directly to the mathematical spec.
 //
-// v3.6 changes:
-//   - Holder fees: 6% → 5% (2% creator + 2% protocol + 1% depth)
-//   - Merit Reward: REMOVED (buyer gets 100% of tokens)
-//   - Creator sell: separate 6% fee (5% protocol + 1% depth, no self-fee)
-//   - Founder Buy: creator gets tokens at P₀ during creation (locked)
+// v3.7 changes:
+//   - Asymmetric fee split: belief vs doubt philosophy
+//   - Buy: 3% creator + 1% protocol + 1% depth = 5%
+//   - Sell: 1% creator + 3% protocol + 1% depth = 5%
+//   - Creator sell: unchanged 6% (5% protocol + 1% depth)
+//   - Founder Buy: unchanged 3% (2% protocol + 1% depth)
 
 use anchor_lang::prelude::*;
 
@@ -28,33 +29,48 @@ pub const ONE_TOKEN: u64 = 1_000_000;
 /// — like Curve Finance's amplification factor A.
 /// Nobody can ever withdraw D. It only exists in the x · y = k formula.
 /// ⚠️ IMMUTABLE AFTER CREATION — modifying D breaks solvency invariant
-pub const DEPTH_RATIO: u64 = 20;
+pub const DEPTH_RATIO: u64 = 18;
 
 /// Initial token reserve: y₀ = 1,000,000 tokens (in base units with 6 decimals)
 /// All tokens in Humanofi start with this same reserve.
 /// At creation: x₀ = D = DEPTH_RATIO × V, k₀ = x₀ × y₀
-/// After Founder Buy: x = D + sol_to_curve + depth_fee ≈ 20.98V
+/// After Founder Buy: x = D + sol_to_curve + depth_fee ≈ 18.98V
+/// Creator receives ~5.1% of supply (~51,000 tokens)
 pub const INITIAL_Y: u128 = 1_000_000 * 1_000_000; // 1M × 10^6 = 10^12
 
-// ---- Holder Trade Fees (5% total) ----
+// ---- Holder BUY Fees (5% total) ----
 //
-// v3.6: Reduced from 6% to 5%. Creator share reduced from 3% to 2%.
+// v3.7: Asymmetric split — BUY rewards the creator (belief).
 //
-// 2% → Creator Fee Vault (PDA, claimable every 15 days)
-// 2% → Protocol Treasury (immediate)
+// 3% → Creator Fee Vault (PDA, claimable every 15 days)
+// 1% → Protocol Treasury (immediate)
 // 1% → k-Deepening (stays in x, state update only)
 
-/// Total fee in basis points (5%)
+/// Total fee in basis points (5%) — same for buy and sell
 pub const TOTAL_FEE_BPS: u64 = 500;
 
-/// Creator's share of fees: 2% of transaction volume → Creator Fee Vault PDA
-pub const FEE_CREATOR_BPS: u64 = 200;
+/// BUY: Creator's share: 3% → Creator Fee Vault PDA
+pub const BUY_FEE_CREATOR_BPS: u64 = 300;
 
-/// Protocol treasury share: 2% of transaction volume → immediate
-pub const FEE_PROTOCOL_BPS: u64 = 200;
+/// BUY: Protocol share: 1% → Protocol Treasury
+pub const BUY_FEE_PROTOCOL_BPS: u64 = 100;
 
-/// k-Deepening share: 1% of transaction volume → stays in x (state update only)
+/// k-Deepening share: 1% → stays in x (state update only)
 pub const FEE_DEPTH_BPS: u64 = 100;
+
+// ---- Holder SELL Fees (5% total) ----
+//
+// v3.7: Asymmetric split — SELL feeds the protocol treasury (doubt).
+//
+// 1% → Creator Fee Vault (PDA, claimable every 15 days)
+// 3% → Protocol Treasury (immediate)
+// 1% → k-Deepening (stays in x, state update only)
+
+/// SELL: Creator's share: 1% → Creator Fee Vault PDA
+pub const SELL_FEE_CREATOR_BPS: u64 = 100;
+
+/// SELL: Protocol share: 3% → Protocol Treasury
+pub const SELL_FEE_PROTOCOL_BPS: u64 = 300;
 
 /// Precision for basis points calculations
 pub const BPS_DENOMINATOR: u64 = 10_000;
@@ -147,6 +163,7 @@ pub const SEED_CURVE: &[u8] = b"curve";
 pub const SEED_VAULT: &[u8] = b"vault";
 pub const SEED_CREATOR_FEES: &[u8] = b"creator_fees";
 pub const SEED_PROTOCOL_VAULT: &[u8] = b"protocol_vault";
+pub const SEED_CONFIG: &[u8] = b"protocol_config";
 
 // ---- Treasury ----
 

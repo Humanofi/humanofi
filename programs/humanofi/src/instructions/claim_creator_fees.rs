@@ -3,7 +3,7 @@
 // ========================================
 //
 // Allows the creator to claim their accumulated trading fees
-// (2% of all buy/sell volume) from the CreatorFeeVault PDA.
+// (3% on buy, 1% on sell) from the CreatorFeeVault PDA.
 //
 // Rules:
 //   - Only the creator can claim (enforced via constraint)
@@ -19,6 +19,12 @@ use crate::errors::HumanofiError;
 use crate::state::*;
 
 pub fn handler(ctx: Context<ClaimCreatorFees>) -> Result<()> {
+    // ── EMERGENCY FREEZE CHECK ──
+    require!(!ctx.accounts.config.is_frozen, HumanofiError::ProtocolFrozen);
+
+    // ── CREATOR SUSPENSION CHECK ──
+    require!(!ctx.accounts.bonding_curve.is_suspended, HumanofiError::CreatorSuspended);
+
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;
 
@@ -67,7 +73,22 @@ pub struct ClaimCreatorFees<'info> {
     /// The Token-2022 Mint
     pub mint: InterfaceAccount<'info, Mint>,
 
-    /// Creator Fee Vault PDA — accumulates 2% of trading fees (SOL stored as lamports)
+    /// ProtocolConfig PDA — checked for emergency freeze
+    #[account(
+        seeds = [SEED_CONFIG],
+        bump = config.bump,
+    )]
+    pub config: Account<'info, ProtocolConfig>,
+
+    /// Bonding Curve PDA — checked for creator suspension
+    #[account(
+        seeds = [SEED_CURVE, mint.key().as_ref()],
+        bump = bonding_curve.bump,
+        has_one = mint,
+    )]
+    pub bonding_curve: Account<'info, BondingCurve>,
+
+    /// Creator Fee Vault PDA — accumulates creator fees (SOL stored as lamports)
     #[account(
         mut,
         seeds = [SEED_CREATOR_FEES, mint.key().as_ref()],

@@ -14,7 +14,8 @@
         "",
         "- CPI Guard: rejects program-to-program calls (anti-bot)",
         "- SOL → Human Curve calculation (k-deepening)",
-        "- Fees: 2% creator vault + 2% protocol + 1% k-depth (5% total)",
+        "- Fees: 3% creator vault + 1% protocol + 1% k-depth (5% total)",
+        "(if creator suspended: ALL fees → protocol treasury)",
         "- Mint 100% tokens → buyer ATA (frozen)",
         "- Slippage protection: reverts if tokens received < min_tokens_out"
       ],
@@ -49,6 +50,36 @@
           ]
         },
         {
+          "name": "config",
+          "docs": [
+            "ProtocolConfig PDA — checked for emergency freeze"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "bonding_curve",
           "docs": [
             "Bonding Curve PDA (holds SOL reserve + is mint/freeze authority)"
@@ -76,7 +107,7 @@
         {
           "name": "creator_fee_vault",
           "docs": [
-            "Creator Fee Vault PDA — accumulates 2% creator fees"
+            "Creator Fee Vault PDA — accumulates 3% creator fees (buy)"
           ],
           "writable": true,
           "pda": {
@@ -199,7 +230,7 @@
         {
           "name": "treasury",
           "docs": [
-            "Protocol treasury wallet (receives 2% of fees)"
+            "Protocol treasury wallet (receives 1% of buy fees, or ALL fees if creator suspended)"
           ],
           "writable": true
         },
@@ -242,7 +273,8 @@
         "",
         "- Only the creator of the token can call this",
         "- 15-day cooldown between claims",
-        "- All unclaimed fees transferred to creator's wallet as SOL"
+        "- All unclaimed fees transferred to creator's wallet as SOL",
+        "- BLOCKED if creator is suspended"
       ],
       "discriminator": [
         0,
@@ -269,13 +301,68 @@
             "The Token-2022 Mint"
           ],
           "relations": [
+            "bonding_curve",
             "creator_fee_vault"
           ]
         },
         {
+          "name": "config",
+          "docs": [
+            "ProtocolConfig PDA — checked for emergency freeze"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "bonding_curve",
+          "docs": [
+            "Bonding Curve PDA — checked for creator suspension"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  117,
+                  114,
+                  118,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        },
+        {
           "name": "creator_fee_vault",
           "docs": [
-            "Creator Fee Vault PDA — accumulates 2% of trading fees (SOL stored as lamports)"
+            "Creator Fee Vault PDA — accumulates creator fees (SOL stored as lamports)"
           ],
           "writable": true,
           "pda": {
@@ -323,7 +410,7 @@
         "- Token-2022 Mint (freeze_authority = bonding_curve PDA)",
         "- BondingCurve PDA (Human Curve™: x · y = k, SOL reserve)",
         "- CreatorVault PDA (vesting + Smart Sell Limiter tracker)",
-        "- CreatorFeeVault PDA (accumulates 2% of trading fees)",
+        "- CreatorFeeVault PDA (accumulates 3% on buy, 1% on sell)",
         "- ProtocolVault PDA (kept for compat, empty in v3.6)",
         "- On-chain metadata (name, symbol, image URI)",
         "",
@@ -358,6 +445,36 @@
           ],
           "writable": true,
           "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "ProtocolConfig PDA — checked for emergency freeze"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
         },
         {
           "name": "bonding_curve",
@@ -583,13 +700,83 @@
       ]
     },
     {
+      "name": "init_config",
+      "docs": [
+        "Initialize the ProtocolConfig PDA (one-time setup).",
+        "The caller becomes the initial authority.",
+        "Transfer to Squads multisig after deployment."
+      ],
+      "discriminator": [
+        23,
+        235,
+        115,
+        232,
+        168,
+        96,
+        1,
+        231
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The initial authority (will be the payer).",
+            "In production, transfer to Squads multisig afterward."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "The ProtocolConfig PDA — singleton, created once."
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "docs": [
+            "System Program"
+          ],
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "sell",
       "docs": [
         "Sell tokens back via the Human Curve™.",
         "",
-        "Dual fee structure (v3.6):",
-        "- Holder sell: 5% (2% creator + 2% protocol + 1% depth)",
+        "Dual fee structure (v3.7):",
+        "- Holder sell: 5% (1% creator + 3% protocol + 1% depth)",
+        "(if creator suspended: 0% creator + 4% protocol + 1% depth)",
         "- Creator sell: 6% (5% protocol + 1% depth, no self-fee)",
+        "(if creator suspended: BLOCKED entirely)",
         "",
         "Creator-specific:",
         "- Year 1 lock, Smart Sell Limiter (5% impact max), 30-day cooldown",
@@ -627,6 +814,36 @@
           ]
         },
         {
+          "name": "config",
+          "docs": [
+            "ProtocolConfig PDA — checked for emergency freeze"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
           "name": "bonding_curve",
           "docs": [
             "Bonding Curve PDA (holds SOL reserve)"
@@ -654,7 +871,7 @@
         {
           "name": "creator_fee_vault",
           "docs": [
-            "Creator Fee Vault PDA — receives 2% of holder sell fees (0% on creator sell)"
+            "Creator Fee Vault PDA — receives 1% of holder sell fees (0% on creator sell)"
           ],
           "writable": true,
           "pda": {
@@ -807,6 +1024,255 @@
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "suspend_creator",
+      "docs": [
+        "Suspend a creator (authority only).",
+        "Effects: fees redirected to treasury, creator sell/claim blocked.",
+        "Holders can still buy (with warning) and sell normally."
+      ],
+      "discriminator": [
+        250,
+        206,
+        154,
+        173,
+        150,
+        37,
+        249,
+        154
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The protocol authority"
+          ],
+          "signer": true
+        },
+        {
+          "name": "mint",
+          "docs": [
+            "The Token-2022 Mint (needed for PDA seed derivation)"
+          ],
+          "relations": [
+            "bonding_curve"
+          ]
+        },
+        {
+          "name": "config",
+          "docs": [
+            "The ProtocolConfig PDA (validates authority)"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "bonding_curve",
+          "docs": [
+            "The BondingCurve to suspend — validated via PDA seeds"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  117,
+                  114,
+                  118,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "toggle_freeze",
+      "docs": [
+        "Emergency freeze/unfreeze all protocol operations.",
+        "When frozen, buy/sell/create/claim are ALL blocked on-chain."
+      ],
+      "discriminator": [
+        136,
+        3,
+        54,
+        90,
+        252,
+        134,
+        158,
+        172
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The protocol authority (must match config.authority)"
+          ],
+          "signer": true
+        },
+        {
+          "name": "config",
+          "docs": [
+            "The ProtocolConfig PDA"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "freeze",
+          "type": "bool"
+        },
+        {
+          "name": "reason",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "unsuspend_creator",
+      "docs": [
+        "Lift a creator suspension (authority only)."
+      ],
+      "discriminator": [
+        10,
+        230,
+        78,
+        137,
+        19,
+        127,
+        39,
+        82
+      ],
+      "accounts": [
+        {
+          "name": "authority",
+          "docs": [
+            "The protocol authority"
+          ],
+          "signer": true
+        },
+        {
+          "name": "mint",
+          "docs": [
+            "The Token-2022 Mint (needed for PDA seed derivation)"
+          ],
+          "relations": [
+            "bonding_curve"
+          ]
+        },
+        {
+          "name": "config",
+          "docs": [
+            "The ProtocolConfig PDA (validates authority)"
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "bonding_curve",
+          "docs": [
+            "The BondingCurve to unsuspend — validated via PDA seeds"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  117,
+                  114,
+                  118,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "mint"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
@@ -847,6 +1313,19 @@
         236,
         238,
         12
+      ]
+    },
+    {
+      "name": "ProtocolConfig",
+      "discriminator": [
+        207,
+        91,
+        250,
+        28,
+        152,
+        179,
+        215,
+        209
       ]
     },
     {
@@ -1011,6 +1490,21 @@
       "code": 6026,
       "name": "SlippageExceeded",
       "msg": "Slippage exceeded — received less than minimum specified"
+    },
+    {
+      "code": 6027,
+      "name": "ProtocolFrozen",
+      "msg": "Protocol is frozen — all operations suspended"
+    },
+    {
+      "code": 6028,
+      "name": "CreatorSuspended",
+      "msg": "Creator is suspended — sell and claim operations blocked"
+    },
+    {
+      "code": 6029,
+      "name": "UnauthorizedAdmin",
+      "msg": "Unauthorized — only the protocol authority can perform this action"
     }
   ],
   "types": [
@@ -1127,6 +1621,13 @@
             "type": "bool"
           },
           {
+            "name": "is_suspended",
+            "docs": [
+              "Whether the creator is suspended (fees redirected, creator sell/claim blocked)"
+            ],
+            "type": "bool"
+          },
+          {
             "name": "bump",
             "docs": [
               "PDA bump seed"
@@ -1237,6 +1738,52 @@
             "name": "bump",
             "docs": [
               "PDA bump seed"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProtocolConfig",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "The wallet authorized to freeze/unfreeze and suspend/unsuspend creators.",
+              "In production, this should be a Squads multisig PDA."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "is_frozen",
+            "docs": [
+              "Global emergency kill switch.",
+              "When true, ALL instructions (buy, sell, create, claim) are blocked."
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "frozen_at",
+            "docs": [
+              "Unix timestamp of the last freeze event (0 if never frozen)."
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "freeze_reason",
+            "docs": [
+              "Reason for freeze (stored on-chain for transparency).",
+              "Max 128 bytes."
+            ],
+            "type": "string"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump seed."
             ],
             "type": "u8"
           }

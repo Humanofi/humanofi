@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChatText, Megaphone, ChartBar, CalendarBlank, Paperclip, Microphone, Stop, Play, Trash, ImageSquare, VideoCamera, Globe, YoutubeLogo, Question, Crown } from "@phosphor-icons/react";
+import { ChatText, Megaphone, ChartBar, CalendarBlank, Paperclip, Microphone, Stop, Play, Trash, ImageSquare, VideoCamera, Globe, YoutubeLogo, Question, Crown, Lock, FileText } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { useAuthFetch } from "@/lib/authFetch";
 
@@ -76,7 +76,7 @@ function PublicPostToggle({
       />
       <Globe size={14} weight={isPublic ? "fill" : "regular"} />
       {canPost === false ? (
-        <span className="ic-composer__public-countdown">🔒 {countdown}</span>
+        <span className="ic-composer__public-countdown"><Lock size={12} weight="bold" /> {countdown}</span>
       ) : (
         <span>Public</span>
       )}
@@ -452,7 +452,7 @@ export default function PostComposer({ mintAddress, walletAddress, onPublished }
                       </div>
                     )}
                     {preview.type === "document" && (
-                      <div className="ic-composer__preview-placeholder"><span>📄</span> <span>{preview.name.length > 20 ? preview.name.slice(0, 20) + "..." : preview.name}</span></div>
+                      <div className="ic-composer__preview-placeholder"><FileText size={18} weight="bold" /> <span>{preview.name.length > 20 ? preview.name.slice(0, 20) + "..." : preview.name}</span></div>
                     )}
                     <button className="ic-composer__preview-remove" onClick={() => removeFile(i)}><Trash size={12} /></button>
                   </div>

@@ -96,4 +96,14 @@ pub enum HumanofiError {
     // ---- Slippage Protection (6100-6109) ----
     #[msg("Slippage exceeded — received less than minimum specified")]
     SlippageExceeded,
+
+    // ---- Admin / Emergency (6110-6119) ----
+    #[msg("Protocol is frozen — all operations suspended")]
+    ProtocolFrozen,
+
+    #[msg("Creator is suspended — sell and claim operations blocked")]
+    CreatorSuspended,
+
+    #[msg("Unauthorized — only the protocol authority can perform this action")]
+    UnauthorizedAdmin,
 }

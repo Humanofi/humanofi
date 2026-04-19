@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { PushPin, Megaphone, CalendarBlank, ChartBar, DotsThreeVertical, PencilSimple, Trash, YoutubeLogo, Question, Archive, FloppyDisk, X, Crown, Globe, Eye } from "@phosphor-icons/react";
+import { PushPin, Megaphone, CalendarBlank, ChartBar, DotsThreeVertical, PencilSimple, Trash, YoutubeLogo, Question, Archive, FloppyDisk, X, Crown, Globe, Eye, Microphone, FileText } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { useAuthFetch } from "@/lib/authFetch";
 import ReactionBar from "./ReactionBar";
@@ -180,7 +181,7 @@ export default function PostCard({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.25 }}
-      style={{ borderLeft: typeInfo ? `3px solid ${typeInfo.color}` : undefined }}
+      /* borderLeft removed for unified design */
     >
       {post.is_pinned && (
         <div className="ic-post__pin"><PushPin size={12} weight="fill" /> Pinned</div>
@@ -193,18 +194,16 @@ export default function PostCard({
       )}
 
       {/* Header */}
-      <div className="ic-post__header">
-        <Image src={creatorAvatar || "/default-avatar.png"} alt={creatorName} width={36} height={36} className="ic-post__avatar" />
-        <div className="ic-post__meta">
-          <span className="ic-post__author">{creatorName}</span>
-          <span className="ic-post__date">{timeAgo(post.created_at)}</span>
-        </div>
-        {typeInfo && (
-          <span className="ic-post__badge" style={{ color: typeInfo.color }}>
-            {typeInfo.icon} <span>{typeInfo.label}</span>
-          </span>
-        )}
-
+      <div className="ic-post__header" style={{ justifyContent: "space-between" }}>
+        <Link href={`/person/${post.creator_mint}`} style={{ display: "flex", alignItems: "center", gap: "10px", textDecoration: "none", color: "inherit", flex: 1 }}>
+          <Image src={creatorAvatar || "/default-avatar.png"} alt={creatorName} width={36} height={36} className="ic-post__avatar" />
+          <div className="ic-post__meta">
+            <span className="ic-post__author">{creatorName}</span>
+            <span className="ic-post__date">{timeAgo(post.created_at)}</span>
+          </div>
+        </Link>
+        {/* Removed colored type badge to unify design as requested */}
+        
         {/* Creator menu */}
         {isCreator && (
           <div className="ic-post__menu-wrapper">
@@ -251,20 +250,16 @@ export default function PostCard({
         if (isLocked) {
           return (
             <div className="ic-post__premium-locked">
-              <div className="ic-post__premium-blur">
-                <div className="ic-post__premium-blur-text">
-                  {post.content?.slice(0, 120)}...
-                </div>
+              <Crown size={32} weight="fill" className="ic-post__premium-icon" />
+              <div className="ic-post__premium-title">Encrypted Alpha</div>
+              <div className="ic-post__premium-text">
+                This content is reserved exclusively for top holders.
               </div>
-              <div className="ic-post__premium-overlay">
-                <Crown size={32} weight="fill" />
-                <div className="ic-post__premium-title">Premium Post</div>
-                <div className="ic-post__premium-req">
-                  Hold <strong>{minTokens}</strong> token{minTokens > 1 ? "s" : ""} to unlock
-                </div>
-                <div className="ic-post__premium-current">
-                  You hold: {Math.floor(holderBalance)} token{holderBalance !== 1 ? "s" : ""}
-                </div>
+              <div className="ic-post__premium-req">
+                Access: <strong>{minTokens}</strong> token{minTokens > 1 ? "s" : ""}
+              </div>
+              <div className="ic-post__premium-current">
+                You hold: {Math.floor(holderBalance)} token{holderBalance !== 1 ? "s" : ""}
               </div>
             </div>
           );
@@ -287,7 +282,18 @@ export default function PostCard({
               </div>
             ) : (
               post.content && post.content !== "Shared media" && (
-                <div className="ic-post__content">{post.content}</div>
+                post.post_type === "announcement" ? (
+                  <div style={{ background: "#ffc800", border: "2px solid var(--border)", boxShadow: "6px 6px 0px var(--border)", padding: "24px", margin: "16px 0" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, fontWeight: 900, textTransform: "uppercase", fontSize: "1.2rem", letterSpacing: "1px" }}>
+                      <Megaphone size={26} weight="fill" /> Official Announcement
+                    </div>
+                    <div style={{ fontSize: "1.1rem", lineHeight: 1.6, fontWeight: 700 }}>
+                      {post.content}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="ic-post__content">{post.content}</div>
+                )
               )
             )}
 
@@ -311,8 +317,8 @@ export default function PostCard({
             )}
 
             {videos.map((url, i) => (<div key={`v-${i}`} className="ic-post__video-wrap"><video src={url} controls preload="metadata" /></div>))}
-            {audios.map((url, i) => (<div key={`a-${i}`} className="ic-post__audio-wrap"><div className="ic-post__audio-icon">🎙️</div><div className="ic-post__audio-player"><div className="ic-post__audio-label">Voice Memo</div><audio src={url} controls /></div></div>))}
-            {docs.map((url, i) => (<a key={`d-${i}`} href={url} target="_blank" rel="noopener noreferrer" className="ic-post__doc"><span className="ic-post__doc-icon">📄</span><div className="ic-post__doc-info"><span className="ic-post__doc-name">Document</span><span className="ic-post__doc-action">Open →</span></div></a>))}
+            {audios.map((url, i) => (<div key={`a-${i}`} className="ic-post__audio-wrap"><div className="ic-post__audio-icon"><Microphone size={20} weight="bold" /></div><div className="ic-post__audio-player"><div className="ic-post__audio-label">Voice Memo</div><audio src={url} controls /></div></div>))}
+            {docs.map((url, i) => (<a key={`d-${i}`} href={url} target="_blank" rel="noopener noreferrer" className="ic-post__doc"><span className="ic-post__doc-icon"><FileText size={18} weight="bold" /></span><div className="ic-post__doc-info"><span className="ic-post__doc-name">Document</span><span className="ic-post__doc-action">Open →</span></div></a>))}
 
             {post.post_type === "poll" && post.metadata?.options && onVote && (
               <PollWidget postId={post.id} question={post.content} options={(post.metadata.options as string[]).map((text: string, i: number) => ({ text, votes: (post.metadata.votes as number[])?.[i] || 0 }))} totalVotes={((post.metadata.votes as number[]) || []).reduce((a: number, b: number) => a + b, 0)} userVote={userVotes[post.id] ?? null} onVote={onVote} endsAt={post.metadata.ends_at as string} />
@@ -329,11 +335,6 @@ export default function PostCard({
 
       <div className="ic-post__footer">
         <ReactionBar postId={post.id} mintAddress={post.creator_mint} walletAddress={walletAddress || ""} reactions={post.reactions || {}} userReactions={post.userReactions || []} onReactionChange={onReactionChange} />
-        {(post.view_count || 0) > 0 && (
-          <span className="ic-post__views">
-            <Eye size={13} weight="bold" /> {post.view_count}
-          </span>
-        )}
       </div>
 
       {/* Delete Confirmation Modal */}

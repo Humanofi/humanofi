@@ -1,5 +1,5 @@
 // ========================================
-// Humanofi — Supabase Auth Sync Hook
+// Humanofi — Supabase Auth Sync Hook (v3.7)
 // ========================================
 // Synchronizes Privy wallet auth with Supabase.
 //
@@ -9,10 +9,10 @@
 //   3. Sets Supabase session so client-side queries work with RLS
 //   4. Exposes user state (isVerified, isCreator, etc.)
 //
-// Handles reconnection gracefully:
-//   - Retries on failure with exponential backoff
-//   - Re-syncs when Privy token refreshes
-//   - Clears stale state on server restart
+// v3.7: Refactored to eliminate re-render loops:
+//   - syncSession is NOT in useEffect deps (called inline via ref)
+//   - synced state uses ref to avoid triggering re-render cycle
+//   - walletAddress stabilized via ref to prevent flickering
 
 "use client";
 
@@ -68,50 +68,58 @@ export function useSupabaseAuth() {
   const { authenticated, user, ready, getAccessToken } = usePrivy();
   const [humanofiUser, setHumanofiUser] = useState<HumanofiUser | null>(() => getCachedUser());
   const [loading, setLoading] = useState(false);
-  // If we have a cached user, consider ourselves "synced" immediately
-  // This prevents the re-sync flash on page reload
   const [synced, setSynced] = useState(() => getCachedUser() !== null);
+
+  // ── Refs to break dependency cycles ──
+  const syncedRef = useRef(synced);
   const syncingRef = useRef(false);
   const retryCountRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const getAccessTokenRef = useRef(getAccessToken);
+
+  // Keep refs fresh without causing re-renders
+  syncedRef.current = synced;
+  getAccessTokenRef.current = getAccessToken;
 
   // Get wallet address from Privy user object
   const walletAddress = user?.wallet?.address || null;
 
+  // Stabilize wallet address to prevent flickering during Privy init
+  const stableWalletRef = useRef<string | null>(null);
+  if (walletAddress) {
+    stableWalletRef.current = walletAddress;
+  }
+
   /**
    * Sync Privy auth state with Supabase.
-   * Creates profile, gets JWT, sets Supabase session.
-   * Retries with exponential backoff on failure.
+   * Uses refs for deps to avoid being recreated on every render.
    */
-  const syncSession = useCallback(async () => {
-    if (!authenticated || !walletAddress || syncingRef.current) return;
+  const syncSession = useCallback(async (wallet: string) => {
+    if (syncingRef.current) return;
 
     syncingRef.current = true;
     setLoading(true);
 
     try {
-      // Get a FRESH Privy access token (forces refresh if expired)
-      const accessToken = await getAccessToken();
+      const accessToken = await getAccessTokenRef.current();
 
       if (!accessToken) {
         console.warn("[Auth] No access token available — skipping sync");
         return;
       }
 
-      // Call our API to sync with Supabase
       const response = await fetch("/api/auth/session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           accessToken,
-          walletAddress,
+          walletAddress: wallet,
         }),
       });
 
       if (!response.ok) {
-        // Handle specific error codes
         if (response.status === 401) {
-          console.warn("[Auth] Token expired or invalid — will retry with fresh token");
+          console.warn("[Auth] Token expired or invalid");
         } else {
           console.error("[Auth] Session sync failed:", response.status);
         }
@@ -124,10 +132,10 @@ export function useSupabaseAuth() {
 
           retryTimerRef.current = setTimeout(() => {
             syncingRef.current = false;
-            syncSession();
+            syncSession(wallet);
           }, delay);
         } else {
-          console.error("[Auth] Max retries reached — sync abandoned. User can manually refresh.");
+          console.error("[Auth] Max retries reached — sync abandoned.");
           retryCountRef.current = 0;
         }
         return;
@@ -147,52 +155,50 @@ export function useSupabaseAuth() {
       setHumanofiUser(data.user);
       setCachedUser(data.user);
       setSynced(true);
-      retryCountRef.current = 0; // Reset retries on success
+      syncedRef.current = true;
+      retryCountRef.current = 0;
 
       console.log(
-        `[Humanofi] Auth synced: ${walletAddress.slice(0, 8)}...`,
+        `[Humanofi] Auth synced: ${wallet.slice(0, 8)}...`,
         data.user.isVerified ? "✅ KYC" : "⏳ No KYC",
         data.user.isCreator ? "🎨 Creator" : ""
       );
     } catch (error) {
       console.error("[Auth] Sync error:", error);
 
-      // Network errors → retry
       if (retryCountRef.current < MAX_RETRIES) {
         const delay = RETRY_BASE_DELAY * Math.pow(2, retryCountRef.current);
         retryCountRef.current++;
-        console.log(`[Auth] Network error — retrying in ${delay / 1000}s (attempt ${retryCountRef.current}/${MAX_RETRIES})`);
-
         retryTimerRef.current = setTimeout(() => {
           syncingRef.current = false;
-          syncSession();
+          syncSession(wallet);
         }, delay);
       }
     } finally {
       setLoading(false);
       syncingRef.current = false;
     }
-  }, [authenticated, walletAddress, getAccessToken]);
+  }, []); // ← NO dependencies: uses refs for everything
 
-  // Auto-sync when Privy becomes ready + authenticated
+  // ── Main effect: sync when Privy becomes ready + authenticated ──
+  // Dependencies are minimal: only real state changes trigger this.
   useEffect(() => {
-    // Don't do anything until Privy SDK is fully loaded
     if (!ready) return;
 
     if (authenticated && walletAddress) {
-      // Privy is ready and user is authenticated — sync if needed
-      if (!synced) {
-        syncSession();
+      // Only sync once (ref prevents re-trigger)
+      if (!syncedRef.current) {
+        syncSession(walletAddress);
       }
     } else {
-      // Privy is READY but user is NOT authenticated = intentional logout
-      // (Not a reload — Privy would be authenticated after ready on reload)
+      // User logged out
       setHumanofiUser(null);
       setCachedUser(null);
       setSynced(false);
+      syncedRef.current = false;
       retryCountRef.current = 0;
+      stableWalletRef.current = null;
 
-      // Clear any pending retry
       if (retryTimerRef.current) {
         clearTimeout(retryTimerRef.current);
         retryTimerRef.current = null;
@@ -202,7 +208,7 @@ export function useSupabaseAuth() {
         supabase.auth.signOut();
       }
     }
-  }, [ready, authenticated, walletAddress, synced, syncSession]);
+  }, [ready, authenticated, walletAddress, syncSession]);
 
   // Cleanup retry timer on unmount
   useEffect(() => {
@@ -214,19 +220,14 @@ export function useSupabaseAuth() {
   }, []);
 
   return {
-    /** The connected and synced Humanofi user */
     user: humanofiUser,
-    /** Wallet address (available before sync) */
-    walletAddress,
-    /** Whether Privy auth is active */
+    walletAddress: stableWalletRef.current || walletAddress,
     authenticated,
-    /** Whether the Supabase sync is in progress */
     loading,
-    /** Whether the session has been synced with Supabase */
     synced,
-    /** Manually trigger a re-sync (e.g., after KYC or server restart) */
     resync: () => {
       setSynced(false);
+      syncedRef.current = false;
       syncingRef.current = false;
       retryCountRef.current = 0;
       if (retryTimerRef.current) {

@@ -168,14 +168,17 @@ function mapCreatorToPerson(row: Record<string, unknown>): Person {
   // Use mint_address as ID so /person/[id] can find real creators
   const id = (row.mint_address as string) || name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
 
+  // holder_count may come from the DB (set by webhooks)
+  const holderCount = (row.holder_count as number) || 0;
+
   return {
     id,
     name,
     tag: capitalize((row.category as string) || "other"),
-    price: "$0.00", // Will be read from on-chain bonding curve
+    price: "$0.00", // Will be enriched client-side
     priceNum: 0,
     change: 0,
-    holders: 0, // Will be enriched by holder count query
+    holders: holderCount,
     marketCap: "$0",
     photoUrl: (row.avatar_url as string) || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=500&fit=crop&crop=face",
     sparkline: Array.from({ length: 12 }, () => Math.floor(Math.random() * 18) + 3),

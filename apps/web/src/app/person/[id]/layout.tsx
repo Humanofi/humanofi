@@ -10,9 +10,15 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
 import { useAuthFetch } from "@/lib/authFetch";
 import { useBondingCurveWs, type LiveCurveData } from "@/hooks/useBondingCurveWs";
+import { useSolPrice } from "@/hooks/useSolPrice";
+import { estimateSell, formatUsd, solToUsd } from "@/lib/price";
+import Flag from "@/components/Flag";
 import type { BondingCurveChartHandle } from "@/components/BondingCurveChart";
 import { PublicKey } from "@solana/web3.js";
 import { getPersonById, Person } from "@/lib/mockData";
+import {
+  Heartbeat, TrendUp, TrendDown,
+} from "@phosphor-icons/react";
 
 // -- Token Color Palette --
 const TOKEN_COLORS: Record<string, string> = {
@@ -48,6 +54,7 @@ export interface CreatorData {
   youtube_url: string;
   gallery_urls: string[];
   token_color: string;
+  holder_count: number;
 }
 
 export interface BondingCurveData {
@@ -210,6 +217,68 @@ export default function PersonLayout({
   // Token color
   const tokenColor = TOKEN_COLORS[creator?.token_color || "blue"] || TOKEN_COLORS.blue;
 
+  // ── SOL price ──
+  const { priceUsd: solPriceUsd } = useSolPrice();
+
+  // ── Holder Position (My Position in header) ──
+  interface HolderPosition {
+    balance: number;
+    sol_invested: number;
+    sol_recovered: number;
+    tokens_bought: number;
+    buy_count: number;
+    sell_count: number;
+  }
+  const [holderPosition, setHolderPosition] = useState<HolderPosition | null>(null);
+  const [holderRank, setHolderRank] = useState<{ rank: number; is_early_believer: boolean; totalHolders: number } | null>(null);
+
+  useEffect(() => {
+    if (!walletAddress || !creator?.mint_address || isCreator) {
+      setHolderPosition(null);
+      setHolderRank(null);
+      return;
+    }
+    fetch(`/api/portfolio?wallet=${walletAddress}&mint=${creator.mint_address}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.positions?.length > 0) setHolderPosition(data.positions[0]);
+      })
+      .catch(() => {});
+
+    // Fetch holder rank
+    fetch(`/api/holders/${creator.mint_address}?limit=1&wallet=${walletAddress}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.myRank) {
+          setHolderRank({
+            rank: data.myRank.rank,
+            is_early_believer: data.myRank.is_early_believer,
+            totalHolders: data.totalHolders || 0,
+          });
+        }
+      })
+      .catch(() => {});
+  }, [walletAddress, creator?.mint_address, isCreator]);
+
+  // Position calculations
+  const rawX = curveData ? curveData.x.toNumber() : 0;
+  const rawY = curveData ? curveData.y.toNumber() : 0;
+  const rawK = curveData ? Number(curveData.k.toString()) : 0;
+  const posTokensBase = holderPosition ? holderPosition.balance : 0;
+  const posTokens = posTokensBase / 1e6;
+  const posLiquidation = posTokensBase > 0 && rawX > 0 && rawY > 0 && rawK > 0
+    ? estimateSell(rawX, rawY, rawK, posTokensBase)
+    : null;
+  const posValueSol = posLiquidation ? posLiquidation.solNet / 1e9 : 0;
+  const posInvestedSol = holderPosition ? holderPosition.sol_invested / 1e9 : 0;
+  const posRecoveredSol = holderPosition ? holderPosition.sol_recovered / 1e9 : 0;
+  const posPnlSol = posValueSol + posRecoveredSol - posInvestedSol;
+  const posPnlPct = posInvestedSol > 0 ? (posPnlSol / posInvestedSol) * 100 : 0;
+  const posPnlColor = posPnlSol >= 0 ? "#22c55e" : "#ef4444";
+  const posAvgEntry = holderPosition && holderPosition.tokens_bought > 0
+    ? (holderPosition.sol_invested / holderPosition.tokens_bought) * 1e6 / 1e9
+    : 0;
+
   // ── Loading state ──
   if (loading && !person) {
     return (
@@ -249,30 +318,33 @@ export default function PersonLayout({
   const activityScore = creator?.activity_score || person?.activityScore || 0;
   const activityStatus = creator?.activity_status || "moderate";
 
-  // Human Curve™ price: P = x / y (lamports per base unit)
-  const spotPriceLamports = curveData
-    ? curveData.x.toNumber() / curveData.y.toNumber()
-    : 0;
-  const priceStr = curveData
+  // Human Curve™ price: prefer liveCurve (WebSocket), fallback to curveData
+  const liveX = liveCurve ? liveCurve.x : curveData ? curveData.x.toNumber() : 0;
+  const liveY = liveCurve ? liveCurve.y : curveData ? curveData.y.toNumber() : 0;
+  const spotPriceLamports = liveY > 0 ? liveX / liveY : 0;
+  const liveSupplyPublic = liveCurve ? liveCurve.supplyPublic / 1e6 : curveData ? curveData.supplyPublic.toNumber() / 1e6 : 0;
+  const liveSupplyCreator = liveCurve ? liveCurve.supplyCreator / 1e6 : curveData ? curveData.supplyCreator.toNumber() / 1e6 : 0;
+  const priceStr = (curveData || liveCurve)
     ? `${(spotPriceLamports / 1e9 * 1e6).toFixed(4)} SOL`
     : person?.price || "—";
-  const marketCapStr = curveData
-    ? `${(((curveData.supplyPublic.toNumber() + curveData.supplyCreator.toNumber()) / 1e6) * (spotPriceLamports / 1e9 * 1e6)).toFixed(2)} SOL`
+  const marketCapStr = (curveData || liveCurve)
+    ? `${((liveSupplyPublic + liveSupplyCreator) * (spotPriceLamports / 1e9 * 1e6)).toFixed(2)} SOL`
     : person?.marketCap || "—";
 
   // Determine active tab from pathname
   const isInnerCircle = pathname?.includes("/inner-circle");
   const isPublicPosts = pathname?.includes("/public-posts");
+  const isDrops = pathname?.includes("/drops");
   const isManage = pathname?.includes("/manage");
-  const isProfile = !isInnerCircle && !isPublicPosts && !isManage;
+  const isProfile = !isInnerCircle && !isPublicPosts && !isDrops && !isManage;
 
   // Score status config
   const scoreConfig = {
-    thriving: { color: "#22c55e", label: "Thriving", icon: "🔥" },
-    active: { color: "#3b82f6", label: "Active", icon: "⚡" },
+    thriving: { color: "#22c55e", label: "Thriving", icon: "▲" },
+    active: { color: "#3b82f6", label: "Active", icon: "●" },
     moderate: { color: "#f59e0b", label: "Moderate", icon: "○" },
     low_activity: { color: "#ef4444", label: "Low", icon: "▽" },
-    dormant: { color: "#6b7280", label: "Dormant", icon: "💤" },
+    dormant: { color: "#6b7280", label: "Dormant", icon: "—" },
   }[activityStatus] || { color: "#f59e0b", label: "Moderate", icon: "○" };
 
   return (
@@ -322,13 +394,7 @@ export default function PersonLayout({
             )}
             <div className="profile-header__meta">
               <span className="profile-header__tag" style={{ borderColor: tokenColor, color: tokenColor }}>{category}</span>
-              <span className="profile-header__country">{countryCode}</span>
-              {isReal && (
-                <>
-                  <span className="profile-header__price">{priceStr}</span>
-                  <span className="profile-header__mcap">MCap: {marketCapStr}</span>
-                </>
-              )}
+              <span className="profile-header__country"><Flag code={countryCode} size={14} /></span>
             </div>
             
             <div className="profile-header__socials">
@@ -353,6 +419,68 @@ export default function PersonLayout({
             </svg>
             <div className="profile-header__score-label">Activity</div>
           </div>
+
+          {/* ── MY POSITION (holders only) ── */}
+          {isHolder && !isCreator && holderPosition && posTokens > 0 && (
+            <div className="position-banner" style={{ ["--pos-color" as string]: tokenColor }}>
+              <div className="position-banner__block">
+                <div className="position-banner__label">Tokens</div>
+                <div className="position-banner__value">
+                  {posTokens >= 1000 ? `${(posTokens / 1000).toFixed(1)}K` : posTokens.toFixed(0)}
+                </div>
+              </div>
+
+              <div className="position-banner__block">
+                <div className="position-banner__label">Market Value</div>
+                <div className="position-banner__value">
+                  {posValueSol >= 1 ? posValueSol.toFixed(3) : posValueSol >= 0.0001 ? posValueSol.toFixed(4) : posValueSol.toFixed(6)} SOL
+                  {solPriceUsd > 0 && (
+                    <span className="position-banner__usd">
+                      ≈ {formatUsd(solToUsd(posValueSol, solPriceUsd))}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="position-banner__block">
+                <div className="position-banner__label">Avg Entry</div>
+                <div className="position-banner__value">
+                  {posAvgEntry >= 0.0001 ? posAvgEntry.toFixed(4) : posAvgEntry.toFixed(6)} SOL
+                </div>
+              </div>
+
+              <div className="position-banner__block position-banner__block--pnl">
+                <div className="position-banner__label">Profit / Loss</div>
+                <div className="position-banner__pnl" style={{ color: posPnlColor }}>
+                  <span className="position-banner__pnl-icon">
+                    {posPnlSol >= 0 ? <TrendUp size={16} weight="bold" /> : <TrendDown size={16} weight="bold" />}
+                  </span>
+                  <span className="position-banner__pnl-pct">
+                    {posPnlPct >= 0 ? "+" : ""}{posPnlPct.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="position-banner__sub" style={{ color: posPnlColor }}>
+                  {posPnlSol >= 0 ? "+" : ""}{posPnlSol >= 0.001 ? posPnlSol.toFixed(4) : posPnlSol.toFixed(6)} SOL
+                </div>
+              </div>
+
+              {/* Holder Rank & Early Believer Badge */}
+              {holderRank && (
+                <div className="position-banner__block">
+                  <div className="position-banner__label">Your Rank</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span className={`holder-rank ${holderRank.rank <= 3 ? 'holder-rank--top' : ''}`}>
+                      {holderRank.rank <= 3 ? '👑' : '🏅'} Believer #{holderRank.rank}
+                      <span style={{ opacity: 0.6, fontSize: "0.65rem" }}> / {holderRank.totalHolders}</span>
+                    </span>
+                    {holderRank.is_early_believer && (
+                      <span className="early-badge">⭐ Early Believer</span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* SUB-NAVIGATION */}
@@ -369,8 +497,16 @@ export default function PersonLayout({
                 href={`/person/${id}/inner-circle`}
                 className={`person-tabs__link ${isInnerCircle ? "person-tabs__link--active" : ""}`}
               >
-                Inner Circle
+                Publish Post
               </Link>
+              {/* Drops — hidden for now, re-enable later
+              <Link
+                href={`/person/${id}/drops`}
+                className={`person-tabs__link ${isDrops ? "person-tabs__link--active" : ""}`}
+              >
+                Drops
+              </Link>
+              */}
               <Link
                 href={`/person/${id}/manage`}
                 className={`person-tabs__link ${isManage ? "person-tabs__link--active" : ""}`}
@@ -400,9 +536,19 @@ export default function PersonLayout({
                   className={`person-tabs__link ${isInnerCircle ? "person-tabs__link--active" : ""}`}
                 >
                   Inner Circle
-                  {!isHolder && <span style={{ fontSize: "0.7rem", opacity: 0.5, marginLeft: 4 }}>🔒</span>}
+                  {!isHolder && <span style={{ fontSize: "0.7rem", opacity: 0.5, marginLeft: 4 }}>&#x25CB;</span>}
                 </Link>
               )}
+              {/* Drops — hidden for now, re-enable later
+              {isReal && (
+                <Link
+                  href={`/person/${id}/drops`}
+                  className={`person-tabs__link ${isDrops ? "person-tabs__link--active" : ""}`}
+                >
+                  Drops
+                </Link>
+              )}
+              */}
             </>
           )}
         </div>

@@ -63,7 +63,7 @@ export default function TrendingNow() {
                 src={post.creator_tokens.avatar_url || "/default-avatar.png"}
                 alt={post.creator_tokens.display_name}
                 width={28} height={28}
-                style={{ borderRadius: "50%", objectFit: "cover" }}
+                style={{ border: "2px solid var(--border)", objectFit: "cover" }}
               />
               <div>
                 <div className="trending-card__name">{post.creator_tokens.display_name}</div>
@@ -74,7 +74,7 @@ export default function TrendingNow() {
               {post.content.length > 120 ? post.content.slice(0, 120) + "..." : post.content}
             </p>
             <div className="trending-card__footer">
-              <span className="trending-card__reactions">🔥 {post.reaction_count}</span>
+              <span className="trending-card__reactions"><Fire size={14} weight="fill" /> {post.reaction_count}</span>
               <span className="trending-card__category">{post.creator_tokens.category}</span>
             </div>
           </Link>

@@ -8,11 +8,15 @@
 // PRECISION: k values exceed Number.MAX_SAFE_INTEGER.
 // All k-dependent divisions use BigInt for exact results.
 
-// ---- Constants (match on-chain constants.rs v3.6) ----
+// ---- Constants (match on-chain constants.rs v3.7) ----
+// Fee totals: 5% for holder buy/sell, 6% for creator sell
+// v3.7 asymmetric split:
+//   Buy:  3% creator + 1% protocol + 1% depth = 5%
+//   Sell: 1% creator + 3% protocol + 1% depth = 5%
+// (For UI estimation, only the total matters)
 
 const TOTAL_FEE_BPS = 500;          // 5% total fee (holder buy/sell)
 const FEE_DEPTH_BPS = 100;          // 1% k-deepening
-// Merit Reward REMOVED in v3.6 — buyer gets 100% of tokens
 const BPS_DENOMINATOR = 10_000;
 const LAMPORTS_PER_SOL = 1_000_000_000;
 const TOKEN_DECIMALS = 1_000_000;     // 10^6

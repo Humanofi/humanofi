@@ -1,6 +1,7 @@
 "use client";
 
 import type { OnlineUser } from "@/hooks/useRealtimeChannel";
+import { ChartBar, CalendarBlank } from "@phosphor-icons/react";
 
 interface PresenceSidebarProps {
   onlineCount: number;
@@ -8,7 +9,7 @@ interface PresenceSidebarProps {
   nextEvent?: { title: string; date: string } | null;
   isLive?: boolean;
   onJoinLive?: () => void;
-  stats24h?: { reactions: number; posts: number; views: number };
+  stats24h?: { reactions: number; posts: number };
 }
 
 export default function PresenceSidebar({
@@ -44,12 +45,9 @@ export default function PresenceSidebar({
       {/* 24h Stats */}
       {stats24h && (
         <div className="ic-sidebar__section">
-          <div className="ic-sidebar__section-title">📊 Last 24h</div>
+          <div className="ic-sidebar__section-title"><ChartBar size={14} weight="bold" /> Last 24h</div>
           <div className="ic-sidebar__stats-grid">
-            <div className="ic-sidebar__stat">
-              <span className="ic-sidebar__stat-val">{stats24h.views}</span>
-              <span className="ic-sidebar__stat-lbl">Views</span>
-            </div>
+
             <div className="ic-sidebar__stat">
               <span className="ic-sidebar__stat-val">{stats24h.reactions}</span>
               <span className="ic-sidebar__stat-lbl">Reactions</span>
@@ -78,7 +76,7 @@ export default function PresenceSidebar({
       {/* Next event */}
       {nextEvent && (
         <div className="ic-sidebar__section">
-          <div className="ic-sidebar__section-title">📅 Next Event</div>
+          <div className="ic-sidebar__section-title"><CalendarBlank size={14} weight="bold" /> Next Event</div>
           <div className="ic-sidebar__event-title">{nextEvent.title}</div>
           <div className="ic-sidebar__event-date">
             {new Date(nextEvent.date).toLocaleDateString("en-US", {

@@ -59,10 +59,10 @@ export async function GET(request: NextRequest) {
   // Get wallet for user reactions
   const walletAddress = request.headers.get("x-wallet-address") || null;
 
-  try {
+   try {
     let query = supabase
       .from("public_posts")
-      .select(`*, creator_tokens!inner(display_name, avatar_url, category)`)
+      .select(`*, creator_tokens!inner(display_name, avatar_url, category, holder_count)`)
       .order("hot_score", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -73,20 +73,16 @@ export async function GET(request: NextRequest) {
     const { data: posts, error } = await query;
     if (error) return NextResponse.json({ error: "Failed to fetch posts" }, { status: 500 });
 
-    // Fetch reactions + holder counts in parallel
+    // Fetch reactions
     const postIds = (posts || []).map((p) => p.id);
-    const creatorMints = [...new Set((posts || []).map((p) => p.creator_mint))];
     let reactions: Record<string, Record<string, number>> = {};
     let userReactions: Record<string, string[]> = {};
-    let holderCounts: Record<string, number> = {};
 
     if (postIds.length > 0) {
-      const [{ data: allReactions }, { data: holders }] = await Promise.all([
-        supabase.from("public_post_reactions").select("post_id, emoji, wallet_address").in("post_id", postIds),
-        creatorMints.length > 0
-          ? supabase.from("token_holders").select("mint_address").in("mint_address", creatorMints).gt("balance", 0)
-          : Promise.resolve({ data: [] }),
-      ]);
+      const { data: allReactions } = await supabase
+        .from("public_post_reactions")
+        .select("post_id, emoji, wallet_address")
+        .in("post_id", postIds);
 
       (allReactions || []).forEach((r) => {
         if (!reactions[r.post_id]) reactions[r.post_id] = {};
@@ -97,18 +93,14 @@ export async function GET(request: NextRequest) {
           userReactions[r.post_id].push(r.emoji);
         }
       });
-
-      (holders || []).forEach((h: { mint_address: string }) => {
-        holderCounts[h.mint_address] = (holderCounts[h.mint_address] || 0) + 1;
-      });
     }
 
-    // Enrich posts
+    // Enrich posts — holder_count comes from creator_tokens JOIN
     const enriched = (posts || []).map((p) => ({
       ...p,
       reactions: reactions[p.id] || {},
       userReactions: userReactions[p.id] || [],
-      holderCount: holderCounts[p.creator_mint] || 0,
+      holderCount: p.creator_tokens?.holder_count || 0,
     }));
 
     return NextResponse.json({ posts: enriched, page, hasMore: (posts || []).length === limit });

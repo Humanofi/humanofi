@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { Megaphone } from "@phosphor-icons/react";
+import { Megaphone, Fire } from "@phosphor-icons/react";
 
 interface LatestPost {
   id: string;
@@ -47,7 +47,7 @@ export default function LatestPublicPost({ creatorMint }: { creatorMint: string 
       </div>
       <p className="latest-public-post__content">{post.content}</p>
       {post.reaction_count > 0 && (
-        <div className="latest-public-post__reactions">🔥 {post.reaction_count} reactions</div>
+        <div className="latest-public-post__reactions"><Fire size={14} weight="fill" /> {post.reaction_count} reactions</div>
       )}
     </section>
   );

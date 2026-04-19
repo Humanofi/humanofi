@@ -128,6 +128,11 @@ async function processEvent(supabase: any, event: any) {
           .from("creator_tokens")
           .update({ holder_count: holderCount })
           .eq("mint_address", mint);
+
+        // Check if drops should be unlocked (100 holders threshold)
+        if (holderCount >= 100) {
+          await supabase.rpc("check_drops_unlock", { p_mint: mint });
+        }
       }
     } catch (snapshotErr) {
       console.warn("[Helius] Holder count update failed:", snapshotErr);

@@ -14,7 +14,10 @@ import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
 import { createSolanaRpc, createSolanaRpcSubscriptions } from "@solana/kit";
 
 const solanaConnectors = toSolanaWalletConnectors({
-  shouldAutoConnect: true,
+  // false = don't auto-probe browser extensions on page load.
+  // Privy handles session persistence for embedded wallets internally.
+  // External wallets (Phantom) reconnect via Privy's auth state, not via extension probing.
+  shouldAutoConnect: false,
 });
 
 // Triton RPCs from env
@@ -71,6 +74,12 @@ export function PrivyWalletProvider({ children }: PrivyWalletProviderProps) {
                 DEVNET_RPC.replace("https://", "wss://")
               ),
             },
+          },
+        },
+        // Enable fiat on-ramp (MoonPay) for SOL purchases
+        fundingMethodsConfig: {
+          moonpay: {
+            useSandboxEnvironment: DEVNET_RPC.includes("devnet"),
           },
         },
       }}

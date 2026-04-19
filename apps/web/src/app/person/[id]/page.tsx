@@ -4,6 +4,8 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import BondingCurveChart, { type BondingCurveChartHandle } from "@/components/BondingCurveChart";
 import TradeModal, { type TradeStep } from "@/components/TradeModal";
 import TradeWidget from "@/components/TradeWidget";
+import TopBelievers from "@/components/TopBelievers";
+import RecentTrades from "@/components/RecentTrades";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
 import { useSolPrice } from "@/hooks/useSolPrice";
@@ -94,7 +96,6 @@ export default function PersonPublicPage() {
   const supplyProtocol = liveCurve ? liveCurve.supplyProtocol / 1e6 : curveData ? curveData.supplyProtocol.toNumber() / 1e6 : 0;
   const totalSupply = supplyPublic + supplyCreator + supplyProtocol;
   const solReserve = liveCurve ? liveCurve.solReserve / 1e9 : curveData ? curveData.solReserve.toNumber() / 1e9 : 0;
-  const marketCap = totalSupply > 0 ? totalSupply * priceNum : solReserve;
 
 
 
@@ -327,9 +328,9 @@ export default function PersonPublicPage() {
               <ChartLineUp size={20} weight="bold" />
             </div>
             <div className="kpi-card__data">
-              <div className="kpi-card__label">Market Cap</div>
-              <div className="kpi-card__value">{formatSol(marketCap)} SOL</div>
-              {solPriceUsd > 0 && <div className="kpi-card__sub">{formatUsd(solToUsd(marketCap, solPriceUsd))}</div>}
+              <div className="kpi-card__label">Backed</div>
+              <div className="kpi-card__value">{formatSol(solReserve)} SOL</div>
+              {solPriceUsd > 0 && <div className="kpi-card__sub">{formatUsd(solToUsd(solReserve, solPriceUsd))}</div>}
             </div>
           </motion.div>
 
@@ -339,7 +340,7 @@ export default function PersonPublicPage() {
             </div>
             <div className="kpi-card__data">
               <div className="kpi-card__label">Holders</div>
-              <div className="kpi-card__value">{mockPerson?.holders?.toLocaleString("en-US") || "—"}</div>
+              <div className="kpi-card__value">{(creator?.holder_count || 0).toLocaleString("en-US")}</div>
             </div>
           </motion.div>
 
@@ -372,7 +373,7 @@ export default function PersonPublicPage() {
               <div className="dashboard__token-grid">
                 <div className="dashboard__token-stat">
                   <span className="dashboard__token-label">Supply (Public)</span>
-                  <span className="dashboard__token-value">{curveData ? (curveData.supplyPublic.toNumber() / 1e6).toFixed(0) : "—"} tokens</span>
+                  <span className="dashboard__token-value">{Math.round(supplyPublic).toLocaleString()} tokens</span>
                 </div>
                 <div className="dashboard__token-stat">
                   <span className="dashboard__token-label">SOL Reserve</span>
@@ -380,7 +381,7 @@ export default function PersonPublicPage() {
                 </div>
                 <div className="dashboard__token-stat">
                   <span className="dashboard__token-label">Founder Tokens</span>
-                  <span className="dashboard__token-value">{curveData ? (curveData.supplyCreator.toNumber() / 1e6).toFixed(0) : "—"} tokens</span>
+                  <span className="dashboard__token-value">{curveData ? Math.round(supplyCreator).toLocaleString() : "—"} tokens</span>
                 </div>
                 <div className="dashboard__token-stat">
                   <span className="dashboard__token-label">Mint Address</span>
@@ -451,7 +452,7 @@ export default function PersonPublicPage() {
 
               <div style={{ marginTop: 12, fontSize: "0.7rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
                 <Lightning size={12} weight="bold" style={{ verticalAlign: "middle", marginRight: 4 }} />
-                You earn 3% of every buy/sell as SOL fees. Claimable every 15 days directly to your wallet.
+                You earn 2% of every buy/sell as SOL fees. Claimable every 15 days directly to your wallet.
               </div>
             </section>
 
@@ -533,6 +534,12 @@ export default function PersonPublicPage() {
                 </div>
               </div>
             </section>
+
+            {/* ── Top Believers ── */}
+            <TopBelievers mintAddress={creator.mint_address} />
+
+            {/* ── Recent Trades ── */}
+            <RecentTrades mintAddress={creator.mint_address} />
           </div>
         </div>
       </div>
@@ -541,214 +548,143 @@ export default function PersonPublicPage() {
 
   /* ════════════════════════════════════════════
      PUBLIC VISITOR / HOLDER VIEW
-     Trade-first layout with rich profile
+     "Market Profile" layout — balanced profile + trade
      ════════════════════════════════════════════ */
+  const [trustOpen, setTrustOpen] = useState(false);
+
   return (
-    <div className="profile-grid">
-      {/* ── SIDEBAR: Trade Widget (sticky) + Score ── */}
-      <div className="profile-sidebar">
-        {/* Trade Widget — FIRST, most visible */}
-        <TradeWidget
-          tokenColor={tokenColor}
-          displayName={creator?.display_name || mockPerson?.name || "Token"}
-          priceNum={priceNum}
-          mintAddress={creator?.mint_address}
-          isReal={isReal}
-          authenticated={authenticated}
-          rawX={rawX}
-          rawY={rawY}
-          rawK={rawK}
-          hasCurveData={!!curveData}
-          onTrade={handleTrade}
-          onLogin={login}
-        />
-
-        {/* ── My Position (holders only) ── */}
-        {isHolder && !isCreator && holderPosition && posTokens > 0 && (
-          <div className="dashboard__card" style={{ borderLeft: `3px solid ${tokenColor}`, marginBottom: 16 }}>
-            <div className="dashboard__card-header">
-              <Heartbeat size={16} weight="bold" /> My Position
-            </div>
-
-            {/* Tokens held */}
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: "1.4rem", fontWeight: 900, color: "var(--text)" }}>
-                {posTokens >= 1000 ? `${(posTokens / 1000).toFixed(1)}K` : posTokens.toFixed(0)} tokens
-              </div>
-              <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600, marginTop: 2 }}>
-                Sell value: {formatSol(posValueSol)} SOL
-                {solPriceUsd > 0 && <span> (~{formatUsd(solToUsd(posValueSol, solPriceUsd))})</span>}
-              </div>
-            </div>
-
-            {/* P&L */}
-            <div style={{
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              padding: "10px 12px", borderRadius: 6,
-              background: posPnlSol >= 0 ? "rgba(34, 197, 94, 0.08)" : "rgba(239, 68, 68, 0.08)",
-              border: `1px solid ${posPnlSol >= 0 ? "rgba(34, 197, 94, 0.2)" : "rgba(239, 68, 68, 0.2)"}`,
-              marginBottom: 12,
-            }}>
-              <div>
-                <div style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>P&L</div>
-                <div style={{ fontSize: "1rem", fontWeight: 900, color: posPnlColor }}>
-                  {posPnlSol >= 0 ? "+" : ""}{formatSol(posPnlSol)} SOL
-                </div>
-                {solPriceUsd > 0 && (
-                  <div style={{ fontSize: "0.75rem", fontWeight: 700, color: posPnlColor, opacity: 0.8 }}>
-                    {posPnlSol >= 0 ? "+" : ""}{formatUsd(solToUsd(posPnlSol, solPriceUsd))}
-                  </div>
-                )}
-              </div>
-              <div style={{
-                fontSize: "1.1rem", fontWeight: 900, color: posPnlColor,
-                display: "flex", alignItems: "center", gap: 4,
-              }}>
-                {posPnlSol >= 0 ? <TrendUp size={18} weight="bold" /> : <TrendDown size={18} weight="bold" />}
-                {posPnlPct >= 0 ? "+" : ""}{posPnlPct.toFixed(1)}%
-              </div>
-            </div>
-
-            {/* Entry price vs Current */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <div style={{ background: "var(--card-bg)", padding: "8px 10px", borderRadius: 6 }}>
-                <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>Avg Entry</div>
-                <div style={{ fontSize: "0.85rem", fontWeight: 800 }}>{formatSol(posAvgEntry)} SOL</div>
-              </div>
-              <div style={{ background: "var(--card-bg)", padding: "8px 10px", borderRadius: 6 }}>
-                <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase" }}>Current</div>
-                <div style={{ fontSize: "0.85rem", fontWeight: 800, color: priceNum > posAvgEntry ? "#22c55e" : priceNum < posAvgEntry ? "#ef4444" : "var(--text)" }}>
-                  {formatSol(priceNum)} SOL {priceNum > posAvgEntry ? "↑" : priceNum < posAvgEntry ? "↓" : ""}
-                </div>
-              </div>
-            </div>
-
-            {/* Trade summary */}
-            <div style={{ marginTop: 10, fontSize: "0.7rem", color: "var(--text-muted)", display: "flex", justifyContent: "space-between" }}>
-              <span>Invested: {formatSol(posInvestedSol)} SOL</span>
-              <span>{holderPosition.buy_count} buy{holderPosition.buy_count > 1 ? "s" : ""}{holderPosition.sell_count > 0 ? ` · ${holderPosition.sell_count} sell${holderPosition.sell_count > 1 ? "s" : ""}` : ""}</span>
-            </div>
-          </div>
-        )}
-
-        {/* How it works — trust & fairness */}
-        <div className="protection-widget">
-          <div className="protection-widget__item">
-            <Users size={20} weight="bold" style={{ color: tokenColor, flexShrink: 0, marginTop: 2 }} />
-            <div>
-              <strong>Fair access for everyone</strong>
-              <p>Thanks to The Human Curve™, the market grows more stable with volume. 6% fees ensure sustainable growth for everyone.</p>
-            </div>
-          </div>
-          <div className="protection-widget__item">
-            <Lock size={20} weight="bold" style={{ color: tokenColor, flexShrink: 0, marginTop: 2 }} />
-            <div>
-              <strong>{displayNameShort} is committed long-term</strong>
-              <p>{displayNameShort} cannot sell their own tokens for the first year. After that, each sale is limited to 5% price impact with a 30-day cooldown. You as a supporter can sell anytime.</p>
-            </div>
-          </div>
-          {isCreator && lockUntil && (
-            <div className="protection-widget__item">
-              <Timer size={20} weight="bold" style={{ color: tokenColor, flexShrink: 0, marginTop: 2 }} />
-              <div>
-                <strong>Your lock progress</strong>
-                <div className="protection-widget__bar">
-                  <div style={{ width: `${lockProgress}%`, background: tokenColor }} />
-                </div>
-                <p>{lockProgress.toFixed(0)}% elapsed — {lockDays} days remaining</p>
-              </div>
-            </div>
-          )}
-          <div className="protection-widget__item">
-            <Lightning size={20} weight="bold" style={{ color: tokenColor, flexShrink: 0, marginTop: 2 }} />
-            <div>
-              <strong>A closed, trusted ecosystem</strong>
-              <p>Tokens live exclusively on Humanofi. No external exchanges, no transfers between wallets. The token is the key to {displayNameShort}&apos;s world — and that access stays here.</p>
-            </div>
-          </div>
-          <div className="protection-widget__safe">
-            Humanofi is a safe place. Every rule above is enforced by code, not promises. Your support goes directly to the person you believe in.
-          </div>
+    <>
+      {/* ═══ ZONE 1 — MARKET (Chart + Trade, full width) ═══ */}
+      <div className="profile-market">
+        <div className="profile-market__chart">
+          <BondingCurveChart ref={chartRef} mintAddress={creator?.mint_address || mockPerson?.id} currentPrice={priceNum} height={300} />
+        </div>
+        <div className="profile-market__trade">
+          <TradeWidget
+            tokenColor={tokenColor}
+            displayName={creator?.display_name || mockPerson?.name || "Token"}
+            priceNum={priceNum}
+            mintAddress={creator?.mint_address}
+            isReal={isReal}
+            authenticated={authenticated}
+            rawX={rawX}
+            rawY={rawY}
+            rawK={rawK}
+            hasCurveData={!!curveData}
+            onTrade={handleTrade}
+            onLogin={login}
+          />
         </div>
       </div>
 
-      {/* ── MAIN: Chart, Video, Story, Gallery ── */}
-      <div className="profile-main">
-        {/* Chart */}
-        <section className="profile-section">
-          <BondingCurveChart ref={chartRef} mintAddress={creator?.mint_address || mockPerson?.id} currentPrice={priceNum} height={260} />
-        </section>
-
-        {/* YouTube Video */}
-        {youtubeEmbed && (
-          <motion.section className="profile-section" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}>
-            <h2 className="profile-section__title">
-              <YoutubeLogo size={20} weight="bold" style={{ color: "#ff0000" }} /> Video
-            </h2>
-            <div className="profile-video-embed">
-              <iframe
-                src={youtubeEmbed}
-                title="Creator video"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
+      {/* ── Trust banner (collapsible) ── */}
+      <div className="profile-trust">
+        <button className="profile-trust__toggle" onClick={() => setTrustOpen(!trustOpen)}>
+          <span className="profile-trust__icon">🛡</span>
+          <span className="profile-trust__text">
+            Fair bonding curve · 5% sustainable fees · Closed ecosystem · You can sell anytime
+          </span>
+          <span className={`profile-trust__arrow ${trustOpen ? "profile-trust__arrow--open" : ""}`}>▼</span>
+        </button>
+        {trustOpen && (
+          <div className="profile-trust__details">
+            <div className="profile-trust__item">
+              <strong>Fair access</strong> — The Human Curve™ makes the market more stable with volume. 5% fees ensure sustainable growth.
             </div>
-          </motion.section>
-        )}
-
-        {/* The Story */}
-        <section className="profile-section">
-          <h2 className="profile-section__title">The Story</h2>
-          <p className="profile-section__text">{story || "No story yet."}</p>
-        </section>
-
-        {/* What I Offer */}
-        <section className="profile-section">
-          <h2 className="profile-section__title">What I Offer (Inner Circle)</h2>
-          <p className="profile-section__text">{offer || "No offer description yet."}</p>
-        </section>
-
-        {/* Gallery */}
-        {gallery.length > 0 && (
-          <motion.section className="profile-section" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}>
-            <h2 className="profile-section__title">
-              <Images size={20} weight="bold" /> Gallery
-            </h2>
-            <div className="profile-gallery">
-              {gallery.map((url, i) => (
-                <div key={i} className="profile-gallery__item">
-                  <Image src={url} alt={`Gallery ${i + 1}`} width={400} height={300} style={{ objectFit: "cover", width: "100%", height: "100%" }} />
-                </div>
-              ))}
+            <div className="profile-trust__item">
+              <strong>Anti-rug protection</strong> — {displayNameShort} cannot sell their own creator tokens for 1 year. You, as a supporter, can buy and sell freely at any time.
             </div>
-          </motion.section>
+            <div className="profile-trust__item">
+              <strong>Closed ecosystem</strong> — Tokens live on Humanofi only. No external exchanges, no transfers. You can sell anytime.
+            </div>
+          </div>
         )}
+      </div>
 
-        {/* Token Economics */}
-        {isReal && creator && (
+      {/* ═══ ZONE 2 — DISCOVERY (Profile + Social Proof) ═══ */}
+      <div className="profile-discovery">
+        {/* ── Main: Profile content ── */}
+        <div className="profile-discovery__main">
+          {/* YouTube Video (high impact, shown first) */}
+          {youtubeEmbed && (
+            <motion.section className="profile-section" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.05 }}>
+              <h2 className="profile-section__title">
+                <YoutubeLogo size={20} weight="bold" style={{ color: "#ff0000" }} /> Video
+              </h2>
+              <div className="profile-video-embed">
+                <iframe
+                  src={youtubeEmbed}
+                  title="Creator video"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            </motion.section>
+          )}
+
+          {/* The Story */}
           <section className="profile-section">
-            <h2 className="profile-section__title">
-              <Coin size={20} weight="bold" /> Token Economics
-            </h2>
-            <div className="profile-token-grid">
-              <div className="profile-token-stat">
-                <span>Supply (Public)</span>
-                <strong>{curveData ? (curveData.supplyPublic.toNumber() / 1e6).toFixed(0) : "—"} tokens</strong>
-              </div>
-              <div className="profile-token-stat">
-                <span>SOL Reserve</span>
-                <strong>{formatSol(solReserve)} SOL</strong>
-              </div>
-              <div className="profile-token-stat">
-                <span>Mint</span>
-                <strong style={{ fontFamily: "monospace", fontSize: "0.75rem" }}>{creator.mint_address.slice(0, 8)}...{creator.mint_address.slice(-6)}</strong>
-              </div>
-            </div>
+            <h2 className="profile-section__title">The Story</h2>
+            <p className="profile-section__text">{story || "No story yet."}</p>
           </section>
-        )}
 
-        {/* Latest Public Post */}
-        {isReal && creator && <LatestPublicPost creatorMint={creator.mint_address} />}
+          {/* What I Offer */}
+          <section className="profile-section">
+            <h2 className="profile-section__title">What I Offer (Inner Circle)</h2>
+            <p className="profile-section__text">{offer || "No offer description yet."}</p>
+          </section>
+
+          {/* Gallery */}
+          {gallery.length > 0 && (
+            <motion.section className="profile-section" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.1 }}>
+              <h2 className="profile-section__title">
+                <Images size={20} weight="bold" /> Gallery
+              </h2>
+              <div className="profile-gallery">
+                {gallery.map((url, i) => (
+                  <div key={i} className="profile-gallery__item">
+                    <Image src={url} alt={`Gallery ${i + 1}`} width={400} height={300} style={{ objectFit: "cover", width: "100%", height: "100%" }} />
+                  </div>
+                ))}
+              </div>
+            </motion.section>
+          )}
+        </div>
+
+        {/* ── Sidebar: Social proof + Token data ── */}
+        <div className="profile-discovery__sidebar">
+          {/* Top Believers */}
+          {isReal && creator && <TopBelievers mintAddress={creator.mint_address} />}
+
+          {/* Recent Trades */}
+          {isReal && creator && <RecentTrades mintAddress={creator.mint_address} />}
+
+          {/* Token Economics */}
+          {isReal && creator && (
+            <section className="profile-section">
+              <h2 className="profile-section__title">
+                <Coin size={20} weight="bold" /> Token Economics
+              </h2>
+              <div className="profile-token-grid">
+                <div className="profile-token-stat">
+                  <span>Supply (Public)</span>
+                  <strong>{Math.round(supplyPublic).toLocaleString()} tokens</strong>
+                </div>
+                <div className="profile-token-stat">
+                  <span>SOL Reserve</span>
+                  <strong>{formatSol(solReserve)} SOL</strong>
+                </div>
+                <div className="profile-token-stat">
+                  <span>Mint</span>
+                  <strong style={{ fontFamily: "monospace", fontSize: "0.75rem" }}>{creator.mint_address.slice(0, 8)}...{creator.mint_address.slice(-6)}</strong>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {/* Latest Public Post */}
+          {isReal && creator && <LatestPublicPost creatorMint={creator.mint_address} />}
+        </div>
       </div>
 
       {/* ── Trade Processing Modal ─ */}
@@ -765,6 +701,6 @@ export default function PersonPublicPage() {
           setTradeStep("idle");
         }}
       />
-    </div>
+    </>
   );
 }

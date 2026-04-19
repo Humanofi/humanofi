@@ -12,6 +12,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { usePrivy } from "@privy-io/react-auth";
+import { useFundWallet } from "@privy-io/react-auth/solana";
 import { PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import {
   getAssociatedTokenAddressSync,
@@ -25,6 +26,7 @@ import {
   ArrowsClockwise,
   CaretDown,
   Coin,
+  Lightning,
 } from "@phosphor-icons/react";
 
 // Token-2022
@@ -82,6 +84,13 @@ export default function TradeWidget({
 
   const { connection, publicKey } = useHumanofiProgram();
   const { priceUsd: solPriceUsd } = useSolPrice();
+  const { fundWallet } = useFundWallet();
+
+  // Handle SOL purchase via onramp
+  const handleBuySol = useCallback(() => {
+    if (!publicKey) return;
+    fundWallet({ address: publicKey.toBase58() });
+  }, [publicKey, fundWallet]);
 
   // ── Balances ──
   const [solBalance, setSolBalance] = useState<number>(0);
@@ -307,6 +316,22 @@ export default function TradeWidget({
         </div>
       )}
 
+      {/* Onramp CTA — SOL = 0 */}
+      {authenticated && publicKey && !loadingBalances && solBalance < 0.001 && activeTab === "buy" && (
+        <div className="trade-widget__onramp-banner">
+          <Lightning size={18} weight="fill" />
+          <div>
+            <strong>You need SOL to buy this token</strong>
+            <p style={{ margin: "4px 0 0", fontSize: "0.75rem", opacity: 0.8 }}>
+              Buy SOL instantly with your card, Apple Pay or Google Pay
+            </p>
+          </div>
+          <button className="trade-widget__onramp-btn" onClick={handleBuySol}>
+            Buy SOL
+          </button>
+        </div>
+      )}
+
       {/* Input */}
       <div className="trade-widget__input-group">
         <div className="trade-widget__input-header">
@@ -350,7 +375,17 @@ export default function TradeWidget({
         )}
 
         {inputError && (
-          <div className="trade-widget__input-error">{inputError}</div>
+          <div className="trade-widget__input-error">
+            {inputError}
+            {inputError === "Insufficient SOL balance" && (
+              <button
+                className="trade-widget__onramp-inline"
+                onClick={handleBuySol}
+              >
+                <Lightning size={12} weight="fill" /> Buy SOL
+              </button>
+            )}
+          </div>
         )}
       </div>
 

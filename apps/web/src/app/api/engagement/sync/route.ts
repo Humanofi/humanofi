@@ -25,7 +25,7 @@ export async function POST() {
   return NextResponse.json(
     {
       error: "Engagement sync is no longer needed. Holder rewards have been removed in V2.",
-      info: "Creators now earn 3% fees via CreatorFeeVault (claimable every 15 days).",
+      info: "Creators now earn 2% fees via CreatorFeeVault (claimable every 15 days).",
     },
     { status: 410 }
   );

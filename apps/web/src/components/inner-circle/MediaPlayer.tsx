@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { FileText } from "@phosphor-icons/react";
 
 interface MediaPlayerProps {
   url: string;
@@ -19,7 +20,7 @@ export default function MediaPlayer({ url }: MediaPlayerProps) {
         src={url}
         controls
         preload="metadata"
-        style={{ width: "100%", maxHeight: 400, borderRadius: 8, background: "#000" }}
+        style={{ width: "100%", maxHeight: 400, background: "#000", border: "2px solid var(--border)", boxShadow: "2px 2px 0px var(--border)" }}
       />
     );
   }
@@ -37,7 +38,7 @@ export default function MediaPlayer({ url }: MediaPlayerProps) {
   if (isPdf) {
     return (
       <a href={url} target="_blank" rel="noopener noreferrer" className="ic-post__media-pdf">
-        <span className="ic-post__media-pdf-icon">📄</span>
+        <span className="ic-post__media-pdf-icon"><FileText size={18} weight="bold" /></span>
         View Document (PDF)
       </a>
     );
@@ -50,7 +51,7 @@ export default function MediaPlayer({ url }: MediaPlayerProps) {
       alt="Media"
       width={400}
       height={300}
-      style={{ objectFit: "cover", borderRadius: 8, width: "100%", height: "100%" }}
+      style={{ objectFit: "cover", width: "100%", height: "100%", border: "2px solid var(--border)", boxShadow: "2px 2px 0px var(--border)" }}
     />
   );
 }

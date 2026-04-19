@@ -124,7 +124,7 @@ export async function POST(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Track engagement for conditional rewards (only for holders, not creators)
+    // Track engagement for activity score (only for holders, not creators)
     if (!isCreator) {
       const epoch = Math.floor(Date.now() / 1000 / 2_592_000);
       await supabase.rpc("increment_engagement", {

@@ -81,6 +81,9 @@ pub fn handler(
     let now = clock.unix_timestamp;
     let curve_bump = ctx.bumps.bonding_curve;
 
+    // ── EMERGENCY FREEZE CHECK ──
+    require!(!ctx.accounts.config.is_frozen, HumanofiError::ProtocolFrozen);
+
     // ---- Initialize on-chain metadata (Token-2022 Metadata Extension) ----
     let mint_key = ctx.accounts.mint.key();
     let seeds = &[SEED_CURVE, mint_key.as_ref(), &[curve_bump]];
@@ -126,23 +129,10 @@ pub fn handler(
         }
     }
 
-    // ---- Transfer initial liquidity: creator → bonding curve PDA ----
-    anchor_lang::system_program::transfer(
-        CpiContext::new(
-            ctx.accounts.system_program.to_account_info(),
-            anchor_lang::system_program::Transfer {
-                from: ctx.accounts.creator.to_account_info(),
-                to: ctx.accounts.bonding_curve.to_account_info(),
-            },
-        ),
-        initial_liquidity,
-    )?;
-
     // ---- Initialize Human Curve™ ----
     // x₀ = D = DEPTH_RATIO × V = 20 × V (depth parameter only, no real SOL yet)
     // y₀ = 1,000,000 tokens (in base units)
     // k₀ = x₀ × y₀
-    // The Founder Buy will then add V through the curve.
     let depth = (DEPTH_RATIO as u64)
         .checked_mul(initial_liquidity)
         .ok_or(HumanofiError::MathOverflow)?;
@@ -170,24 +160,52 @@ pub fn handler(
     curve.supply_public = 0;
     curve.supply_creator = 0;
     curve.supply_protocol = 0;
-    curve.sol_reserve = 0; // No real SOL yet — Founder Buy adds it
+    curve.sol_reserve = 0;
     curve.depth_parameter = depth;
     curve.twap_price = initial_twap;
     curve.trade_count = 0;
     curve.created_at = now;
     curve.is_active = true;
+    curve.is_suspended = false;
     curve.bump = curve_bump;
 
     // ---- Founder Buy: Creator buys tokens at P₀ ----
-    // V SOL is already in the PDA (transferred above).
     // Fee: 3% (2% protocol + 1% depth). No creator self-fee.
     let founder_result = curve.calculate_founder_buy(initial_liquidity)?;
 
-    // Transfer protocol fee OUT of bonding curve → treasury
+    // ---- Transfer SOL: split between curve and treasury ----
+    // Split the transfer upfront: net to curve, fee to treasury.
+    // This avoids lamport manipulation on a freshly-init'd PDA
+    // (which causes "sum of account balances" errors on Solana).
+
+    // 1. Net liquidity → bonding curve PDA (sol_to_curve + fee_depth)
+    let net_to_curve = founder_result.sol_to_curve
+        .checked_add(founder_result.fee_depth)
+        .ok_or(HumanofiError::MathOverflow)?;
+
+    anchor_lang::system_program::transfer(
+        CpiContext::new(
+            ctx.accounts.system_program.to_account_info(),
+            anchor_lang::system_program::Transfer {
+                from: ctx.accounts.creator.to_account_info(),
+                to: ctx.accounts.bonding_curve.to_account_info(),
+            },
+        ),
+        net_to_curve,
+    )?;
+
+    // 2. Protocol fee → treasury (directly from creator, never touches the PDA)
     if founder_result.fee_protocol > 0 {
-        let curve_info = ctx.accounts.bonding_curve.to_account_info();
-        **curve_info.try_borrow_mut_lamports()? -= founder_result.fee_protocol;
-        **ctx.accounts.treasury.to_account_info().try_borrow_mut_lamports()? += founder_result.fee_protocol;
+        anchor_lang::system_program::transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                anchor_lang::system_program::Transfer {
+                    from: ctx.accounts.creator.to_account_info(),
+                    to: ctx.accounts.treasury.to_account_info(),
+                },
+            ),
+            founder_result.fee_protocol,
+        )?;
     }
 
     // Mint Founder Buy tokens → creator ATA (frozen)
@@ -214,7 +232,7 @@ pub fn handler(
         signer_seeds,
     ))?;
 
-    // Apply Founder Buy to curve state
+    // Apply Founder Buy to curve state (updates x, y, k, supply, sol_reserve)
     let curve = &mut ctx.accounts.bonding_curve;
     curve.apply_founder_buy(&founder_result)?;
 
@@ -283,6 +301,13 @@ pub struct CreateToken<'info> {
         extensions::metadata_pointer::metadata_address = mint,
     )]
     pub mint: Box<InterfaceAccount<'info, Mint>>,
+
+    /// ProtocolConfig PDA — checked for emergency freeze
+    #[account(
+        seeds = [SEED_CONFIG],
+        bump = config.bump,
+    )]
+    pub config: Account<'info, ProtocolConfig>,
 
     /// Bonding Curve PDA — manages the token's Human Curve™ market.
     #[account(

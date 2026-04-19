@@ -101,16 +101,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Create or update the profile
+    // First check if profile already exists (to avoid overwriting custom names)
+    const { data: existingProfile } = await supabase
+      .from("profiles")
+      .select("display_name, avatar_url")
+      .eq("wallet_address", walletAddress)
+      .single();
+
+    const { generateIdenticon, getDefaultDisplayName } = await import("@/lib/identicon");
+
+    const upsertData: Record<string, unknown> = {
+      wallet_address: walletAddress,
+      privy_user_id: verifiedUserId,
+      last_seen_at: new Date().toISOString(),
+    };
+
+    // Only set defaults if profile is new or has no display_name
+    if (!existingProfile || !existingProfile.display_name) {
+      upsertData.display_name = getDefaultDisplayName(walletAddress);
+    }
+    if (!existingProfile || !existingProfile.avatar_url) {
+      upsertData.avatar_url = generateIdenticon(walletAddress);
+    }
+
     const { data: profile, error: upsertError } = await supabase
       .from("profiles")
-      .upsert(
-        {
-          wallet_address: walletAddress,
-          privy_user_id: verifiedUserId,
-          last_seen_at: new Date().toISOString(),
-        },
-        { onConflict: "wallet_address" }
-      )
+      .upsert(upsertData, { onConflict: "wallet_address" })
       .select()
       .single();
 

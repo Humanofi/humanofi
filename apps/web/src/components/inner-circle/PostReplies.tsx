@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import { toast } from "sonner";
 import { usePrivy } from "@privy-io/react-auth";
+import { ChatCircle } from "@phosphor-icons/react";
 
 interface Reply {
   id: string;
@@ -91,7 +92,7 @@ export default function PostReplies({ mintAddress, postId, replyCount, walletAdd
         className="ic-post__replies-toggle"
         onClick={() => setExpanded(!expanded)}
       >
-        💬 {replyCount} {replyCount === 1 ? "reply" : "replies"}
+        <ChatCircle size={14} weight="bold" /> {replyCount} {replyCount === 1 ? "reply" : "replies"}
       </div>
 
       {expanded && (

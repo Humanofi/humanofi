@@ -51,6 +51,31 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // If fetching a single creator, compute live holder_count
+  if (mint && data && data.length > 0) {
+    const { count: liveCount } = await supabase
+      .from("token_holders")
+      .select("*", { count: "exact", head: true })
+      .eq("mint_address", mint)
+      .gt("balance", 0);
+
+    let holderCount = liveCount ?? 0;
+
+    // Fallback: count distinct buyers from trades if token_holders is empty
+    if (holderCount === 0) {
+      const { data: buyers } = await supabase
+        .from("trades")
+        .select("wallet_address")
+        .eq("mint_address", mint)
+        .eq("trade_type", "buy");
+      if (buyers) {
+        holderCount = new Set(buyers.map((b: { wallet_address: string }) => b.wallet_address)).size;
+      }
+    }
+
+    data[0].holder_count = Math.max(holderCount, data[0].holder_count ?? 0);
+  }
+
   return NextResponse.json({ creators: data || [] });
 }
 
@@ -170,6 +195,21 @@ export async function POST(request: NextRequest) {
     if (error) {
       console.error("Failed to create creator token:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // ── Emit new_creator feed event (non-blocking) ──
+    try {
+      await supabase.from("feed_events").insert({
+        event_type: "new_creator",
+        mint_address: mintAddress,
+        wallet_address: walletAddress,
+        data: {
+          display_name: displayName,
+          category,
+        },
+      });
+    } catch (feedErr) {
+      console.warn("[Creators] Feed event error (non-blocking):", feedErr);
     }
 
     return NextResponse.json({

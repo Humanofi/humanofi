@@ -16,7 +16,7 @@ const CHECKIN_COOLDOWN_HOURS = 24; // Min 24h between check-ins
 
 /**
  * POST /api/inner-circle/[mint]/checkin
- * Record a check-in for engagement rewards.
+ * Record a check-in for activity score tracking.
  */
 export async function POST(
   request: NextRequest,

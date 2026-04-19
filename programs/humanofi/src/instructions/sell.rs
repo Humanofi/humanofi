@@ -1,8 +1,8 @@
 // ========================================
-// Humanofi — Sell Tokens (Human Curve™) — v3.6
+// Humanofi — Sell Tokens (Human Curve™) — v3.8
 // ========================================
 //
-// Sell flow v3.6 (dual fee structure):
+// Sell flow v3.7 (dual fee structure):
 //   1. CPI Guard: reject bot/program calls
 //   2. If seller = creator: verify vesting + Smart Sell Limiter + cooldown
 //   3. Calculate sell via Human Curve (dual fee structure)
@@ -12,8 +12,8 @@
 //   7. Re-freeze ATA if balance remains
 //   8. Update curve state (x, y, k, supply)
 //
-// v3.6 Dual Fee Structure:
-//   Holder sell: 5% (2% creator vault + 2% protocol + 1% depth)
+// v3.7 Dual Fee Structure:
+//   Holder sell: 5% (1% creator vault + 3% protocol + 1% depth)
 //   Creator sell: 6% (5% protocol + 1% depth, no self-fee)
 //
 // Creator-specific rules:
@@ -34,6 +34,9 @@ use crate::state::*;
 pub fn handler(ctx: Context<Sell>, token_amount: u64, min_sol_out: u64) -> Result<()> {
     require!(token_amount > 0, HumanofiError::ZeroAmount);
 
+    // ── EMERGENCY FREEZE CHECK ──
+    require!(!ctx.accounts.config.is_frozen, HumanofiError::ProtocolFrozen);
+
     // ── ANTI-BOT: Block CPI (program-to-program) calls ──
     #[cfg(not(feature = "cpi"))]
     {
@@ -43,6 +46,7 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64, min_sol_out: u64) -> Resul
 
     let curve = &ctx.accounts.bonding_curve;
     require!(curve.is_active, HumanofiError::CurveNotActive);
+    let creator_is_suspended = curve.is_suspended;
 
     let seller_balance = ctx.accounts.seller_token_account.amount;
     require!(
@@ -58,6 +62,9 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64, min_sol_out: u64) -> Resul
 
     // ── CREATOR-SPECIFIC: Vesting + Smart Sell Limiter + Cooldown ──
     if is_creator {
+        // v3.8: Creator sell is BLOCKED when suspended
+        require!(!creator_is_suspended, HumanofiError::CreatorSuspended);
+
         let vault = ctx.accounts.creator_vault.as_ref()
             .ok_or(HumanofiError::UnauthorizedCreator)?;
         vault.can_sell(now)?;
@@ -133,14 +140,22 @@ pub fn handler(ctx: Context<Sell>, token_amount: u64, min_sol_out: u64) -> Resul
     **curve_info.try_borrow_mut_lamports()? -= result.sol_net;
     **ctx.accounts.seller.to_account_info().try_borrow_mut_lamports()? += result.sol_net;
 
-    // Creator fee vault (2% for holder sell, 0% for creator sell)
+    // Creator fee vault (1% for holder sell, 0% for creator sell)
+    // v3.8: If suspended, creator fees go to treasury instead
     if result.fee_creator > 0 {
-        **curve_info.try_borrow_mut_lamports()? -= result.fee_creator;
-        **ctx.accounts.creator_fee_vault.to_account_info().try_borrow_mut_lamports()? += result.fee_creator;
-        ctx.accounts.creator_fee_vault.record_deposit(result.fee_creator)?;
+        if creator_is_suspended {
+            // SUSPENDED: Redirect creator fee → treasury
+            **curve_info.try_borrow_mut_lamports()? -= result.fee_creator;
+            **ctx.accounts.treasury.to_account_info().try_borrow_mut_lamports()? += result.fee_creator;
+        } else {
+            // NORMAL: Creator fee → vault
+            **curve_info.try_borrow_mut_lamports()? -= result.fee_creator;
+            **ctx.accounts.creator_fee_vault.to_account_info().try_borrow_mut_lamports()? += result.fee_creator;
+            ctx.accounts.creator_fee_vault.record_deposit(result.fee_creator)?;
+        }
     }
 
-    // Protocol treasury (2% for holder sell, 5% for creator sell)
+    // Protocol treasury (3% for holder sell, 5% for creator sell)
     if result.fee_protocol > 0 {
         **curve_info.try_borrow_mut_lamports()? -= result.fee_protocol;
         **ctx.accounts.treasury.to_account_info().try_borrow_mut_lamports()? += result.fee_protocol;
@@ -185,6 +200,13 @@ pub struct Sell<'info> {
     #[account(mut)]
     pub mint: InterfaceAccount<'info, Mint>,
 
+    /// ProtocolConfig PDA — checked for emergency freeze
+    #[account(
+        seeds = [SEED_CONFIG],
+        bump = config.bump,
+    )]
+    pub config: Account<'info, ProtocolConfig>,
+
     /// Bonding Curve PDA (holds SOL reserve)
     #[account(
         mut,
@@ -194,7 +216,7 @@ pub struct Sell<'info> {
     )]
     pub bonding_curve: Account<'info, BondingCurve>,
 
-    /// Creator Fee Vault PDA — receives 2% of holder sell fees (0% on creator sell)
+    /// Creator Fee Vault PDA — receives 1% of holder sell fees (0% on creator sell)
     #[account(
         mut,
         seeds = [SEED_CREATOR_FEES, mint.key().as_ref()],

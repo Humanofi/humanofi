@@ -44,24 +44,28 @@ function decodeBondingCurve(data: Buffer): LiveCurveData | null {
     const coder = new BorshAccountsCoder(idl as never);
     const decoded = coder.decode("BondingCurve", data) as Record<string, unknown>;
 
-    const x = Number(decoded.x?.toString() || "0");
-    const y = Number(decoded.y?.toString() || "0");
+    // Anchor BorshAccountsCoder returns keys in snake_case (matching IDL field names).
+    // Helper to read a field with snake_case priority, camelCase fallback.
+    const f = (snake: string, camel: string) => decoded[snake] ?? decoded[camel];
+
+    const x = Number(f("x", "x")?.toString() || "0");
+    const y = Number(f("y", "y")?.toString() || "0");
     const priceSol = y > 0 ? (x / y) * 1e6 / 1e9 : 0;
 
     return {
-      mint: (decoded.mint as PublicKey).toBase58(),
-      creator: (decoded.creator as PublicKey).toBase58(),
+      mint: (f("mint", "mint") as PublicKey).toBase58(),
+      creator: (f("creator", "creator") as PublicKey).toBase58(),
       x,
       y,
-      k: decoded.k?.toString() || "0",
-      supplyPublic: Number(decoded.supplyPublic?.toString() || "0"),
-      supplyCreator: Number(decoded.supplyCreator?.toString() || "0"),
-      supplyProtocol: Number(decoded.supplyProtocol?.toString() || "0"),
-      solReserve: Number(decoded.solReserve?.toString() || "0"),
-      depthParameter: Number(decoded.depthParameter?.toString() || "0"),
-      tradeCount: Number(decoded.tradeCount?.toString() || "0"),
-      createdAt: Number(decoded.createdAt?.toString() || "0"),
-      isActive: decoded.isActive as boolean,
+      k: f("k", "k")?.toString() || "0",
+      supplyPublic: Number(f("supply_public", "supplyPublic")?.toString() || "0"),
+      supplyCreator: Number(f("supply_creator", "supplyCreator")?.toString() || "0"),
+      supplyProtocol: Number(f("supply_protocol", "supplyProtocol")?.toString() || "0"),
+      solReserve: Number(f("sol_reserve", "solReserve")?.toString() || "0"),
+      depthParameter: Number(f("depth_parameter", "depthParameter")?.toString() || "0"),
+      tradeCount: Number(f("trade_count", "tradeCount")?.toString() || "0"),
+      createdAt: Number(f("created_at", "createdAt")?.toString() || "0"),
+      isActive: (f("is_active", "isActive") as boolean) ?? true,
       priceSol,
       timestamp: Date.now(),
     };

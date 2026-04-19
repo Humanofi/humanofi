@@ -205,23 +205,6 @@ export interface PriceInfo {
   marketCap: number;
 }
 
-// ---- Reward Pool (LEGACY — removed in v3) ----
-// Kept for backward compatibility with existing API responses.
-
-export interface RewardPoolState {
-  mint: string;
-  totalAccumulated: number;
-  totalDistributed: number;
-  rewardPerTokenStored: bigint;
-  lastUpdatedAt: Date;
-}
-
-export interface ClaimableRewards {
-  mintAddress: string;
-  pendingAmount: number;
-  lastClaimedAt: Date | null;
-}
-
 // ---- Leaderboard ----
 
 export interface LeaderboardEntry {

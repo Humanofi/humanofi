@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { CalendarBlank } from "@phosphor-icons/react";
 
 interface EventCardProps {
   postId: string;
@@ -43,7 +44,7 @@ export default function EventCard({
   return (
     <div className="ic-event">
       <div className="ic-event__header">
-        <div className="ic-event__icon">📅</div>
+        <div className="ic-event__icon"><CalendarBlank size={20} weight="bold" /></div>
         <div>
           <div className="ic-event__title">{title}</div>
           <div className="ic-event__date">{formattedDate}</div>

@@ -10,7 +10,7 @@ import PostCard, { PostData } from "@/components/inner-circle/PostCard";
 import PostComposer from "@/components/inner-circle/PostComposer";
 import PresenceSidebar from "@/components/inner-circle/PresenceSidebar";
 import FlyingEmojis from "@/components/inner-circle/FlyingEmojis";
-import { Archive } from "@phosphor-icons/react";
+import { Archive, ChatCircle, ChartBar, CalendarBlank, Broadcast, Trophy, Sparkle } from "@phosphor-icons/react";
 import { toast } from "sonner";
 
 export default function InnerCirclePage() {
@@ -26,7 +26,7 @@ export default function InnerCirclePage() {
   const [showArchived, setShowArchived] = useState(false);
   const [holderBalance, setHolderBalance] = useState(0);
 
-  const [stats24h, setStats24h] = useState<{ reactions: number; posts: number; views: number }>({ reactions: 0, posts: 0, views: 0 });
+  const [stats24h, setStats24h] = useState<{ reactions: number; posts: number }>({ reactions: 0, posts: 0 });
 
   const { onlineUsers, onlineCount, liveReactions, sendReaction, consumeReaction } =
     useRealtimeChannel(
@@ -197,11 +197,11 @@ export default function InnerCirclePage() {
             : "Connect your wallet and hold tokens to access."}
         </div>
         <div className="ic-locked__features">
-          <div className="ic-locked__feature">💬 Exclusive posts & media</div>
-          <div className="ic-locked__feature">📊 Vote in polls</div>
-          <div className="ic-locked__feature">📅 Join private events</div>
-          <div className="ic-locked__feature">🔴 Watch live webinars</div>
-          <div className="ic-locked__feature">🏆 Earn badges & streaks</div>
+          <div className="ic-locked__feature"><ChatCircle size={16} weight="bold" /> Exclusive posts & media</div>
+          <div className="ic-locked__feature"><ChartBar size={16} weight="bold" /> Vote in polls</div>
+          <div className="ic-locked__feature"><CalendarBlank size={16} weight="bold" /> Join private events</div>
+          <div className="ic-locked__feature"><Broadcast size={16} weight="bold" /> Watch live webinars</div>
+          <div className="ic-locked__feature"><Trophy size={16} weight="bold" /> Earn badges & streaks</div>
         </div>
         {!authenticated ? (
           <button className="btn-solid" onClick={login}>Connect Wallet</button>
@@ -265,7 +265,7 @@ export default function InnerCirclePage() {
               </>
             ) : (
             <div className="ic-feed__empty">
-              <div className="ic-feed__empty-icon">✨</div>
+              <div className="ic-feed__empty-icon"><Sparkle size={32} weight="bold" /></div>
               <div className="ic-feed__empty-title">{showArchived ? "No archived posts" : "No posts yet"}</div>
               <div className="ic-feed__empty-text">
                 {showArchived

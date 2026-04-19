@@ -1,18 +1,20 @@
 // ========================================
-// Humanofi — The Human Curve™ (Bonding Curve PDA) — v3.6
+// Humanofi — The Human Curve™ (Bonding Curve PDA) — v3.7
 // ========================================
 //
 // Implements the proprietary constant-product AMM: x · y = k(t)
 //
-// v3.6 Innovations:
+// v3.7 Innovations:
 //   1. k-Evolution — Curve depth grows with volume (1% of each tx)
 //   2. Smart Sell Limiter — Creator capped at 5% price impact per sell
 //   3. Founder Buy — Creator gets tokens at P₀ during creation (locked)
 //   4. Dual fee structure — Holder 5% / Creator sell 6%
+//   5. Asymmetric split — Buy rewards creator (3%), Sell feeds protocol (3%)
 //
-// Fee split v3.6:
-//   Holder buy/sell: 2% creator vault, 2% protocol, 1% depth
-//   Creator sell:    5% protocol, 1% depth (no self-fee)
+// Fee split v3.7:
+//   Holder buy:  3% creator vault, 1% protocol, 1% depth
+//   Holder sell: 1% creator vault, 3% protocol, 1% depth
+//   Creator sell: 5% protocol, 1% depth (no self-fee)
 //
 // x = sol_reserve + D (Depth Parameter). D = 20×V, mathematical depth, never withdrawable.
 //
@@ -37,7 +39,7 @@ pub struct BuyResult {
     pub sol_to_curve: u64,
     /// Tokens produced by the curve — 100% goes to buyer
     pub tokens_buyer: u64,
-    /// Fee breakdown (2% creator, 2% protocol, 1% depth)
+    /// Fee breakdown (buy: 3% creator, 1% protocol, 1% depth)
     pub fee_creator: u64,
     pub fee_protocol: u64,
     pub fee_depth: u64,
@@ -54,7 +56,7 @@ pub struct SellResult {
     pub sol_gross: u64,
     /// Net SOL the seller receives (after fees)
     pub sol_net: u64,
-    /// Fee breakdown. For holder: 2% creator, 2% protocol, 1% depth.
+    /// Fee breakdown. For holder sell: 1% creator, 3% protocol, 1% depth.
     /// For creator sell: 0% creator, 5% protocol, 1% depth.
     pub fee_creator: u64,
     pub fee_protocol: u64,
@@ -169,6 +171,9 @@ pub struct BondingCurve {
     /// Whether the curve is active (can be deactivated by governance)
     pub is_active: bool,
 
+    /// Whether the creator is suspended (fees redirected, creator sell/claim blocked)
+    pub is_suspended: bool,
+
     /// PDA bump seed
     pub bump: u8,
 }
@@ -241,7 +246,7 @@ impl BondingCurve {
     /// Calculate the result of a buy for `sol_brut` lamports.
     ///
     /// Order of operations:
-    ///   1. Calculate fees (5% total = 2% creator + 2% protocol + 1% depth)
+    ///   1. Calculate fees (5% total = 3% creator + 1% protocol + 1% depth)
     ///   2. Apply k-deepening: x += depth, k = x * y
     ///   3. Remaining SOL enters the curve
     ///   4. Curve produces Δy tokens — 100% goes to buyer
@@ -249,20 +254,20 @@ impl BondingCurve {
         require!(sol_brut > 0, HumanofiError::ZeroPurchaseAmount);
         require!(self.y > 0, HumanofiError::PoolDepleted);
 
-        // ── Step 1: Calculate fees (5% = 2% creator + 2% protocol + 1% depth) ──
+        // ── Step 1: Calculate fees (5% = 3% creator + 1% protocol + 1% depth) ──
         let fee_total = crate::utils::ceil_div_u64(
             sol_brut.checked_mul(TOTAL_FEE_BPS).ok_or(HumanofiError::FeeOverflow)?,
             BPS_DENOMINATOR,
         );
         let fee_creator = crate::utils::ceil_div_u64(
-            sol_brut.checked_mul(FEE_CREATOR_BPS).ok_or(HumanofiError::FeeOverflow)?,
+            sol_brut.checked_mul(BUY_FEE_CREATOR_BPS).ok_or(HumanofiError::FeeOverflow)?,
             BPS_DENOMINATOR,
         );
         let fee_depth = crate::utils::ceil_div_u64(
             sol_brut.checked_mul(FEE_DEPTH_BPS).ok_or(HumanofiError::FeeOverflow)?,
             BPS_DENOMINATOR,
         );
-        // Protocol gets the remainder (2%)
+        // Protocol gets the remainder (1%)
         let fee_protocol = fee_total
             .saturating_sub(fee_creator)
             .saturating_sub(fee_depth);
@@ -335,8 +340,8 @@ impl BondingCurve {
 
     /// Calculate the result of selling `token_amount` base units.
     ///
-    /// Dual fee structure (v3.6):
-    ///   Holder sell: 5% (2% creator + 2% protocol + 1% depth)
+    /// Dual fee structure (v3.7):
+    ///   Holder sell: 5% (1% creator + 3% protocol + 1% depth)
     ///   Creator sell: 6% (5% protocol + 1% depth, no self-fee)
     pub fn calculate_sell(&self, token_amount: u64, is_creator: bool) -> Result<SellResult> {
         require!(token_amount > 0, HumanofiError::ZeroAmount);
@@ -368,8 +373,8 @@ impl BondingCurve {
             // Creator sell: 6% = 5% protocol + 1% depth (no self-fee)
             (CREATOR_SELL_FEE_BPS, 0u64, CREATOR_SELL_DEPTH_BPS)
         } else {
-            // Holder sell: 5% = 2% creator + 2% protocol + 1% depth
-            (TOTAL_FEE_BPS, FEE_CREATOR_BPS, FEE_DEPTH_BPS)
+            // Holder sell: 5% = 1% creator + 3% protocol + 1% depth
+            (TOTAL_FEE_BPS, SELL_FEE_CREATOR_BPS, FEE_DEPTH_BPS)
         };
 
         let fee_total = crate::utils::ceil_div_u64(

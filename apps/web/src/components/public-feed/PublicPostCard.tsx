@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trash, DotsThreeVertical, Users, TrendUp, PencilSimple, FloppyDisk, X } from "@phosphor-icons/react";
+import { Trash, DotsThreeVertical, Users, PencilSimple, FloppyDisk, X } from "@phosphor-icons/react";
 import MediaPlayer from "../inner-circle/MediaPlayer";
 import { toast } from "sonner";
 import { useAuthFetch } from "@/lib/authFetch";
@@ -193,14 +193,10 @@ export default function PublicPostCard({
         </Link>
 
         <div className="pub-post__right">
-          <div className="pub-post__holder-badge" title={`${post.holderCount} holders`}>
-            <Users size={12} weight="bold" />
-            <span>{post.holderCount}</span>
-          </div>
-
-          {post.hot_score > 0.01 && (
-            <div className="pub-post__trending" title={`Score: ${post.hot_score.toFixed(4)}`}>
-              <TrendUp size={12} weight="bold" />
+          {post.holderCount > 0 && (
+            <div className="pub-post__market-chip" title={`${post.holderCount} holders`}>
+              <Users size={11} weight="bold" />
+              <span>{post.holderCount}</span>
             </div>
           )}
 
@@ -262,6 +258,7 @@ export default function PublicPostCard({
         </div>
       )}
 
+
       {/* Reactions */}
       <div className="pub-post__reactions">
         {activeEmojis.map(({ emoji }) => {
@@ -311,6 +308,10 @@ export default function PublicPostCard({
         </div>
 
         {totalReactions > 0 && <span className="ic-reactions__total">{totalReactions}</span>}
+
+        <Link href={`/person/${post.creator_mint}`} className="pub-post__view-btn">
+          View →
+        </Link>
       </div>
 
       {/* Delete Confirmation Modal */}

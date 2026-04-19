@@ -1,13 +1,13 @@
 // ========================================
-// Humanofi — Buy Tokens (Human Curve™) — v3.6
+// Humanofi — Buy Tokens (Human Curve™) — v3.8
 // ========================================
 //
-// Buy flow v3.6 (simplified — no merit reward, no stabilizer):
+// Buy flow v3.7 (simplified — no merit reward, no stabilizer):
 //   1. CPI Guard: reject bot/program calls
 //   2. Calculate buy via Human Curve (fees + k-deepening)
 //   3. Slippage protection
 //   4. Transfer SOL: buyer → curve reserve (net + depth)
-//   5. Distribute fees: 2% creator fee vault, 2% protocol
+//   5. Distribute fees: 3% creator fee vault, 1% protocol
 //   6. Mint 100% tokens → buyer ATA (thaw/mint/freeze)
 //   7. Update curve state (x, y, k, supply_public)
 //   8. Update EMA TWAP
@@ -40,6 +40,9 @@ use crate::state::*;
 pub fn handler(ctx: Context<Buy>, sol_amount: u64, min_tokens_out: u64) -> Result<()> {
     require!(sol_amount > 0, HumanofiError::ZeroPurchaseAmount);
 
+    // ── EMERGENCY FREEZE CHECK ──
+    require!(!ctx.accounts.config.is_frozen, HumanofiError::ProtocolFrozen);
+
     // ── ANTI-BOT: Block CPI (program-to-program) calls ──
     #[cfg(not(feature = "cpi"))]
     {
@@ -49,6 +52,7 @@ pub fn handler(ctx: Context<Buy>, sol_amount: u64, min_tokens_out: u64) -> Resul
 
     let curve = &ctx.accounts.bonding_curve;
     require!(curve.is_active, HumanofiError::CurveNotActive);
+    let creator_is_suspended = curve.is_suspended;
 
     // ── Calculate buy via Human Curve™ ──
     let result = curve.calculate_buy(sol_amount)?;
@@ -92,35 +96,56 @@ pub fn handler(ctx: Context<Buy>, sol_amount: u64, min_tokens_out: u64) -> Resul
     )?;
 
     // ── Transfer fees: buyer → recipients ──
+    // v3.8: If creator is suspended, ALL fees go to treasury
 
-    // 2% → Creator Fee Vault PDA (accumulated, claimable every 15 days)
-    if result.fee_creator > 0 {
-        system_program::transfer(
-            CpiContext::new(
-                ctx.accounts.system_program.to_account_info(),
-                system_program::Transfer {
-                    from: ctx.accounts.buyer.to_account_info(),
-                    to: ctx.accounts.creator_fee_vault.to_account_info(),
-                },
-            ),
-            result.fee_creator,
-        )?;
-        // Update vault accounting
-        ctx.accounts.creator_fee_vault.record_deposit(result.fee_creator)?;
-    }
+    if creator_is_suspended {
+        // SUSPENDED: Redirect creator fee + protocol fee → treasury
+        let total_extractable_fee = result.fee_creator
+            .checked_add(result.fee_protocol)
+            .ok_or(HumanofiError::MathOverflow)?;
+        if total_extractable_fee > 0 {
+            system_program::transfer(
+                CpiContext::new(
+                    ctx.accounts.system_program.to_account_info(),
+                    system_program::Transfer {
+                        from: ctx.accounts.buyer.to_account_info(),
+                        to: ctx.accounts.treasury.to_account_info(),
+                    },
+                ),
+                total_extractable_fee,
+            )?;
+        }
+        // Creator fee vault gets NOTHING when suspended
+    } else {
+        // NORMAL: 3% → Creator Fee Vault PDA (accumulated, claimable every 15 days)
+        if result.fee_creator > 0 {
+            system_program::transfer(
+                CpiContext::new(
+                    ctx.accounts.system_program.to_account_info(),
+                    system_program::Transfer {
+                        from: ctx.accounts.buyer.to_account_info(),
+                        to: ctx.accounts.creator_fee_vault.to_account_info(),
+                    },
+                ),
+                result.fee_creator,
+            )?;
+            // Update vault accounting
+            ctx.accounts.creator_fee_vault.record_deposit(result.fee_creator)?;
+        }
 
-    // 2% → Protocol treasury
-    if result.fee_protocol > 0 {
-        system_program::transfer(
-            CpiContext::new(
-                ctx.accounts.system_program.to_account_info(),
-                system_program::Transfer {
-                    from: ctx.accounts.buyer.to_account_info(),
-                    to: ctx.accounts.treasury.to_account_info(),
-                },
-            ),
-            result.fee_protocol,
-        )?;
+        // 1% → Protocol treasury
+        if result.fee_protocol > 0 {
+            system_program::transfer(
+                CpiContext::new(
+                    ctx.accounts.system_program.to_account_info(),
+                    system_program::Transfer {
+                        from: ctx.accounts.buyer.to_account_info(),
+                        to: ctx.accounts.treasury.to_account_info(),
+                    },
+                ),
+                result.fee_protocol,
+            )?;
+        }
     }
 
     // ── Mint 100% tokens → buyer ATA ──
@@ -190,6 +215,13 @@ pub struct Buy<'info> {
     #[account(mut)]
     pub mint: Box<InterfaceAccount<'info, Mint>>,
 
+    /// ProtocolConfig PDA — checked for emergency freeze
+    #[account(
+        seeds = [SEED_CONFIG],
+        bump = config.bump,
+    )]
+    pub config: Account<'info, ProtocolConfig>,
+
     /// Bonding Curve PDA (holds SOL reserve + is mint/freeze authority)
     #[account(
         mut,
@@ -199,7 +231,7 @@ pub struct Buy<'info> {
     )]
     pub bonding_curve: Box<Account<'info, BondingCurve>>,
 
-    /// Creator Fee Vault PDA — accumulates 2% creator fees
+    /// Creator Fee Vault PDA — accumulates 3% creator fees (buy)
     #[account(
         mut,
         seeds = [SEED_CREATOR_FEES, mint.key().as_ref()],
@@ -228,7 +260,7 @@ pub struct Buy<'info> {
     )]
     pub buyer_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
-    /// Protocol treasury wallet (receives 2% of fees)
+    /// Protocol treasury wallet (receives 1% of buy fees, or ALL fees if creator suspended)
     /// CHECK: Validated against hardcoded TREASURY_WALLET constant
     #[account(
         mut,
