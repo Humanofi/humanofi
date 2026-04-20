@@ -1,0 +1,565 @@
+/* ========== PROFILE HEADER ========== */
+
+.profile-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 40px;
+  align-items: center;
+  margin-bottom: 48px;
+  padding-bottom: 48px;
+  border-bottom: 4px solid var(--border);
+}
+
+.profile-header__img {
+  width: 160px;
+  height: 160px;
+  border: 4px solid var(--border);
+  box-shadow: 8px 8px 0px var(--border);
+  object-fit: cover;
+}
+
+.profile-header__info {
+  flex: 1;
+}
+
+.profile-header__name {
+  font-size: 3.5rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  margin-bottom: 12px;
+}
+
+.profile-header__meta {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.profile-header__tag {
+  background: var(--bg-panel);
+  border: 2px solid var(--border);
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  box-shadow: 2px 2px 0px var(--border);
+}
+
+.profile-header__country {
+  font-weight: 800;
+  color: var(--text-muted);
+}
+
+.profile-header__socials {
+  display: flex;
+  gap: 12px;
+}
+
+.social-link {
+  font-size: 0.8rem;
+  font-weight: 800;
+  color: var(--accent);
+  text-transform: uppercase;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s var(--ease);
+}
+.social-link:hover {
+  border-bottom: 2px solid var(--accent);
+}
+
+/* Profile grid moved to TRADE WIDGET v2 section */
+
+.profile-section {
+  margin-bottom: 48px;
+}
+
+.profile-section__title {
+  font-size: 1.8rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin-bottom: 16px;
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.profile-section__text {
+  font-size: 1.1rem;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+/* ── Bonding Curve Chart (Humanofi Terminal) ── */
+.hm-chart {
+  border: 3px solid var(--border);
+  background: #fff;
+  box-shadow: 6px 6px 0px rgba(0,0,0,0.08);
+  position: relative;
+}
+
+.hm-chart__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 16px 20px 12px;
+  border-bottom: 2px solid var(--border-light);
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hm-chart__price-block {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hm-chart__price {
+  font-size: 1.4rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.hm-chart__price-unit {
+  font-size: 0.65em;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.hm-chart__change {
+  font-size: 0.85rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.hm-chart__controls {
+  display: flex;
+  gap: 0;
+  border: 2px solid var(--border);
+}
+
+.hm-chart__tf-btn {
+  padding: 6px 12px;
+  background: #fff;
+  border: none;
+  border-right: 1px solid var(--border-light);
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: var(--font-sans);
+}
+.hm-chart__tf-btn:last-child {
+  border-right: none;
+}
+.hm-chart__tf-btn:hover {
+  background: var(--bg-panel);
+  color: var(--text);
+}
+.hm-chart__tf-btn--active {
+  background: var(--accent);
+  color: #fff;
+}
+.hm-chart__tf-btn--active:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Stats strip */
+.hm-chart__stats {
+  display: flex;
+  gap: 16px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-panel);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.hm-chart__stat {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.hm-chart__stat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.hm-chart__stat-dot--live {
+  background: #10b981;
+  animation: pulse 2s infinite;
+}
+
+/* Chart canvas */
+.hm-chart__canvas {
+  width: 100%;
+  transition: opacity 0.4s ease;
+}
+
+/* Empty state */
+.hm-chart__empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -30%);
+  text-align: center;
+  pointer-events: none;
+  z-index: 2;
+}
+.hm-chart__empty-icon {
+  font-size: 2rem;
+  color: var(--border);
+  margin-bottom: 8px;
+  animation: pulse 3s infinite;
+}
+.hm-chart__empty-title {
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.hm-chart__empty-desc {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  max-width: 280px;
+  line-height: 1.5;
+  opacity: 0.7;
+}
+
+/* Legacy compat */
+.profile-chart-container {
+  border: none;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+.profile-chart-header {
+  display: none;
+}
+
+.profile__stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.stat-card {
+  border: 2px solid var(--border);
+  background: #fff;
+  padding: 16px;
+  box-shadow: 4px 4px 0px var(--border);
+}
+
+.stat-card__val {
+  font-size: 1.4rem;
+  font-weight: 800;
+}
+.stat-card__lbl {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+
+
+/* ========== PROFILE HEADER ENHANCEMENTS ========== */
+
+.profile-header {
+  padding-left: 24px;
+}
+.profile-header__avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.profile-header__score-badge {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 0.7rem;
+  font-weight: 900;
+  color: #fff;
+  z-index: 2;
+}
+.profile-header__subtitle {
+  font-size: 0.95rem;
+  font-style: italic;
+  color: var(--text-muted);
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+
+/* ── Activity Score Card (header right) ── */
+.profile-header__score-card {
+  margin-left: auto;
+  flex-shrink: 0;
+  border: 3px solid var(--border);
+  padding: 12px 16px;
+  background: #fff;
+  box-shadow: 4px 4px 0px var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 90px;
+}
+.profile-header__score-svg {
+  width: 72px;
+  height: 72px;
+}
+.profile-header__score-label {
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+
+/* ========== PROFILE LAYOUT — Market Profile ========== */
+
+/* Zone 1: Chart + Trade side by side */
+.profile-market {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 24px;
+  margin-bottom: 16px;
+  align-items: start;
+}
+
+.profile-market__chart {
+  border: 2px solid var(--border);
+  box-shadow: 4px 4px 0px var(--border);
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.profile-market__trade {
+  position: sticky;
+  top: 80px;
+}
+
+/* Trust banner (collapsible) */
+.profile-trust {
+  margin-bottom: 24px;
+  border: 1px solid var(--border-light);
+  background: var(--bg);
+}
+
+.profile-trust__toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: left;
+}
+
+.profile-trust__toggle:hover {
+  color: var(--text);
+  background: var(--bg-panel);
+}
+
+.profile-trust__icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.profile-trust__text {
+  flex: 1;
+  letter-spacing: 0.02em;
+}
+
+.profile-trust__arrow {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+.profile-trust__arrow--open {
+  transform: rotate(180deg);
+}
+
+.profile-trust__details {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: var(--border-light);
+  border-top: 1px solid var(--border-light);
+}
+
+.profile-trust__item {
+  padding: 12px 16px;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  background: var(--bg);
+}
+
+.profile-trust__item strong {
+  color: var(--text);
+  display: block;
+  margin-bottom: 4px;
+  font-size: 0.72rem;
+}
+
+/* Zone 2: Discovery grid */
+.profile-discovery {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 32px;
+  align-items: start;
+}
+
+.profile-discovery__main {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.profile-discovery__sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* Legacy — keep for backwards compat, redirect to new layout */
+.profile-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+
+.profile-sidebar {
+  order: 1;
+}
+.profile-main {
+  order: 2;
+}
+
+@media (max-width: 900px) {
+  .profile-market {
+    grid-template-columns: 1fr;
+  }
+  .profile-market__trade {
+    position: static;
+  }
+  .profile-trust__details {
+    grid-template-columns: 1fr;
+  }
+  .profile-discovery {
+    grid-template-columns: 1fr;
+  }
+  .profile-header__score-card {
+    display: none;
+  }
+}
+
+/* ========== GALLERY ========== */
+
+.profile-gallery {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.profile-gallery__item {
+  aspect-ratio: 4/3;
+  border: 2px solid var(--border);
+  overflow: hidden;
+  box-shadow: 3px 3px 0px var(--border);
+}
+
+/* ========== TOKEN ECONOMICS (profile view) ========== */
+
+.profile-token-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.profile-token-stat {
+  border: 2px solid var(--border);
+  border-bottom: none;
+  padding: 14px 16px;
+  background: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.profile-token-stat:last-child {
+  border-bottom: 2px solid var(--border);
+}
+.profile-token-stat span {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.profile-token-stat strong {
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-align: right;
+}
+
+/* ========== PERSON TABS (Sub-navigation) ========== */
+
+.person-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 32px;
+}
+
+.person-tabs__link {
+  font-weight: 800;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  text-decoration: none;
+  padding: 14px 24px;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  box-shadow: 4px 4px 0px var(--border);
+  transition: all var(--dur) var(--ease);
+  display: flex;
+  align-items: center;
+}
+
+.person-tabs__link:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px var(--border);
+  color: var(--text);
+}
+
+.person-tabs__link--active {
+  background: var(--border);
+  color: #fff !important;
+  box-shadow: 4px 4px 0px var(--token-color, var(--accent));
+}
+
+/* ========================================

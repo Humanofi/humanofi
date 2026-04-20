@@ -1,0 +1,57 @@
+html {
+  font-size: 16px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+
+  /* Privy Auth Modal brutalist overrides */
+  --privy-border-radius-sm: 0px;
+  --privy-border-radius-md: 0px;
+  --privy-border-radius-lg: 0px;
+  --privy-border-radius-xl: 0px;
+  --privy-color-accent: var(--accent);
+  --privy-color-background: var(--bg);
+  --privy-color-foreground: var(--text);
+  --privy-color-background-2: var(--bg-panel);
+  --privy-font-family: var(--font-sans);
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.page {
+  flex: 1;
+}
+
+/* Halftone pattern - exactly like the logo's heart */
+.halftone-bg {
+  background-image: radial-gradient(var(--text-faint) 1px, transparent 1px);
+  background-size: 16px 16px;
+  opacity: 0.15;
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; font-family: inherit; }
+input, select { font-family: inherit; }
+img { display: block; max-width: 100%; }
+

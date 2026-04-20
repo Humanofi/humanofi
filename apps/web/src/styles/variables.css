@@ -1,0 +1,44 @@
+/* =========================================
+   HUMANOFI — Design System v5 (Halftone / Geometric)
+   =========================================
+   - Typographie : Plus Jakarta Sans (géométrique, comme le logo)
+   - Style : High contrast, brutaliste élégant, zéro arrondi
+   - Motif Halftone inspiré du logo
+   - Couleur accent : Bleu électrique profond (Trust, Finance, Humain)
+   ========================================= */
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg: #ffffff;
+  --bg-panel: #fcfcfc;
+  --bg-halftone: transparent;
+  
+  --text: #0a0a0a;
+  --text-muted: #555555;
+  --text-faint: #999999;
+  
+  --border: #0a0px0a; /* Pure solid black for main structural borders */
+  --border: #111111;
+  --border-light: #e5e5e5;
+  
+  /* L'accent : un bleu pur, vibratoire, tech mais confiant */
+  --accent: #1144ff;
+  --accent-hover: #002ecc;
+  --accent-bg: #eef2ff;
+
+  --up: #000000;
+  --down: #e11d48;
+
+  --green: #22c55e;
+  --orange: #f59e0b;
+  --red: #ef4444;
+
+  --dur: 200ms;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
