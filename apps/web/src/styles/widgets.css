@@ -589,6 +589,7 @@
   font-style: italic;
 }
 
+/* ========================================
    QA WIDGET (AMA) — Private Q&A
    ======================================== */
 
@@ -871,7 +872,6 @@
   color: var(--text-faint);
 }
 
-/* ========================================
 /* ========== TRADE MODAL ========== */
 
 .trade-modal-overlay {
@@ -1024,7 +1024,6 @@
   50% { opacity: 0.5; transform: scale(0.8); }
 }
 
-/* ========================================
 /* ========== PROFILE EDIT MODAL ========== */
 
 .profile-modal-overlay {

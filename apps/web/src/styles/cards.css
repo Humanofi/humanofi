@@ -109,6 +109,7 @@
   margin-top: 8px;
 }
 
+/* ========================================
    MY POSITION BANNER (inside profile-header)
    ======================================== */
 
@@ -217,4 +218,3 @@
   .position-banner__pnl { justify-content: flex-start; }
 }
 
-/* ========================================

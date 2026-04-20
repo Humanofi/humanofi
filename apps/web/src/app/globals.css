@@ -1,14 +1,1 @@
-/* Humanofi Global CSS Architecture */
-
-@import '../styles/variables.css';
-@import '../styles/reset.css';
-@import '../styles/layout.css';
-@import '../styles/pages.css';
-@import '../styles/profile.css';
-@import '../styles/widgets.css';
-@import '../styles/creator.css';
-@import '../styles/cards.css';
-@import '../styles/components.css';
-@import '../styles/screener.css';
-@import '../styles/inner-circle.css';
-@import '../styles/admin-panel.css';
+@import '../styles/index.css';
