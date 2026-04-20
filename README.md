@@ -89,12 +89,12 @@ Inspired by Curve Finance's amplification factor `A`, the Depth Parameter `D` gi
 
 ```
 D = DEPTH_RATIO × V        (DEPTH_RATIO = 18, V = creator's initial SOL)
-x₀ = D                     (initial x is depth only — no real SOL)
+x₀ = D                     (initial x is depth only — no real SOL yet)
 y₀ = 1,000,000 tokens      (fixed for all tokens, 6 decimals = 10^12 base units)
 k₀ = x₀ × y₀
 ```
 
-`D` is **immutable** after creation and **never withdrawable** — it only exists in the mathematical formula. This prevents price collapse at low liquidity.
+`D` is **immutable** after creation and **never withdrawable** — it only exists in the mathematical formula. This prevents price collapse at low liquidity. With the minimum initial liquidity (`V = 0.03 SOL`), the starting depth is `D = 18 × 0.03 = 0.54 SOL`, giving the curve meaningful depth from block one.
 
 ### 2. k-Evolution (k-Deepening)
 
@@ -118,30 +118,36 @@ Founder Buy fee: 3% total
 
 ### 4. Asymmetric Fee Split (v3.7)
 
-The fee split intentionally **rewards buying** (conviction) and **reduces returns on selling** (doubt):
+The fee split intentionally **rewards buying** (conviction) and **reduces returns on selling** (doubt). On every trade, `fee_depth` (1%) is added to `x` before the curve calculation, permanently growing `k`:
 
-| Trade Type    | Creator Vault | Protocol Treasury | k-Deepening | Total |
-|---------------|:-------------:|:-----------------:|:-----------:|:-----:|
-| Holder Buy    | **3%**        | 1%                | 1%          | 5%    |
-| Holder Sell   | 1%            | **3%**            | 1%          | 5%    |
-| Creator Sell  | 0% (self)     | **5%**            | 1%          | 6%    |
-| Founder Buy   | 0% (self)     | 2%                | 1%          | 3%    |
+| Trade Type        | Creator Vault | Protocol Treasury | k-Deepening | Total |
+|-------------------|:-------------:|:-----------------:|:-----------:|:-----:|
+| Holder Buy        | **3%**        | 1%                | 1%          | 5%    |
+| Holder Sell       | 1%            | **3%**            | 1%          | 5%    |
+| Creator Sell      | 0% (self)     | **5%**            | 1%          | 6%    |
+| Founder Buy       | 0% (self)     | 2%                | 1%          | 3%    |
 
-Creator fees accumulate in a **Creator Fee Vault PDA** and are claimable every **15 days**.
+**Important on-chain details:**
+- Creator fees (buy: 3%, sell: 1%) accumulate **as SOL lamports** in the `CreatorFeeVault` PDA — not distributed immediately
+- Protocol fees are sent **directly** from the buyer/seller to the `TREASURY_WALLET` (hardcoded constant)
+- The `fee_depth` (1%) stays in the `BondingCurve` PDA's lamport balance — it's never extracted
+- All fee calculations use `ceil_div` (round up) — the protocol **always** collects at minimum 1 lamport
 
 ### 5. Smart Sell Limiter
 
-To prevent creators from crashing their own token:
+To prevent creators from crashing their own token, the program enforces three rules **only on the creator** (holders have no restrictions):
 
-- **Max 5% price impact** per creator sell transaction
-- **30-day cooldown** between creator sells
-- **1-year cliff lock** — creators cannot sell anything during Year 1
-
-Holders have no sell restrictions.
+- **Year 1 hard lock** — `elapsed < CREATOR_LOCK_DURATION (365 days)` → any sell attempt reverts with `CreatorVestingLocked`
+- **Max price impact** per sell: uses the exact formula `T_max = y × (BPS / √(BPS × (BPS - I)) - 1)` with I = 500 bps (5%), giving `T_max ≈ y × 0.02598` tokens max per sell
+- **30-day cooldown** between creator sells — enforced via `CreatorVault.last_sell_at`
 
 ### 6. Anti-Snipe Fair Launch
 
-During the first **24 hours** after token creation, each wallet can hold a maximum of **50,000 tokens (5% of supply)**. After 24 hours, it's a free market.
+The `buy` instruction checks: during the first **24 hours** (`ANTI_SNIPE_WINDOW = 86,400 seconds`) after token creation, each wallet's balance **after purchase** must remain ≤ `ANTI_SNIPE_MAX_TOKENS = 50,000 tokens` (5% of 1M total supply, in base units: `50_000_000_000`). After 24 hours, no restriction applies.
+
+### 7. Price Stabilizer (Dormant)
+
+The `BondingCurve` account contains a full EMA TWAP implementation (`twap_price`, updated after every trade via `α = 20%`) and a `calculate_stabilization()` method. However, this is **dormant in v3.6** because the `ProtocolVault` never accumulates tokens (Merit Reward was removed). The code is preserved for a future bidirectional market maker.
 
 ---
 
@@ -149,8 +155,9 @@ During the first **24 hours** after token creation, each wallet can hold a maxim
 
 - **Program ID:** `4u14FtDEdr1UqSXbwhDXDLi552Skm1TPodrtjKje2pmQ`
 - **Network:** Devnet (Mainnet pending audit)
-- **Token Standard:** Token-2022 with `MetadataPointer` extension (on-chain metadata stored in the mint)
+- **Token Standard:** Token-2022 with `MetadataPointer` extension — on-chain metadata stored **inside the mint account** (no separate Metadata account)
 - **Framework:** Anchor 0.32.1
+- **All math:** `u128` to prevent overflow. Lamports (9 decimals) and base token units (6 decimals = 10^6) never mixed without explicit conversion.
 
 ### Instructions
 
@@ -169,23 +176,23 @@ During the first **24 hours** after token creation, each wallet can hold a maxim
 
 | Account | Seeds | Description |
 |---|---|---|
-| `BondingCurve` | `["curve", mint]` | AMM state (x, y, k, reserves, TWAP) |
-| `CreatorVault` | `["vault", mint]` | Vesting tracker + Sell Limiter state |
-| `CreatorFeeVault` | `["creator_fees", mint]` | Accumulated creator fees (claimable) |
-| `ProtocolVault` | `["protocol_vault", mint]` | Protocol vault (dormant in v3.6) |
-| `PurchaseLimiter` | `["limiter", wallet, mint]` | Per-wallet purchase tracking (anti-snipe) |
-| `ProtocolConfig` | `["protocol_config"]` | Global config + emergency kill switch |
+| `BondingCurve` | `["curve", mint]` | Core AMM state (x, y, k, sol_reserve, depth_parameter, TWAP, supply tracking) |
+| `CreatorVault` | `["vault", mint]` | Vesting enforcer — tracks `created_at`, `last_sell_at`, `total_sold` |
+| `CreatorFeeVault` | `["creator_fees", mint]` | SOL lamports accumulator — tracks `total_accumulated`, `total_claimed`, `last_claim_at` |
+| `ProtocolVault` | `["protocol_vault", mint]` | Legacy empty vault (dormant since v3.6, kept for backward compat) |
+| `PurchaseLimiter` | `["limiter", wallet, mint]` | Per-wallet analytics tracker — `first_purchase_at`, `total_spent_lamports`, `purchase_count` |
+| `ProtocolConfig` | `["protocol_config"]` | Singleton — `authority`, `is_frozen`, `frozen_at`, `freeze_reason` (128 chars max) |
 
 ### Token-2022 Architecture
 
 Tokens are **frozen by default** immediately after being minted. Only the program (via the `BondingCurve` PDA as `freeze_authority`) can thaw/freeze:
 
 ```
-Buy  → thaw ATA → mint tokens → freeze ATA
-Sell → thaw ATA → burn tokens → freeze ATA (if balance > 0)
+Buy  → (if exists and frozen) thaw ATA → mint new tokens → freeze ATA
+Sell → thaw ATA → burn tokens → (if balance > 0) re-freeze ATA
 ```
 
-This makes tokens **untransferable outside of Humanofi**, closing all flash loan attack vectors.
+This makes tokens **untransferable outside of Humanofi** — wallet-to-wallet sends fail because the token is frozen. This completely eliminates flash loan vectors, since a flash loan requires borrowing and returning tokens in the same transaction, which is impossible if they can't leave the program's control.
 
 ---
 
