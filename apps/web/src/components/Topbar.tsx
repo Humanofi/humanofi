@@ -11,7 +11,7 @@ import { usePathname } from "next/navigation";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofiAuth } from "@/components/layout/AuthSyncProvider";
 import { useState, useEffect, useRef } from "react";
-import { Wallet, CaretDown, SignOut, User, PencilSimple } from "@phosphor-icons/react";
+import { Wallet, CaretDown, SignOut, User, PencilSimple, Info } from "@phosphor-icons/react";
 import { getAvatarUrl } from "@/lib/identicon";
 import ProfileEditModal from "@/components/ProfileEditModal";
 import GlobalSearch from "@/components/GlobalSearch";
@@ -103,7 +103,7 @@ export default function Topbar() {
         <Link href="/" className="topbar__logo">
           <Image
             src="/Logo_noire.png"
-            alt="Humanofi"
+            alt="Humanofi — The Human Token Market on Solana"
             width={120}
             height={26}
             priority
@@ -133,6 +133,21 @@ export default function Topbar() {
         </div>
 
         <div className="topbar__spacer" />
+
+        <Link
+          href="/how-it-works"
+          style={{
+            display: "flex", alignItems: "center", gap: 6,
+            fontSize: "0.82rem", fontWeight: 800, color: "var(--text-muted)",
+            textDecoration: "none", marginRight: 16, padding: "6px 12px",
+            borderRadius: "6px", transition: "background 0.15s, color 0.15s"
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; e.currentTarget.style.background = "var(--bg-elevated)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-muted)"; e.currentTarget.style.background = "transparent"; }}
+        >
+          <Info size={16} weight="bold" />
+          How It Works
+        </Link>
 
         <GlobalSearch />
 

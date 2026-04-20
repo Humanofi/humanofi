@@ -175,6 +175,14 @@ export default function ExplorePage() {
         <ScreenerSidebar filters={filters} onChange={setFilters} resultCount={filtered.length} />
 
         <div className="term-main">
+          {/* SEO H1 — visually compact but crawlable */}
+          <h1 style={{
+            fontSize: "0.7rem", fontWeight: 800, textTransform: "uppercase",
+            letterSpacing: "0.08em", color: "var(--text-muted)", margin: "0 0 8px",
+            padding: "8px 12px", borderBottom: "1px solid var(--border)",
+          }}>
+            Explore Human Tokens — Verified Creators on Solana
+          </h1>
           
           {/* Stats Bar */}
           <div className="term-stats">

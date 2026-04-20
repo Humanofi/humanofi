@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { usePerson } from "../layout";
+import { usePerson } from "../PersonLayout";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
 import { useAuthFetch } from "@/lib/authFetch";

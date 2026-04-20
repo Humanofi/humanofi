@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { usePerson } from "../layout";
+import { usePerson } from "../PersonLayout";
 import PublicPostCard from "@/components/public-feed/PublicPostCard";
 import type { PublicPost } from "@/components/public-feed/PublicPostCard";
 import { useHumanofi } from "@/hooks/useHumanofi";

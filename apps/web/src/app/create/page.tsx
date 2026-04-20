@@ -458,7 +458,7 @@ export default function CreatePage() {
       <main className="page">
         <div className="page__header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", flexWrap: "wrap", gap: 16 }}>
           <div>
-            <h1 className="page__title">Create your token</h1>
+            <h1 className="page__title">Create Your Personal Token on Solana</h1>
             <p className="page__subtitle">
               One token per human. Verified. Permanent. Impossible to duplicate.
             </p>

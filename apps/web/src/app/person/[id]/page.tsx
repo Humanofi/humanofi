@@ -13,7 +13,7 @@ import { useAuthFetch } from "@/lib/authFetch";
 import { formatUsd, solToUsd, spotPrice, estimateBuy, estimateSell } from "@/lib/price";
 import { PublicKey } from "@solana/web3.js";
 import { toast } from "sonner";
-import { usePerson } from "./layout";
+import { usePerson } from "./PersonLayout";
 import LatestPublicPost from "@/components/public-feed/LatestPublicPost";
 import { motion } from "framer-motion";
 import Image from "next/image";
@@ -395,7 +395,7 @@ export default function PersonPublicPage() {
             {/* ── Creator Fee Revenue Card ── */}
             <section className="dashboard__card" style={{ borderLeft: `3px solid #22c55e` }}>
               <div className="dashboard__card-header">
-                <Wallet size={16} weight="bold" /> Fee Revenue (2% of trades)
+                <Wallet size={16} weight="bold" /> Fee Revenue (3% Buy, 1% Sell)
               </div>
               <div className="dashboard__token-grid">
                 <div className="dashboard__token-stat">
@@ -452,7 +452,7 @@ export default function PersonPublicPage() {
 
               <div style={{ marginTop: 12, fontSize: "0.7rem", color: "var(--text-muted)", lineHeight: 1.5 }}>
                 <Lightning size={12} weight="bold" style={{ verticalAlign: "middle", marginRight: 4 }} />
-                You earn 2% of every buy/sell as SOL fees. Claimable every 15 days directly to your wallet.
+                You earn 3% of every buy and 1% of every sell as SOL fees. Claimable every 15 days directly to your wallet.
               </div>
             </section>
 

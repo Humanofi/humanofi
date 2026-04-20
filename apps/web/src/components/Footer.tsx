@@ -68,7 +68,7 @@ function TopFive() {
           <span className="footer__top5-rank">{i + 1}</span>
           <Image
             src={c.avatar_url || "/default-avatar.png"}
-            alt={c.display_name}
+            alt={`${c.display_name} — ${c.category} token on Humanofi`}
             width={22}
             height={22}
             style={{ objectFit: "cover", border: "1.5px solid var(--border)" }}
@@ -107,15 +107,16 @@ export default function Footer() {
           <div className="footer__col">
             <div className="footer__col-title">Protocol</div>
             <Link href="/" className="footer__link">Home</Link>
-            <Link href="/explore" className="footer__link">Explore</Link>
-            <Link href="/create" className="footer__link">Create Token</Link>
+            <Link href="/explore" className="footer__link">Explore Humans</Link>
+            <Link href="/create" className="footer__link">Create Your Token</Link>
+            <Link href="/leaderboard" className="footer__link">Leaderboard</Link>
           </div>
 
           <div className="footer__col">
-            <div className="footer__col-title">Resources</div>
-            <a href="https://github.com" className="footer__link" target="_blank" rel="noopener">GitHub</a>
-            <a href="#" className="footer__link">Documentation</a>
-            <a href="#" className="footer__link">Smart Contract</a>
+            <div className="footer__col-title">Learn</div>
+            <Link href="/how-it-works" className="footer__link">How It Works</Link>
+            <Link href="/for-creators" className="footer__link">For Creators</Link>
+            <Link href="/for-investors" className="footer__link">For Investors</Link>
           </div>
 
           <div className="footer__col">

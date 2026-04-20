@@ -433,7 +433,7 @@ export default function HomeFeedPage() {
                 <div className="hero__badge">⚡ THE HUMAN MARKET</div>
                 <h1 className="hero__title">
                   Invest in <span className="hero__highlight">people</span>.<br/>
-                  Not projects. Not memes.
+                  Not projects. Not memes. Real humans.
                 </h1>
                 <p className="hero__subtitle">
                   Humanofi is the first platform where you buy tokens representing real humans.
@@ -468,7 +468,7 @@ export default function HomeFeedPage() {
                   {/* Card 1 (Back left) */}
                   <div className="hero__card hero__card--bg2">
                     <div className="hero__card-top">
-                      <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80" alt="Creator" />
+                      <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80" alt="Mia R. — Developer token creator on Humanofi" />
                       <div>
                         <div className="hero__card-name">Mia R.</div>
                         <div className="hero__card-symbol">$MIA • Developer</div>
@@ -483,7 +483,7 @@ export default function HomeFeedPage() {
                   {/* Card 2 (Back right) */}
                   <div className="hero__card hero__card--bg1">
                     <div className="hero__card-top">
-                      <img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80" alt="Creator" />
+                      <img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80" alt="David K. — Founder token creator on Humanofi" />
                       <div>
                         <div className="hero__card-name">David K.</div>
                         <div className="hero__card-symbol">$DVK • Founder</div>
@@ -498,7 +498,7 @@ export default function HomeFeedPage() {
                   {/* Card 3 (Main front) */}
                   <div className="hero__card hero__card--main">
                     <div className="hero__card-top">
-                      <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80" alt="Creator" />
+                      <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80" alt="Sarah Chen — Designer token creator on Humanofi" />
                       <div>
                         <div className="hero__card-name">Sarah Chen</div>
                         <div className="hero__card-symbol">$CHEN • Designer</div>

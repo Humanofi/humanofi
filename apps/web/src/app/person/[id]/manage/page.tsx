@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { usePerson } from "../layout";
+import { usePerson } from "../PersonLayout";
 import { useHumanofi } from "@/hooks/useHumanofi";
 import { useAuthFetch } from "@/lib/authFetch";
 import { toast } from "sonner";
