@@ -1,16 +1,17 @@
 // ========================================
-// Humanofi — Unified Feed Homepage
+// Humanofi — Smart Feed V2 Homepage
 // ========================================
-// THE central page. One smart feed that merges:
-//   - Public posts (from creators)
-//   - Inner Circle posts (if user holds tokens → "My Humano")
-//   - Market signals (trades, whales, milestones, new creators)
-// Smart algo: score-based ranking with diversity interleaving.
+// THE central page. Proprietary "Human Pulse" algorithm:
+//   - Adaptive density: quiet/normal/high volume modes
+//   - Smart trade grouping by creator + time window
+//   - Score-based ranking with diversity interleaving
+//   - Supabase Realtime (live events + toast notifications)
+//   - Feed filters (Posts / My Humano / Market)
 // Infinite scroll with IntersectionObserver.
 
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import Topbar from "@/components/Topbar";
 import Footer from "@/components/Footer";
 import LiveTradeTicker from "@/components/LiveTradeTicker";
@@ -23,10 +24,11 @@ import TradeSignalGroup from "@/components/TradeSignalGroup";
 import { useHumanofi } from "@/hooks/useHumanofi";
 import { useAuthFetch } from "@/lib/authFetch";
 import { useSupabaseAuth } from "@/hooks/useSupabaseAuth";
+import { useRealtimeFeed } from "@/hooks/useRealtimeFeed";
 import { usePrivy } from "@privy-io/react-auth";
 import Link from "next/link";
 import Image from "next/image";
-import { ChartLineUp, Wallet, Lightning, Rocket, Shield, Users, Trophy, X, ArrowRight } from "@phosphor-icons/react";
+import { ChartLineUp, Wallet, Lightning, Rocket, Shield, Users, Trophy, X, ArrowRight, Funnel, Note, Lock, Pulse, HandWaving } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import MarketPulse from "@/components/MarketPulse";
@@ -38,37 +40,159 @@ type FeedItem =
   | { type: "event"; id: string; data: FeedEventData; score: number }
   | { type: "trade_group"; id: string; data: FeedEventData[]; score: number };
 
-// ── Smart Feed Algorithm ──
+// ── Feed filter types ──
+interface FeedFilters {
+  posts: boolean;   // Public posts from creators
+  circles: boolean; // Inner Circle posts (My Humano)
+  market: boolean;  // Market events (trades, whales, milestones)
+}
+
+// ═══════════════════════════════════════
+// HUMAN PULSE™ — Proprietary Feed Algorithm
+// ═══════════════════════════════════════
+// Adaptive density scoring invented for Humanofi.
+// Core concept: the feed intelligence scales with network activity.
+
 const ITEMS_PER_PAGE = 15;
 
-function computeScore(
+// ── Density Modes ──
+type DensityMode = "quiet" | "normal" | "high";
+
+function detectDensityMode(events: FeedEventData[]): DensityMode {
+  // Count events from the last hour
+  const oneHourAgo = Date.now() - 3600000;
+  const recentCount = events.filter(
+    (e) => new Date(e.created_at).getTime() > oneHourAgo
+  ).length;
+
+  if (recentCount < 20) return "quiet";
+  if (recentCount < 200) return "normal";
+  return "high";
+}
+
+// ── Human Pulse Score™ ──
+// Multi-signal scoring: time decay × engagement × significance × relevance × density
+function computeHumanPulse(
   createdAt: string,
+  density: DensityMode,
   opts: {
     isHeld?: boolean;
     hotScore?: number;
     reactionCount?: number;
-    eventSignificance?: number; // 0-1
+    eventType?: string;
+    solAmount?: number; // in lamports
   }
 ): number {
   const ageMs = Date.now() - new Date(createdAt).getTime();
   const ageHours = Math.max(0.1, ageMs / 3600000);
 
-  // Time decay: newer = higher, gravity 1.3
+  // 1. Time decay — gravity 1.3 (newer = much higher)
   const timeScore = 1 / Math.pow(ageHours + 1, 1.3);
 
-  // Relevance boost: if user holds the token → 3x
-  const relevanceMultiplier = opts.isHeld ? 3.0 : 1.0;
-
-  // Engagement: normalized reaction count or hot_score
+  // 2. Engagement signal — reactions and hot_score
   const engagement = Math.log2(1 + (opts.reactionCount || 0) + (opts.hotScore || 0) * 5);
 
-  // Event significance: whales/milestones get 2x, trades get 0.3x
-  const significance = opts.eventSignificance ?? 1.0;
+  // 3. Significance — varies by event type
+  let significance = 1.0;
+  const solInSol = (opts.solAmount || 0) / 1e9;
 
-  return (timeScore * 100 + engagement * 2) * relevanceMultiplier * significance;
+  switch (opts.eventType) {
+    case "whale_alert":
+      significance = 4.0;
+      break;
+    case "milestone":
+      significance = 3.5;
+      break;
+    case "new_creator":
+      significance = 3.0;
+      break;
+    case "holder_exit":
+      significance = 2.5;
+      break;
+    case "new_holder":
+      significance = 1.5;
+      break;
+    case "trade":
+      // Trade significance scales with SOL amount
+      if (solInSol >= 1.0) significance = 1.2;
+      else if (solInSol >= 0.5) significance = 0.8;
+      else if (solInSol >= 0.1) significance = 0.4;
+      else significance = 0.2;
+      break;
+    case "public_post":
+      significance = 2.0;
+      break;
+    case "circle_post":
+      significance = 2.5;
+      break;
+  }
+
+  // 4. Relevance — user holds the token → strong boost
+  const relevance = opts.isHeld ? 3.0 : 1.0;
+
+  // 5. Density multiplier — adaptive filtering
+  let densityMultiplier = 1.0;
+  if (density === "normal") {
+    // Normal mode: boost important signals, dampen noise
+    if (opts.eventType === "trade" && solInSol < 0.05) densityMultiplier = 0; // Filter tiny trades
+    else if (opts.eventType === "trade" && solInSol < 0.5) densityMultiplier = 0.3; // Dampen medium trades (will be grouped)
+    else if (["whale_alert", "milestone", "new_creator", "holder_exit"].includes(opts.eventType || "")) densityMultiplier = 1.5;
+  } else if (density === "high") {
+    // High mode: only highlights pass
+    if (opts.eventType === "trade" && solInSol < 0.1) densityMultiplier = 0; // Hard filter
+    else if (opts.eventType === "trade" && solInSol < 0.5) densityMultiplier = 0.1; // Almost zero — grouped
+    else if (opts.eventType === "new_holder") densityMultiplier = 0.2; // Dampen new_holder noise
+  }
+  // Quiet mode: densityMultiplier stays 1.0 — show everything
+
+  const rawScore = (timeScore * 100 + engagement * 3 + significance * 5) * relevance * densityMultiplier;
+  return rawScore;
 }
 
-// Helper: extract mint from any feed item for creator diversity
+// ── Smart Trade Grouping ──
+// Groups trades by creator within a 30-minute window
+function groupTradesByCreator(
+  trades: FeedEventData[],
+  density: DensityMode
+): { grouped: FeedItem[]; ungrouped: FeedEventData[] } {
+  const grouped: FeedItem[] = [];
+  const ungrouped: FeedEventData[] = [];
+
+  // Group by mint_address
+  const byMint: Record<string, FeedEventData[]> = {};
+  trades.forEach((t) => {
+    if (!byMint[t.mint_address]) byMint[t.mint_address] = [];
+    byMint[t.mint_address].push(t);
+  });
+
+  const minGroupSize = density === "high" ? 3 : density === "normal" ? 2 : 4;
+
+  for (const [, mintTrades] of Object.entries(byMint)) {
+    if (mintTrades.length >= minGroupSize) {
+      // Group these trades
+      const latestTime = Math.max(...mintTrades.map((t) => new Date(t.created_at).getTime()));
+      const totalVol = mintTrades.reduce((s, t) => s + Number((t.data as Record<string, unknown>).sol_amount || 0), 0);
+      const score = computeHumanPulse(new Date(latestTime).toISOString(), density, {
+        eventType: "trade",
+        solAmount: totalVol / mintTrades.length, // avg per trade
+      });
+      grouped.push({
+        type: "trade_group",
+        id: `tg-${mintTrades[0].mint_address}-${latestTime}`,
+        data: mintTrades,
+        score,
+      });
+    } else {
+      // Not enough to group — keep individual
+      ungrouped.push(...mintTrades);
+    }
+  }
+
+  return { grouped, ungrouped };
+}
+
+// ── Diversity Interleaving ──
+// Prevents monotonous feeds: max 2 consecutive same-type or same-creator
 function getMint(item: FeedItem): string {
   switch (item.type) {
     case "public_post": return (item.data as PublicPost).creator_mint;
@@ -80,14 +204,12 @@ function getMint(item: FeedItem): string {
 
 function interleaveWithDiversity(items: FeedItem[]): FeedItem[] {
   const sorted = [...items].sort((a, b) => b.score - a.score);
-
   const result: FeedItem[] = [];
   const deferred: FeedItem[] = [];
 
   for (const item of sorted) {
     const lastTwo = result.slice(-2);
-    // Block if 2 consecutive same type OR same creator
-    const sameType = lastTwo.length === 2 && lastTwo.every(i => i.type === item.type);
+    const sameType = lastTwo.length === 2 && lastTwo.every((i) => i.type === item.type);
     const sameMint = result.length > 0 && getMint(result[result.length - 1]) === getMint(item);
 
     if (sameType || sameMint) {
@@ -96,7 +218,7 @@ function interleaveWithDiversity(items: FeedItem[]): FeedItem[] {
       result.push(item);
       // Try to inject deferred
       if (deferred.length > 0) {
-        const idx = deferred.findIndex(d => {
+        const idx = deferred.findIndex((d) => {
           const lastItem = result[result.length - 1];
           return d.type !== lastItem.type && getMint(d) !== getMint(lastItem);
         });
@@ -111,16 +233,115 @@ function interleaveWithDiversity(items: FeedItem[]): FeedItem[] {
   return result;
 }
 
+// ═══════════════════════════════════════
+// WELCOME MODAL (extracted component)
+// ═══════════════════════════════════════
+function WelcomeModal({ onClose }: { onClose: () => void }) {
+  return (
+    <motion.div
+      className="welcome-modal__overlay"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+    >
+      <motion.div
+        className="welcome-modal"
+        initial={{ opacity: 0, scale: 0.9, y: 30 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 30 }}
+        transition={{ type: "spring", damping: 25, stiffness: 300 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button className="welcome-modal__close" onClick={onClose}>
+          <X size={18} weight="bold" />
+        </button>
+        <div className="welcome-modal__header">
+          <div className="welcome-modal__icon"><HandWaving size={32} weight="fill" color="var(--accent)" /></div>
+          <h2>Welcome to Humanofi</h2>
+          <p>The first market where <strong>humans are the asset</strong>.</p>
+        </div>
+        <div className="welcome-modal__steps">
+          <div className="welcome-modal__step">
+            <div className="welcome-modal__step-num">1</div>
+            <div>
+              <strong>Discover humans</strong>
+              <p>Browse verified creators — entrepreneurs, artists, developers. Each has their own token.</p>
+            </div>
+          </div>
+          <div className="welcome-modal__step">
+            <div className="welcome-modal__step-num">2</div>
+            <div>
+              <strong>Back the ones you believe in</strong>
+              <p>Buy their token with SOL. Your purchase is a public vote of confidence — visible to everyone.</p>
+            </div>
+          </div>
+          <div className="welcome-modal__step">
+            <div className="welcome-modal__step-num">3</div>
+            <div>
+              <strong>Join their Inner Circle</strong>
+              <p>As a holder, unlock exclusive content, private updates, and direct access to the creator.</p>
+            </div>
+          </div>
+          <div className="welcome-modal__step">
+            <div className="welcome-modal__step-num">4</div>
+            <div>
+              <strong>Build your identity</strong>
+              <p>Your portfolio defines who you are. Selling is a public act. Every position tells a story.</p>
+            </div>
+          </div>
+        </div>
+        <button className="welcome-modal__go" onClick={onClose}>
+          <Rocket size={18} weight="fill" />
+          Let&apos;s go!
+        </button>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ═══════════════════════════════════════
+// SKELETON LOADING
+// ═══════════════════════════════════════
+function FeedSkeleton() {
+  return (
+    <div className="feed-skeleton">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="feed-skeleton__card">
+          <div className="feed-skeleton__header">
+            <div className="feed-skeleton__avatar feed-skeleton__shimmer" />
+            <div className="feed-skeleton__lines">
+              <div className="feed-skeleton__line feed-skeleton__line--short feed-skeleton__shimmer" />
+              <div className="feed-skeleton__line feed-skeleton__line--tiny feed-skeleton__shimmer" />
+            </div>
+          </div>
+          <div className="feed-skeleton__body">
+            <div className="feed-skeleton__line feed-skeleton__shimmer" />
+            <div className="feed-skeleton__line feed-skeleton__line--medium feed-skeleton__shimmer" />
+          </div>
+          <div className="feed-skeleton__footer">
+            <div className="feed-skeleton__pill feed-skeleton__shimmer" />
+            <div className="feed-skeleton__pill feed-skeleton__shimmer" />
+            <div className="feed-skeleton__pill feed-skeleton__shimmer" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════
+// MAIN PAGE COMPONENT
+// ═══════════════════════════════════════
 export default function HomeFeedPage() {
   const { walletAddress } = useHumanofi();
   const { user: humanofiUser } = useSupabaseAuth();
-  const { authenticated, login } = usePrivy();
+  const { authenticated, login, ready } = usePrivy();
   const authFetch = useAuthFetch();
+  const realtime = useRealtimeFeed();
 
-  // Welcome modal for first-time users
+  // Welcome modal
   const [showWelcomeModal, setShowWelcomeModal] = useState(false);
-
-  // Detect first connection
   useEffect(() => {
     if (authenticated && walletAddress) {
       const key = `humanofi_welcomed_${walletAddress}`;
@@ -130,6 +351,13 @@ export default function HomeFeedPage() {
       }
     }
   }, [authenticated, walletAddress]);
+
+  // Feed filters
+  const [feedFilters, setFeedFilters] = useState<FeedFilters>({
+    posts: true,
+    circles: true,
+    market: true,
+  });
 
   // All raw data
   const [publicPosts, setPublicPosts] = useState<PublicPost[]>([]);
@@ -156,7 +384,9 @@ export default function HomeFeedPage() {
   const fetchPublicFeed = useCallback(async () => {
     try {
       setPublicLoading(true);
-      const res = await authFetch("/api/public-posts?limit=50");
+      const headers: Record<string, string> = {};
+      if (walletAddress) headers["x-wallet-address"] = walletAddress;
+      const res = await fetch("/api/public-posts?limit=50", { headers });
       if (res.ok) {
         const data = await res.json();
         setPublicPosts(data.posts || []);
@@ -166,8 +396,7 @@ export default function HomeFeedPage() {
     } finally {
       setPublicLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [walletAddress]);
 
   // ── Fetch market events ──
   const fetchFeedEvents = useCallback(async () => {
@@ -205,30 +434,11 @@ export default function HomeFeedPage() {
         id: p.id, content: (p.content as string) || "", post_type: (p.post_type as string) || "text",
         metadata: p.metadata || {}, image_urls: p.image_urls || [], media_urls: p.media_urls || [],
         is_pinned: p.is_pinned || false, creator_mint: p.creator_mint,
-        created_at: p.created_at, reactions: {}, userReactions: [], reply_count: 0,
+        created_at: p.created_at,
+        reactions: p.reactions || {},
+        userReactions: p.userReactions || [],
+        reply_count: 0,
         creatorInfo: (p.creator_tokens as Record<string, unknown>) || { display_name: "Unknown", avatar_url: null },
-      }));
-
-      // Fetch reactions
-      const mintGroups: Record<string, string[]> = {};
-      fetched.forEach((p: Record<string, unknown>) => {
-        const mint = p.creator_mint as string;
-        if (!mintGroups[mint]) mintGroups[mint] = [];
-        mintGroups[mint].push(p.id as string);
-      });
-      await Promise.all(Object.entries(mintGroups).map(async ([mint, ids]) => {
-        try {
-          const rr = await authFetch(`/api/inner-circle/${mint}/reactions?postIds=${ids.join(",")}`);
-          if (rr.ok) {
-            const rd = await rr.json();
-            fetched.forEach((p: Record<string, unknown>) => {
-              if (ids.includes(p.id as string)) {
-                p.reactions = rd.reactions?.[p.id as string] || {};
-                p.userReactions = rd.userReactions?.[p.id as string] || [];
-              }
-            });
-          }
-        } catch { /* silent */ }
       }));
 
       setCirclePosts(fetched as typeof circlePosts);
@@ -251,12 +461,31 @@ export default function HomeFeedPage() {
     else setCircleLoading(false);
   }, [authenticated, walletAddress, fetchCirclesFeed]);
 
+  // ── Merge realtime events ──
+  const handleMergeRealtime = useCallback(() => {
+    const { events, posts } = realtime.flushPending();
+    if (events.length > 0) {
+      setFeedEvents(prev => [...events, ...prev]);
+    }
+    if (posts.length > 0) {
+      setPublicPosts(prev => [...posts, ...prev]);
+    }
+  }, [realtime]);
+
+  // Auto-merge after 30s
+  useEffect(() => {
+    if (realtime.pendingCount === 0) return;
+    const timer = setTimeout(handleMergeRealtime, 30000);
+    return () => clearTimeout(timer);
+  }, [realtime.pendingCount, handleMergeRealtime]);
+
+
   // ── Infinite scroll observer ──
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries[0]?.isIntersecting) {
-          setVisibleCount(prev => prev + ITEMS_PER_PAGE);
+          setVisibleCount((prev) => prev + ITEMS_PER_PAGE);
         }
       },
       { threshold: 0.1 }
@@ -314,119 +543,147 @@ export default function HomeFeedPage() {
   }, [circlePosts]);
 
   // ═══════════════════════════════════════
-  // BUILD THE SMART FEED
+  // BUILD THE SMART FEED (Human Pulse™)
   // ═══════════════════════════════════════
-  const buildSmartFeed = (): FeedItem[] => {
+  const allItems = useMemo(() => {
+    const density = detectDensityMode(feedEvents);
     const items: FeedItem[] = [];
     const seenIds = new Set<string>();
 
-    // 1. Public posts → scored
-    publicPosts.forEach(post => {
-      if (seenIds.has(post.id)) return;
-      seenIds.add(post.id);
+    // 1. Public posts → scored (if filter active)
+    if (feedFilters.posts) {
+      publicPosts.forEach((post) => {
+        if (seenIds.has(post.id)) return;
+        seenIds.add(post.id);
 
-      const totalReactions = Object.values(post.reactions || {}).reduce((s, n) => s + (n as number), 0);
-      const score = computeScore(post.created_at, {
-        isHeld: heldMints.has(post.creator_mint),
-        hotScore: (post as unknown as Record<string, unknown>).hot_score as number || 0,
-        reactionCount: totalReactions,
-      });
-
-      items.push({ type: "public_post", id: `pub-${post.id}`, data: post, score });
-    });
-
-    // 2. Circle posts → boosted (skip posts already shown as public)
-    circlePosts.forEach(post => {
-      if (seenIds.has(post.id)) return;
-      seenIds.add(post.id);
-
-      // If this post was also published publicly, skip it here —
-      // it will already appear as a public_post in the feed
-      const meta = (post.metadata || {}) as Record<string, unknown>;
-      if (meta.is_public) return;
-
-      const totalReactions = Object.values(post.reactions || {}).reduce((s, n) => s + (n as number), 0);
-      const score = computeScore(post.created_at, {
-        isHeld: true, // Always held (that's why it's in circles)
-        reactionCount: totalReactions,
-      });
-
-      items.push({ type: "circle_post", id: `circle-${post.id}`, data: post, score });
-    });
-
-    // 3. Market events — Filter noise:
-    //    - Skip trade events < 0.05 SOL (noise)
-    //    - Skip trades that already have a whale_alert (avoid duplication)
-    const significantTypes = ["whale_alert", "milestone", "new_creator"];
-    const tradeEvents: FeedEventData[] = [];
-    const whaleAlertTxs = new Set<string>();
-
-    // First pass: collect whale alert wallet+mint combos
-    feedEvents.forEach(event => {
-      if (event.event_type === "whale_alert") {
-        whaleAlertTxs.add(`${event.wallet_address}:${event.mint_address}`);
-      }
-    });
-
-    feedEvents.forEach(event => {
-      if (seenIds.has(event.id)) return;
-      seenIds.add(event.id);
-
-      if (event.event_type === "trade") {
-        const d = event.data || {};
-        const solAmt = Number(d.sol_amount || 0);
-        // Skip tiny trades (< 0.05 SOL = 50M lamports)
-        if (solAmt < 50_000_000) return;
-        // Skip if a whale_alert already covers this exact trade
-        const key = `${event.wallet_address}:${event.mint_address}`;
-        if (whaleAlertTxs.has(key)) return;
-
-        tradeEvents.push(event);
-      } else {
-        const significance = significantTypes.includes(event.event_type)
-          ? (event.event_type === "whale_alert" ? 3.0 : 2.0)
-          : 0.4;
-
-        const score = computeScore(event.created_at, {
-          isHeld: heldMints.has(event.mint_address),
-          eventSignificance: significance,
+        const totalReactions = Object.values(post.reactions || {}).reduce((s, n) => s + (n as number), 0);
+        const score = computeHumanPulse(post.created_at, density, {
+          isHeld: heldMints.has(post.creator_mint),
+          hotScore: post.hot_score || 0,
+          reactionCount: totalReactions,
+          eventType: "public_post",
         });
 
-        items.push({ type: "event", id: `evt-${event.id}`, data: event, score });
-      }
-    });
+        if (score > 0) {
+          items.push({ type: "public_post", id: `pub-${post.id}`, data: post, score });
+        }
+      });
+    }
 
-    // Group trades — max 2 groups total to avoid noise
-    const maxGroups = 2;
-    for (let i = 0; i < Math.min(tradeEvents.length, maxGroups * 3); i += 3) {
-      const group = tradeEvents.slice(i, i + 3);
-      const latestTime = Math.max(...group.map(t => new Date(t.created_at).getTime()));
-      const avgScore = computeScore(new Date(latestTime).toISOString(), { eventSignificance: 0.4 });
-      items.push({ type: "trade_group", id: `trades-${i}`, data: group, score: avgScore });
+    // 2. Circle posts → boosted (if filter active)
+    if (feedFilters.circles) {
+      circlePosts.forEach((post) => {
+        if (seenIds.has(post.id)) return;
+        seenIds.add(post.id);
+
+        const meta = (post.metadata || {}) as Record<string, unknown>;
+        if (meta.is_public) return; // Skip — already in public posts
+
+        const totalReactions = Object.values(post.reactions || {}).reduce((s, n) => s + (n as number), 0);
+        const score = computeHumanPulse(post.created_at, density, {
+          isHeld: true,
+          reactionCount: totalReactions,
+          eventType: "circle_post",
+        });
+
+        if (score > 0) {
+          items.push({ type: "circle_post", id: `circle-${post.id}`, data: post, score });
+        }
+      });
+    }
+
+    // 3. Market events (if filter active)
+    if (feedFilters.market) {
+      const significantTypes = ["whale_alert", "milestone", "new_creator", "holder_exit"];
+      const tradeEvents: FeedEventData[] = [];
+      const whaleAlertTxs = new Set<string>();
+
+      // First pass: collect whale alert combos
+      feedEvents.forEach((event) => {
+        if (event.event_type === "whale_alert") {
+          whaleAlertTxs.add(`${event.wallet_address}:${event.mint_address}`);
+        }
+      });
+
+      feedEvents.forEach((event) => {
+        if (seenIds.has(event.id)) return;
+        seenIds.add(event.id);
+
+        const d = event.data || {};
+        const solAmount = Number((d as Record<string, unknown>).sol_amount || 0);
+
+        if (event.event_type === "trade") {
+          // Skip if whale_alert already covers this
+          const key = `${event.wallet_address}:${event.mint_address}`;
+          if (whaleAlertTxs.has(key)) return;
+
+          // Score the trade — density filter may zero it out
+          const tradeScore = computeHumanPulse(event.created_at, density, {
+            isHeld: heldMints.has(event.mint_address),
+            eventType: "trade",
+            solAmount,
+          });
+
+          if (tradeScore > 0) {
+            tradeEvents.push(event);
+          }
+        } else {
+          const score = computeHumanPulse(event.created_at, density, {
+            isHeld: heldMints.has(event.mint_address),
+            eventType: event.event_type,
+            solAmount,
+          });
+
+          if (score > 0 || significantTypes.includes(event.event_type)) {
+            items.push({ type: "event", id: `evt-${event.id}`, data: event, score: Math.max(score, 0.1) });
+          }
+        }
+      });
+
+      // Smart trade grouping by creator
+      const { grouped, ungrouped } = groupTradesByCreator(tradeEvents, density);
+      items.push(...grouped);
+
+      // Add ungrouped trades individually
+      ungrouped.forEach((t) => {
+        const d = t.data || {};
+        const score = computeHumanPulse(t.created_at, density, {
+          isHeld: heldMints.has(t.mint_address),
+          eventType: "trade",
+          solAmount: Number((d as Record<string, unknown>).sol_amount || 0),
+        });
+        items.push({ type: "event", id: `evt-${t.id}`, data: t, score });
+      });
     }
 
     // Apply diversity interleaving
     return interleaveWithDiversity(items);
-  };
+  }, [publicPosts, circlePosts, feedEvents, heldMints, feedFilters]);
 
-  const allItems = buildSmartFeed();
   const visibleItems = allItems.slice(0, visibleCount);
   const hasMore = visibleCount < allItems.length;
   const isLoading = publicLoading && feedEventsLoading;
+
+  // Filter counters
+  const filterCounts = useMemo(() => ({
+    posts: publicPosts.length,
+    circles: circlePosts.length,
+    market: feedEvents.length,
+  }), [publicPosts, circlePosts, feedEvents]);
 
   return (
     <>
       <div className="halftone-bg" />
       <Topbar />
 
-      {/* Live Trade Ticker — always on top */}
-      <LiveTradeTicker />
+      {/* Live Trade Ticker */}
+      <LiveTradeTicker latestRealtimeEvent={realtime.latestTickerEvent} />
 
       <main style={{ paddingBottom: 100 }}>
         {/* ═══════════════════════════════════
             HERO — Non-connected users
             ═══════════════════════════════════ */}
-        {!authenticated && (
+        {ready && !authenticated && (
           <section className="hero">
             <div className="hero__inner">
               <div className="hero__content">
@@ -520,116 +777,95 @@ export default function HomeFeedPage() {
             WELCOME MODAL — First-time connection
             ═══════════════════════════════════ */}
         <AnimatePresence>
-          {showWelcomeModal && (
-            <motion.div
-              className="welcome-modal__overlay"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowWelcomeModal(false)}
-            >
-              <motion.div
-                className="welcome-modal"
-                initial={{ opacity: 0, scale: 0.9, y: 30 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 30 }}
-                transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button className="welcome-modal__close" onClick={() => setShowWelcomeModal(false)}>
-                  <X size={18} weight="bold" />
-                </button>
-
-                <div className="welcome-modal__header">
-                  <div className="welcome-modal__icon">👋</div>
-                  <h2>Welcome to Humanofi</h2>
-                  <p>The first market where <strong>humans are the asset</strong>.</p>
-                </div>
-
-                <div className="welcome-modal__steps">
-                  <div className="welcome-modal__step">
-                    <div className="welcome-modal__step-num">1</div>
-                    <div>
-                      <strong>Discover humans</strong>
-                      <p>Browse verified creators — entrepreneurs, artists, developers. Each has their own token.</p>
-                    </div>
-                  </div>
-                  <div className="welcome-modal__step">
-                    <div className="welcome-modal__step-num">2</div>
-                    <div>
-                      <strong>Back the ones you believe in</strong>
-                      <p>Buy their token with SOL. Your purchase is a public vote of confidence — visible to everyone.</p>
-                    </div>
-                  </div>
-                  <div className="welcome-modal__step">
-                    <div className="welcome-modal__step-num">3</div>
-                    <div>
-                      <strong>Join their Inner Circle</strong>
-                      <p>As a holder, unlock exclusive content, private updates, and direct access to the creator.</p>
-                    </div>
-                  </div>
-                  <div className="welcome-modal__step">
-                    <div className="welcome-modal__step-num">4</div>
-                    <div>
-                      <strong>Build your identity</strong>
-                      <p>Your portfolio defines who you are. Selling is a public act. Every position tells a story.</p>
-                    </div>
-                  </div>
-                </div>
-
-                <button className="welcome-modal__go" onClick={() => setShowWelcomeModal(false)}>
-                  <Rocket size={18} weight="fill" />
-                  Let&apos;s go!
-                </button>
-              </motion.div>
-            </motion.div>
-          )}
+          {showWelcomeModal && <WelcomeModal onClose={() => setShowWelcomeModal(false)} />}
         </AnimatePresence>
 
-        {/* Feed header */}
+        {/* Feed header + filters */}
         <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 24px 0" }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 10,
-            paddingBottom: 16, borderBottom: "3px solid var(--border)",
-            marginBottom: 24
-          }}>
-            <Lightning size={22} weight="fill" color="var(--accent)" />
-            <h1 style={{
-              fontSize: "1.1rem", fontWeight: 900, textTransform: "uppercase",
-              letterSpacing: "0.04em", margin: 0, color: "var(--text)"
-            }}>
-              Live Feed
-            </h1>
-            <span style={{
-              fontSize: "0.65rem", fontWeight: 800, color: "var(--accent)",
-              background: "var(--accent-bg)", padding: "2px 8px",
-              textTransform: "uppercase", letterSpacing: "0.05em"
-            }}>
-              Smart
-            </span>
+          <div className="feed-header">
+            <div className="feed-header__left">
+              <Lightning size={22} weight="fill" color="var(--accent)" />
+              <h1 className="feed-header__title">Live Feed</h1>
+              {realtime.isConnected && (
+                <span className="feed-header__live-dot" title="Connected to realtime" />
+              )}
+            </div>
+
+            {/* ── Feed Filters — Humanofi style ── */}
+            <div className="feed-filters">
+              <button
+                className={`feed-filters__chip ${feedFilters.posts ? "feed-filters__chip--active" : ""}`}
+                onClick={() => setFeedFilters(f => ({ ...f, posts: !f.posts }))}
+              >
+                <Note size={14} weight="bold" />
+                <span>Posts</span>
+                {filterCounts.posts > 0 && <span className="feed-filters__count">{filterCounts.posts}</span>}
+              </button>
+              {authenticated && (
+                <button
+                  className={`feed-filters__chip feed-filters__chip--circle ${feedFilters.circles ? "feed-filters__chip--active" : ""}`}
+                  onClick={() => setFeedFilters(f => ({ ...f, circles: !f.circles }))}
+                >
+                  <Lock size={14} weight="bold" />
+                  <span>My Humano</span>
+                  {filterCounts.circles > 0 && <span className="feed-filters__count">{filterCounts.circles}</span>}
+                </button>
+              )}
+              <button
+                className={`feed-filters__chip ${feedFilters.market ? "feed-filters__chip--active" : ""}`}
+                onClick={() => setFeedFilters(f => ({ ...f, market: !f.market }))}
+              >
+                <Pulse size={14} weight="bold" />
+                <span>Market</span>
+                {filterCounts.market > 0 && <span className="feed-filters__count">{filterCounts.market}</span>}
+              </button>
+            </div>
           </div>
         </div>
 
+        {/* Realtime toast — "X new updates" */}
+        <AnimatePresence>
+          {realtime.pendingCount > 0 && (
+            <motion.button
+              className="feed-new-toast"
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              onClick={handleMergeRealtime}
+            >
+              <Lightning size={14} weight="fill" />
+              {realtime.pendingCount} new update{realtime.pendingCount > 1 ? "s" : ""}
+            </motion.button>
+          )}
+        </AnimatePresence>
+
         {/* Main feed layout */}
-        {/* Market Pulse — live stats (sets market context) */}
         <div className="unified-feed">
           {/* LEFT: Feed stream */}
           <div className="unified-feed__main">
             <MarketPulse />
+
             {/* Feed content */}
             {isLoading ? (
-              <div className="feed-loading">
-                <div className="feed-loading__pulse" />
-                <span>Loading your feed...</span>
-              </div>
+              <FeedSkeleton />
             ) : visibleItems.length === 0 ? (
-              <div style={{ padding: "64px 24px", textAlign: "center", border: "2px dashed var(--border)" }}>
+              <div className="feed-empty">
                 <ChartLineUp size={32} style={{ margin: "0 auto", opacity: 0.5 }} />
-                <h3 style={{ fontSize: "1.2rem", fontWeight: 800, marginTop: 16 }}>Network is quiet</h3>
-                <p style={{ color: "var(--text-muted)", fontWeight: 700, marginTop: 8 }}>No activity yet. Be the first!</p>
-                <Link href="/explore" className="btn-solid" style={{ marginTop: 16, display: "inline-block" }}>
-                  Explore Marketplace
-                </Link>
+                <h3 className="feed-empty__title">
+                  {!feedFilters.posts && !feedFilters.circles && !feedFilters.market
+                    ? "All filters are off"
+                    : "Network is quiet"}
+                </h3>
+                <p className="feed-empty__text">
+                  {!feedFilters.posts && !feedFilters.circles && !feedFilters.market
+                    ? "Turn on at least one filter to see your feed."
+                    : "No activity yet. Be the first to participate."}
+                </p>
+                {feedFilters.market && (
+                  <Link href="/explore" className="btn-solid" style={{ marginTop: 16, display: "inline-block" }}>
+                    Explore Marketplace
+                  </Link>
+                )}
               </div>
             ) : (
               <>
@@ -639,7 +875,13 @@ export default function HomeFeedPage() {
                       case "public_post": {
                         const post = item.data as PublicPost;
                         return (
-                          <div key={item.id} className="feed-stream__item" style={{ animationDelay: `${Math.min(idx * 30, 300)}ms` }}>
+                          <motion.div
+                            key={item.id}
+                            className="feed-stream__item"
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.2, delay: Math.min(idx * 0.03, 0.3) }}
+                          >
                             <PublicPostCard
                               post={post}
                               walletAddress={walletAddress || undefined}
@@ -648,14 +890,20 @@ export default function HomeFeedPage() {
                               onUpdate={handlePublicUpdate}
                               onReactionChange={handlePublicReactionChange}
                             />
-                          </div>
+                          </motion.div>
                         );
                       }
                       case "circle_post": {
                         const post = item.data as typeof circlePosts[number];
                         return (
-                          <div key={item.id} className="feed-stream__item circle-post-wrapper" style={{ animationDelay: `${Math.min(idx * 30, 300)}ms` }}>
-                            <div className="circle-post-badge">🔒 My Humano</div>
+                          <motion.div
+                            key={item.id}
+                            className="feed-stream__item circle-post-wrapper"
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.2, delay: Math.min(idx * 0.03, 0.3) }}
+                          >
+                            <div className="circle-post-badge"><Lock size={12} weight="bold" /> My Humano</div>
                             <PostCard
                               post={post}
                               creatorName={post.creatorInfo.display_name}
@@ -669,29 +917,47 @@ export default function HomeFeedPage() {
                               userVotes={userVotes}
                               userRsvps={userRsvps}
                             />
-                          </div>
+                          </motion.div>
                         );
                       }
                       case "event": {
                         const evt = item.data as FeedEventData;
                         if (evt.event_type === "new_creator") {
                           return (
-                            <div key={item.id} className="feed-stream__item" style={{ animationDelay: `${Math.min(idx * 30, 300)}ms` }}>
+                            <motion.div
+                              key={item.id}
+                              className="feed-stream__item"
+                              initial={{ opacity: 0, y: 12 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.2, delay: Math.min(idx * 0.03, 0.3) }}
+                            >
                               <NewCreatorCard event={evt} />
-                            </div>
+                            </motion.div>
                           );
                         }
                         return (
-                          <div key={item.id} className="feed-stream__item" style={{ animationDelay: `${Math.min(idx * 30, 300)}ms` }}>
+                          <motion.div
+                            key={item.id}
+                            className="feed-stream__item"
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.2, delay: Math.min(idx * 0.03, 0.3) }}
+                          >
                             <FeedEventCard event={evt} />
-                          </div>
+                          </motion.div>
                         );
                       }
                       case "trade_group": {
                         return (
-                          <div key={item.id} className="feed-stream__item" style={{ animationDelay: `${Math.min(idx * 30, 300)}ms` }}>
+                          <motion.div
+                            key={item.id}
+                            className="feed-stream__item"
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.2, delay: Math.min(idx * 0.03, 0.3) }}
+                          >
                             <TradeSignalGroup trades={item.data as FeedEventData[]} />
-                          </div>
+                          </motion.div>
                         );
                       }
                       default:
@@ -718,7 +984,7 @@ export default function HomeFeedPage() {
           </div>
 
           {/* RIGHT: Sidebar */}
-          <FeedSidebar walletAddress={walletAddress} authenticated={authenticated} />
+          <FeedSidebar walletAddress={walletAddress} authenticated={authenticated} refreshKey={realtime.sidebarRefreshKey} />
         </div>
       </main>
 

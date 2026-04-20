@@ -46,6 +46,37 @@ export default function ReactionBar({
       if (loading) return;
       setLoading(emoji);
 
+      // ── Optimistic update: update UI IMMEDIATELY ──
+      const prevReactions = { ...reactions };
+      const prevUserReactions = [...userReactions];
+      const isSameEmoji = userReactions.includes(emoji);
+      const hasExisting = userReactions.length > 0;
+
+      const optimisticReactions = { ...reactions };
+      let optimisticUserReactions: string[];
+
+      if (isSameEmoji) {
+        // Toggle OFF
+        optimisticReactions[emoji] = Math.max(0, (optimisticReactions[emoji] || 0) - 1);
+        if (optimisticReactions[emoji] === 0) delete optimisticReactions[emoji];
+        optimisticUserReactions = [];
+      } else if (hasExisting) {
+        // Replace: decrement old, increment new
+        const oldEmoji = userReactions[0];
+        optimisticReactions[oldEmoji] = Math.max(0, (optimisticReactions[oldEmoji] || 0) - 1);
+        if (optimisticReactions[oldEmoji] === 0) delete optimisticReactions[oldEmoji];
+        optimisticReactions[emoji] = (optimisticReactions[emoji] || 0) + 1;
+        optimisticUserReactions = [emoji];
+      } else {
+        // Add new
+        optimisticReactions[emoji] = (optimisticReactions[emoji] || 0) + 1;
+        optimisticUserReactions = [emoji];
+      }
+
+      // Apply optimistic state INSTANTLY
+      onReactionChange(postId, optimisticReactions, optimisticUserReactions);
+
+      // ── Fire API call in background ──
       try {
         const res = await authFetch(`/api/inner-circle/${mintAddress}/reactions`, {
           method: "POST",
@@ -53,38 +84,20 @@ export default function ReactionBar({
           body: JSON.stringify({ postId, emoji }),
         });
 
-        if (res.ok) {
-          const { action, previousEmoji } = await res.json();
-          const newReactions = { ...reactions };
-          let newUserReactions = [...userReactions];
-
-          if (action === "added") {
-            newReactions[emoji] = (newReactions[emoji] || 0) + 1;
-            newUserReactions = [emoji];
-          } else if (action === "replaced" && previousEmoji) {
-            // Decrement old, increment new
-            newReactions[previousEmoji] = Math.max(0, (newReactions[previousEmoji] || 0) - 1);
-            if (newReactions[previousEmoji] === 0) delete newReactions[previousEmoji];
-            newReactions[emoji] = (newReactions[emoji] || 0) + 1;
-            newUserReactions = [emoji];
-          } else {
-            // removed
-            newReactions[emoji] = Math.max(0, (newReactions[emoji] || 0) - 1);
-            if (newReactions[emoji] === 0) delete newReactions[emoji];
-            newUserReactions = [];
-          }
-
-          onReactionChange(postId, newReactions, newUserReactions);
-        } else {
+        if (!res.ok) {
+          // Rollback on error
+          onReactionChange(postId, prevReactions, prevUserReactions);
           toast.error("Failed to react");
         }
       } catch {
+        // Rollback on network error
+        onReactionChange(postId, prevReactions, prevUserReactions);
         toast.error("Failed to react");
       } finally {
         setLoading(null);
       }
     },
-    [postId, mintAddress, reactions, userReactions, onReactionChange, loading]
+    [postId, mintAddress, reactions, userReactions, onReactionChange, loading, authFetch]
   );
 
   // Show existing reactions as pills + an add button

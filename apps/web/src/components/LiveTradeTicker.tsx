@@ -1,9 +1,15 @@
+// ========================================
+// Humanofi — Live Trade Ticker (Realtime V2)
+// ========================================
+// Horizontal scrolling ticker showing live market events.
+// Now receives realtime events from the parent page via props.
+
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Lightning } from "@phosphor-icons/react";
+import { Lightning, ArrowUpRight, ArrowDownRight, Pulse, Users, Trophy, RocketLaunch, SignOut } from "@phosphor-icons/react";
 import { getDefaultDisplayName } from "@/lib/identicon";
 
 interface FeedEvent {
@@ -18,6 +24,10 @@ interface FeedEvent {
     avatar_url: string | null;
     category: string;
   };
+}
+
+interface LiveTradeTickerProps {
+  latestRealtimeEvent?: FeedEvent | null;
 }
 
 function timeAgo(dateStr: string): string {
@@ -50,7 +60,7 @@ function walletShort(addr: string | null): string {
   return getDefaultDisplayName(addr);
 }
 
-function eventToLabel(e: FeedEvent): { icon: string; text: string; color: string } {
+function eventToLabel(e: FeedEvent): { icon: React.ReactNode; text: string; color: string } {
   const name = e.creator_tokens?.display_name?.split(" ")[0] || "???";
   const wallet = walletShort(e.wallet_address);
   const d = e.data || {};
@@ -61,7 +71,7 @@ function eventToLabel(e: FeedEvent): { icon: string; text: string; color: string
       const sol = formatSolShort(Number(d.sol_amount) || 0);
       const tokens = formatTokensShort(Number(d.token_amount) || 0);
       return {
-        icon: isBuy ? "🟢" : "🔴",
+        icon: isBuy ? <ArrowUpRight size={14} weight="bold" /> : <ArrowDownRight size={14} weight="bold" />,
         text: isBuy
           ? `${wallet} bought ${tokens} $${name} for ${sol}`
           : `${wallet} sold ${tokens} $${name} for ${sol}`,
@@ -72,41 +82,48 @@ function eventToLabel(e: FeedEvent): { icon: string; text: string; color: string
       const sol = formatSolShort(Number(d.sol_amount) || 0);
       const isBuy = (d.trade_type as string) !== "sell";
       return {
-        icon: "🐋",
+        icon: <Pulse size={14} weight="fill" />,
         text: isBuy
           ? `Whale Alert: ${wallet} → ${sol} into $${name}`
-          : `🚨 Whale Sell: ${wallet} dumped ${sol} from $${name}`,
-        color: isBuy ? "#f59e0b" : "#ef4444",
+          : `Whale Sell: ${wallet} dumped ${sol} from $${name}`,
+        color: isBuy ? "var(--accent)" : "#ef4444",
       };
     }
     case "new_holder":
       return {
-        icon: "👋",
+        icon: <Users size={14} weight="fill" />,
         text: `New holder joined $${name}`,
         color: "#3b82f6",
       };
     case "milestone": {
       const milestone = (d.milestone as number) || 0;
       return {
-        icon: "🏆",
+        icon: <Trophy size={14} weight="fill" />,
         text: `$${name} reached ${milestone} holders!`,
         color: "#a855f7",
       };
     }
     case "new_creator":
       return {
-        icon: "🚀",
+        icon: <RocketLaunch size={14} weight="fill" />,
         text: `${name} just launched their token!`,
         color: "#06b6d4",
       };
+    case "holder_exit":
+      return {
+        icon: <SignOut size={14} weight="bold" />,
+        text: `A holder exited $${name}`,
+        color: "#ef4444",
+      };
     default:
-      return { icon: "⚡", text: `Activity on $${name}`, color: "var(--text-muted)" };
+      return { icon: <Lightning size={14} weight="fill" />, text: `Activity on $${name}`, color: "var(--text-muted)" };
   }
 }
 
-export default function LiveTradeTicker() {
+export default function LiveTradeTicker({ latestRealtimeEvent }: LiveTradeTickerProps) {
   const [events, setEvents] = useState<FeedEvent[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const maxItems = useRef(30); // Keep max 30 items for performance
 
   // Fetch initial events
   useEffect(() => {
@@ -118,6 +135,23 @@ export default function LiveTradeTicker() {
       })
       .catch(() => setLoaded(true));
   }, []);
+
+  // Inject realtime event at the start
+  useEffect(() => {
+    if (!latestRealtimeEvent) return;
+
+    setEvents((prev) => {
+      // Avoid duplicates
+      if (prev.some(e => e.id === latestRealtimeEvent.id)) return prev;
+
+      const updated = [latestRealtimeEvent, ...prev];
+      // Trim to max items
+      if (updated.length > maxItems.current) {
+        return updated.slice(0, maxItems.current);
+      }
+      return updated;
+    });
+  }, [latestRealtimeEvent]);
 
   if (!loaded || events.length === 0) return null;
 

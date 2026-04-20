@@ -17,7 +17,7 @@ import type { BondingCurveChartHandle } from "@/components/BondingCurveChart";
 import { PublicKey } from "@solana/web3.js";
 import { getPersonById, Person } from "@/lib/mockData";
 import {
-  Heartbeat, TrendUp, TrendDown,
+  Heartbeat, TrendUp, TrendDown, Crown, Medal, Star,
 } from "@phosphor-icons/react";
 
 // -- Token Color Palette --
@@ -482,11 +482,15 @@ export default function PersonLayout({
                   <div className="position-banner__label">Your Rank</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <span className={`holder-rank ${holderRank.rank <= 3 ? 'holder-rank--top' : ''}`}>
-                      {holderRank.rank <= 3 ? '👑' : '🏅'} Believer #{holderRank.rank}
+                      {holderRank.rank <= 3
+                        ? <Crown size={14} weight="fill" color="var(--accent)" style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                        : <Medal size={14} weight="fill" color="var(--text-muted)" style={{ verticalAlign: 'middle', marginRight: 4 }} />
+                      }
+                      Believer #{holderRank.rank}
                       <span style={{ opacity: 0.6, fontSize: "0.65rem" }}> / {holderRank.totalHolders}</span>
                     </span>
                     {holderRank.is_early_believer && (
-                      <span className="early-badge">⭐ Early Believer</span>
+                      <span className="early-badge"><Star size={10} weight="fill" style={{ verticalAlign: 'middle', marginRight: 2 }} /> Early Believer</span>
                     )}
                   </div>
                 </div>

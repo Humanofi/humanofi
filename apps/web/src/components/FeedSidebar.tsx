@@ -1,15 +1,16 @@
 // ========================================
-// Humanofi — Feed Sidebar
+// Humanofi — Feed Sidebar (Smart Refresh V2)
 // ========================================
 // Sticky sidebar for the unified feed homepage.
 // 3 sections: Top Humans, Just Launched, Your Ranks.
+// Smart refresh: polling every 60s + external trigger via refreshKey prop.
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { TrendUp, Rocket, Crown } from "@phosphor-icons/react";
+import { TrendUp, RocketLaunch, Crown, Medal, Star } from "@phosphor-icons/react";
 
 interface SidebarCreator {
   mint_address: string;
@@ -30,15 +31,20 @@ interface HolderRank {
 interface FeedSidebarProps {
   walletAddress: string | null;
   authenticated: boolean;
+  /** Increment this to force a sidebar data refresh (e.g. on realtime events) */
+  refreshKey?: number;
 }
 
-export default function FeedSidebar({ walletAddress, authenticated }: FeedSidebarProps) {
+const POLLING_INTERVAL = 60_000; // 60 seconds
+
+export default function FeedSidebar({ walletAddress, authenticated, refreshKey = 0 }: FeedSidebarProps) {
   const [topMovers, setTopMovers] = useState<SidebarCreator[]>([]);
   const [recentCreators, setRecentCreators] = useState<SidebarCreator[]>([]);
   const [holderRanks, setHolderRanks] = useState<HolderRank[]>([]);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch sidebar data
-  useEffect(() => {
+  // ── Fetch sidebar data (Top Humans + Just Launched) ──
+  const fetchSidebarData = () => {
     fetch("/api/creators?limit=5&sort=holder_count")
       .then(r => r.json())
       .then(data => setTopMovers(data.creators || []))
@@ -48,46 +54,41 @@ export default function FeedSidebar({ walletAddress, authenticated }: FeedSideba
       .then(r => r.json())
       .then(data => setRecentCreators(data.creators || []))
       .catch(() => {});
+  };
+
+  // ── Fetch user's holder ranks ──
+  const fetchRanks = () => {
+    if (!walletAddress || !authenticated) return;
+    fetch(`/api/holder-ranks?wallet=${walletAddress}`)
+      .then(r => r.json())
+      .then(data => setHolderRanks((data.ranks || []).sort((a: HolderRank, b: HolderRank) => a.rank - b.rank)))
+      .catch(() => {});
+  };
+
+  // Initial fetch + smart polling
+  useEffect(() => {
+    fetchSidebarData();
+
+    // Smart polling every 60s
+    intervalRef.current = setInterval(fetchSidebarData, POLLING_INTERVAL);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
   }, []);
 
-  // Fetch user's holder ranks
+  // Re-fetch when refreshKey changes (triggered by realtime events)
   useEffect(() => {
-    if (!walletAddress || !authenticated) return;
+    if (refreshKey > 0) {
+      fetchSidebarData();
+      fetchRanks();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refreshKey]);
 
-    const fetchRanks = async () => {
-      try {
-        // Get user's positions
-        const res = await fetch(`/api/portfolio?wallet=${walletAddress}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const positions = data.positions || [];
-
-        // Fetch rank for each position
-        const ranks: HolderRank[] = [];
-        await Promise.all(
-          positions.slice(0, 5).map(async (pos: { mint_address: string; display_name: string }) => {
-            try {
-              const r = await fetch(`/api/holders/${pos.mint_address}?limit=1&wallet=${walletAddress}`);
-              if (r.ok) {
-                const d = await r.json();
-                if (d.myRank) {
-                  ranks.push({
-                    mint: pos.mint_address,
-                    name: pos.display_name,
-                    rank: d.myRank.rank,
-                    total: d.totalHolders || 0,
-                    is_early_believer: d.myRank.is_early_believer,
-                  });
-                }
-              }
-            } catch { /* ignore */ }
-          })
-        );
-        setHolderRanks(ranks.sort((a, b) => a.rank - b.rank));
-      } catch { /* ignore */ }
-    };
-
+  // Fetch ranks on auth change
+  useEffect(() => {
     fetchRanks();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletAddress, authenticated]);
 
   return (
@@ -101,7 +102,7 @@ export default function FeedSidebar({ walletAddress, authenticated }: FeedSideba
         <div className="feed-sidebar__list">
           {topMovers.map((c, i) => (
             <Link key={c.mint_address} href={`/person/${c.mint_address}`} className="feed-sidebar__item">
-              <span className="feed-sidebar__rank" style={{ color: i === 0 ? "#f59e0b" : "var(--text-muted)" }}>
+              <span className="feed-sidebar__rank" style={{ color: i === 0 ? "var(--accent)" : "var(--text-muted)" }}>
                 #{i + 1}
               </span>
               <Image
@@ -126,7 +127,7 @@ export default function FeedSidebar({ walletAddress, authenticated }: FeedSideba
       {/* Just Launched */}
       <div className="feed-sidebar__section feed-sidebar__section--alt">
         <div className="feed-sidebar__header">
-          <Rocket size={18} weight="bold" color="var(--accent)" />
+          <RocketLaunch size={18} weight="bold" color="var(--accent)" />
           <h2 className="feed-sidebar__title">Just Launched</h2>
         </div>
         <div className="feed-sidebar__list">
@@ -153,20 +154,27 @@ export default function FeedSidebar({ walletAddress, authenticated }: FeedSideba
       {authenticated && holderRanks.length > 0 && (
         <div className="feed-sidebar__section">
           <div className="feed-sidebar__header">
-            <Crown size={18} weight="bold" color="#f59e0b" />
+            <Crown size={18} weight="bold" color="var(--accent)" />
             <h2 className="feed-sidebar__title">Your Ranks</h2>
           </div>
           <div className="feed-sidebar__list">
             {holderRanks.map((r) => (
               <Link key={r.mint} href={`/person/${r.mint}`} className="feed-sidebar__item">
                 <span className={`feed-sidebar__rank ${r.rank <= 3 ? "feed-sidebar__rank--top" : ""}`}>
-                  {r.rank <= 3 ? "👑" : "🏅"} #{r.rank}
+                  {r.rank <= 3
+                    ? <Crown size={14} weight="fill" color="var(--accent)" style={{ verticalAlign: "middle" }} />
+                    : <Medal size={14} weight="fill" color="var(--text-muted)" style={{ verticalAlign: "middle" }} />
+                  } #{r.rank}
                 </span>
                 <div className="feed-sidebar__item-info">
                   <div className="feed-sidebar__item-name">${r.name}</div>
                   <div className="feed-sidebar__item-meta">
                     out of {r.total}
-                    {r.is_early_believer && <span className="feed-sidebar__early"> ⭐ Early</span>}
+                    {r.is_early_believer && (
+                      <span className="feed-sidebar__early">
+                        <Star size={10} weight="fill" style={{ verticalAlign: "middle", marginRight: 2 }} /> Early
+                      </span>
+                    )}
                   </div>
                 </div>
               </Link>

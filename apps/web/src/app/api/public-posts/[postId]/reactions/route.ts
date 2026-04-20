@@ -55,21 +55,33 @@ export async function POST(
     if (existing) {
       if (existing.emoji === emoji) {
         // Same emoji → remove
-        await supabase.from("public_post_reactions").delete().eq("id", existing.id);
+        const { error: delErr } = await supabase.from("public_post_reactions").delete().eq("id", existing.id);
+        if (delErr) {
+          console.error("Public reaction delete error:", delErr);
+          return NextResponse.json({ error: "Failed to remove reaction" }, { status: 500 });
+        }
         action = "removed";
       } else {
         // Different emoji → replace
         previousEmoji = existing.emoji;
-        await supabase.from("public_post_reactions").update({ emoji }).eq("id", existing.id);
+        const { error: updErr } = await supabase.from("public_post_reactions").update({ emoji }).eq("id", existing.id);
+        if (updErr) {
+          console.error("Public reaction update error:", updErr);
+          return NextResponse.json({ error: "Failed to update reaction" }, { status: 500 });
+        }
         action = "replaced";
       }
     } else {
       // No reaction → add
-      await supabase.from("public_post_reactions").insert({
+      const { error: insErr } = await supabase.from("public_post_reactions").insert({
         post_id: postId,
         wallet_address: auth.walletAddress,
         emoji,
       });
+      if (insErr) {
+        console.error("Public reaction insert error:", insErr);
+        return NextResponse.json({ error: "Failed to add reaction" }, { status: 500 });
+      }
       action = "added";
     }
 

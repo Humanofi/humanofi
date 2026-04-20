@@ -92,11 +92,19 @@ export default function PostCard({
   const [saving, setSaving] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showArchiveWarning, setShowArchiveWarning] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const authFetch = useAuthFetch();
 
   const allMedia = [...(post.image_urls || []), ...(post.media_urls || [])];
   const ytMatch = post.content.match(YOUTUBE_REGEX);
   const ytVideoId = (post.metadata as any)?.youtube_id || (ytMatch ? ytMatch[1] : null);
+
+  // Content truncation
+  const TRUNCATE_LENGTH = 280;
+  const shouldTruncate = post.content.length > TRUNCATE_LENGTH;
+  const displayContent = shouldTruncate && !isExpanded 
+    ? post.content.slice(0, TRUNCATE_LENGTH) + "..." 
+    : post.content;
 
   const images = allMedia.filter((u) => /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(u));
   const videos = allMedia.filter((u) => /\.(mp4|webm|mov)$/i.test(u));
@@ -283,16 +291,35 @@ export default function PostCard({
             ) : (
               post.content && post.content !== "Shared media" && (
                 post.post_type === "announcement" ? (
-                  <div style={{ background: "#ffc800", border: "2px solid var(--border)", boxShadow: "6px 6px 0px var(--border)", padding: "24px", margin: "16px 0" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, fontWeight: 900, textTransform: "uppercase", fontSize: "1.2rem", letterSpacing: "1px" }}>
-                      <Megaphone size={26} weight="fill" /> Official Announcement
+                  <div style={{ background: "var(--accent-bg)", border: "2px solid var(--accent)", boxShadow: "4px 4px 0px var(--accent)", padding: "24px", margin: "16px 0" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16, fontWeight: 900, textTransform: "uppercase", fontSize: "1.1rem", letterSpacing: "1px", color: "var(--accent)" }}>
+                      <Megaphone size={24} weight="fill" /> Official Announcement
                     </div>
-                    <div style={{ fontSize: "1.1rem", lineHeight: 1.6, fontWeight: 700 }}>
-                      {post.content}
+                    <div style={{ fontSize: "1.05rem", lineHeight: 1.6, fontWeight: 700, color: "var(--text)" }}>
+                      {displayContent}
                     </div>
+                    {shouldTruncate && (
+                      <button 
+                        className="pub-post__read-more"
+                        onClick={(e) => { e.preventDefault(); setIsExpanded(!isExpanded); }}
+                        style={{ color: "var(--accent)", marginTop: "12px", borderBottom: "2px solid var(--accent)" }}
+                      >
+                        {isExpanded ? "Show less" : "Read more"}
+                      </button>
+                    )}
                   </div>
                 ) : (
-                  <div className="ic-post__content">{post.content}</div>
+                  <div className="ic-post__content-wrapper">
+                    <div className="ic-post__content">{displayContent}</div>
+                    {shouldTruncate && (
+                      <button 
+                        className="pub-post__read-more"
+                        onClick={(e) => { e.preventDefault(); setIsExpanded(!isExpanded); }}
+                      >
+                        {isExpanded ? "Show less" : "Read more"}
+                      </button>
+                    )}
+                  </div>
                 )
               )
             )}

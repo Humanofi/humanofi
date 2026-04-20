@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trash, DotsThreeVertical, Users, PencilSimple, FloppyDisk, X } from "@phosphor-icons/react";
 import MediaPlayer from "../inner-circle/MediaPlayer";
@@ -79,6 +79,7 @@ export default function PublicPostCard({
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(post.content);
   const [saving, setSaving] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const authFetch = useAuthFetch();
 
   const ytMatch = post.content.match(YOUTUBE_REGEX);
@@ -87,38 +88,69 @@ export default function PublicPostCard({
   const totalReactions = Object.values(post.reactions).reduce((a, b) => a + b, 0);
   const activeEmojis = REACTIONS.filter((r) => (post.reactions[r.emoji] || 0) > 0);
 
+  // Content truncation
+  const TRUNCATE_LENGTH = 280;
+  const shouldTruncate = post.content.length > TRUNCATE_LENGTH;
+  const displayContent = shouldTruncate && !isExpanded 
+    ? post.content.slice(0, TRUNCATE_LENGTH) + "..." 
+    : post.content;
+
   const handleReact = useCallback(async (emoji: string) => {
     if (!walletAddress) { toast.error("Connect wallet to react"); return; }
     if (loading) return;
     setLoading(emoji);
+    setShowPicker(false);
+
+    // ── Optimistic update: update UI IMMEDIATELY ──
+    const prevReactions = { ...post.reactions };
+    const prevUserReactions = [...post.userReactions];
+    const hasExisting = post.userReactions.length > 0;
+    const isSameEmoji = post.userReactions.includes(emoji);
+
+    const optimisticReactions = { ...post.reactions };
+    let optimisticUserReactions: string[];
+
+    if (isSameEmoji) {
+      // Toggle OFF
+      optimisticReactions[emoji] = Math.max(0, (optimisticReactions[emoji] || 0) - 1);
+      if (optimisticReactions[emoji] === 0) delete optimisticReactions[emoji];
+      optimisticUserReactions = [];
+    } else if (hasExisting) {
+      // Replace: decrement old, increment new
+      const oldEmoji = post.userReactions[0];
+      optimisticReactions[oldEmoji] = Math.max(0, (optimisticReactions[oldEmoji] || 0) - 1);
+      if (optimisticReactions[oldEmoji] === 0) delete optimisticReactions[oldEmoji];
+      optimisticReactions[emoji] = (optimisticReactions[emoji] || 0) + 1;
+      optimisticUserReactions = [emoji];
+    } else {
+      // Add new
+      optimisticReactions[emoji] = (optimisticReactions[emoji] || 0) + 1;
+      optimisticUserReactions = [emoji];
+    }
+
+    // Apply optimistic state INSTANTLY
+    onReactionChange(post.id, optimisticReactions, optimisticUserReactions);
+
+    // ── Fire API call in background ──
     try {
       const res = await authFetch(`/api/public-posts/${post.id}/reactions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ emoji }),
       });
-      if (res.ok) {
-        const { action, previousEmoji } = await res.json();
-        const newReactions = { ...post.reactions };
-        let newUserReactions: string[];
-        if (action === "added") {
-          newReactions[emoji] = (newReactions[emoji] || 0) + 1;
-          newUserReactions = [emoji];
-        } else if (action === "replaced" && previousEmoji) {
-          newReactions[previousEmoji] = Math.max(0, (newReactions[previousEmoji] || 0) - 1);
-          if (newReactions[previousEmoji] === 0) delete newReactions[previousEmoji];
-          newReactions[emoji] = (newReactions[emoji] || 0) + 1;
-          newUserReactions = [emoji];
-        } else {
-          newReactions[emoji] = Math.max(0, (newReactions[emoji] || 0) - 1);
-          if (newReactions[emoji] === 0) delete newReactions[emoji];
-          newUserReactions = [];
-        }
-        onReactionChange(post.id, newReactions, newUserReactions);
+      if (!res.ok) {
+        // Rollback on error
+        onReactionChange(post.id, prevReactions, prevUserReactions);
+        toast.error("Failed to react");
       }
-    } catch { toast.error("Failed to react"); }
-    finally { setLoading(null); setShowPicker(false); }
-  }, [post, walletAddress, loading, onReactionChange]);
+    } catch {
+      // Rollback on network error
+      onReactionChange(post.id, prevReactions, prevUserReactions);
+      toast.error("Failed to react");
+    } finally {
+      setLoading(null);
+    }
+  }, [post, walletAddress, loading, onReactionChange, authFetch]);
 
   const handleDelete = async () => {
     if (!onDelete || !walletAddress) return;
@@ -194,9 +226,20 @@ export default function PublicPostCard({
 
         <div className="pub-post__right">
           {post.holderCount > 0 && (
-            <div className="pub-post__market-chip" title={`${post.holderCount} holders`}>
-              <Users size={11} weight="bold" />
-              <span>{post.holderCount}</span>
+            <div className="pub-post__holder-stack" title={`${post.holderCount} holders`}>
+              <div className="pub-post__holder-avatars">
+                {Array.from({ length: Math.min(post.holderCount, 3) }).map((_, i) => {
+                  const colors = ["#22c55e", "#f59e0b", "#3b82f6"];
+                  return (
+                    <div 
+                      key={i} 
+                      className="pub-post__holder-dot" 
+                      style={{ backgroundColor: colors[i], zIndex: 10 - i }} 
+                    />
+                  );
+                })}
+              </div>
+              <span>{post.holderCount} {post.holderCount === 1 ? 'Backer' : 'Backers'}</span>
             </div>
           )}
 
@@ -236,7 +279,20 @@ export default function PublicPostCard({
           </div>
         </div>
       ) : (
-        <div className="pub-post__content">{post.content}</div>
+        <div className="pub-post__content-wrapper">
+          <div className="pub-post__content">{displayContent}</div>
+          {shouldTruncate && (
+            <button 
+              className="pub-post__read-more"
+              onClick={(e) => {
+                e.preventDefault();
+                setIsExpanded(!isExpanded);
+              }}
+            >
+              {isExpanded ? "Show less" : "Read more"}
+            </button>
+          )}
+        </div>
       )}
 
       {/* YouTube */}

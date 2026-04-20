@@ -115,12 +115,31 @@ export async function GET(request: NextRequest) {
     let userRsvps: Record<string, string> = {};
 
     if (postIds.length > 0) {
-      const [{ data: votes }, { data: rsvps }] = await Promise.all([
+      const [{ data: votes }, { data: rsvps }, { data: allReactions }] = await Promise.all([
         supabase.from("poll_votes").select("post_id, option_index").in("post_id", postIds).eq("wallet_address", walletAddress),
         supabase.from("event_rsvps").select("post_id, status").in("post_id", postIds).eq("wallet_address", walletAddress),
+        supabase.from("inner_circle_reactions").select("post_id, emoji, wallet_address").in("post_id", postIds),
       ]);
       if (votes) votes.forEach((v) => (userVotes[v.post_id] = v.option_index));
       if (rsvps) rsvps.forEach((r) => (userRsvps[r.post_id] = r.status));
+
+      // Aggregate reactions per post + identify current user's reactions
+      const reactionsMap: Record<string, Record<string, number>> = {};
+      const userReactionsMap: Record<string, string[]> = {};
+      (allReactions || []).forEach((r: { post_id: string; emoji: string; wallet_address: string }) => {
+        if (!reactionsMap[r.post_id]) reactionsMap[r.post_id] = {};
+        reactionsMap[r.post_id][r.emoji] = (reactionsMap[r.post_id][r.emoji] || 0) + 1;
+        if (r.wallet_address === walletAddress) {
+          if (!userReactionsMap[r.post_id]) userReactionsMap[r.post_id] = [];
+          userReactionsMap[r.post_id].push(r.emoji);
+        }
+      });
+
+      // Inject reactions into enriched posts
+      enrichedPosts.forEach((p: Record<string, unknown>) => {
+        p.reactions = reactionsMap[p.id as string] || {};
+        p.userReactions = userReactionsMap[p.id as string] || [];
+      });
     }
 
     return NextResponse.json({ posts: enrichedPosts, userVotes, userRsvps, balanceByMint, isCreator });

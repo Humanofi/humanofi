@@ -229,7 +229,7 @@ This makes tokens **untransferable outside of Humanofi** — wallet-to-wallet se
 
 - **Framework:** Next.js 16.2.3 (App Router)
 - **React:** 19.2.4
-- **Styling:** Vanilla CSS with design tokens (`globals.css` — ~10,000 lines)
+- **Styling:** Modular CSS architecture — design tokens, layout, widgets, profile, pages split into dedicated files under `styles/`
 - **Font:** Plus Jakarta Sans (Google Fonts, weights 400–800)
 - **Auth:** Privy (`@privy-io/react-auth` v3) — supports wallet, email, social login
 - **Charts:** Lightweight Charts v5

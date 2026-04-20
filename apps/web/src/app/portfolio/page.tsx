@@ -13,7 +13,7 @@ import { PublicKey } from "@solana/web3.js";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   TrendUp, TrendDown, Wallet, ChartLineUp, Users,
-  ArrowRight, Heartbeat, Coin, Lightning,
+  ArrowRight, Heartbeat, Coin, Lightning, Crown,
 } from "@phosphor-icons/react";
 
 /* ─── Color Palette ─── */
@@ -308,10 +308,11 @@ export default function PortfolioPage() {
             <span>{positions.length} Assets</span>
           </div>
           <div className="port-allocation__bar">
-            {sortedPositions.map((pos) => {
+            {sortedPositions.map((pos, i) => {
               const allocationStr = totalValueSol > 0 ? ((pos.value_sol || 0) / totalValueSol) * 100 : 0;
               if (allocationStr === 0) return null;
-              const color = TOKEN_COLORS[pos.token_color] || TOKEN_COLORS.blue;
+              const colorColors = Object.values(TOKEN_COLORS);
+              const color = colorColors[i % colorColors.length];
               return (
                 <div 
                   key={`alloc-${pos.mint_address}`}
@@ -323,10 +324,11 @@ export default function PortfolioPage() {
             })}
           </div>
           <div className="port-allocation__legend">
-            {sortedPositions.slice(0, 8).map((pos) => {
+            {sortedPositions.slice(0, 8).map((pos, i) => {
               const allocationStr = totalValueSol > 0 ? ((pos.value_sol || 0) / totalValueSol) * 100 : 0;
               if (allocationStr < 1) return null;
-              const color = TOKEN_COLORS[pos.token_color] || TOKEN_COLORS.blue;
+              const colorColors = Object.values(TOKEN_COLORS);
+              const color = colorColors[i % colorColors.length];
               return (
                 <div key={`legend-${pos.mint_address}`} className="port-allocation__legend-item">
                   <div className="port-allocation__legend-color" style={{ background: color }} />
@@ -360,7 +362,8 @@ export default function PortfolioPage() {
           <div className="term-tbody">
             <AnimatePresence>
               {sortedPositions.map((pos, i) => {
-                const color = TOKEN_COLORS[pos.token_color] || TOKEN_COLORS.blue;
+                const colorColors = Object.values(TOKEN_COLORS);
+                const color = colorColors[i % colorColors.length];
                 const tokens = pos.balance / 1e6;
                 const pnlSol = pos.pnl_sol ?? 0;
                 const pnlPct = pos.pnl_pct ?? 0;
@@ -385,7 +388,7 @@ export default function PortfolioPage() {
                         <div className="screener-row__identity-info">
                           <div className="screener-row__name-line">
                             <span className="screener-row__name">{pos.display_name}</span>
-                            {rank && rank <= 3 && <span title={`Rank ${rank}`}>👑</span>}
+                            {rank && rank <= 3 && <span title={`Rank ${rank}`}><Crown size={14} weight="fill" color="var(--accent)" style={{ verticalAlign: "middle" }} /></span>}
                           </div>
                           <div className="screener-row__tag-line">
                             <span style={{ textTransform: "uppercase" }}>{pos.category}</span>

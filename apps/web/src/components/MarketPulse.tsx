@@ -3,13 +3,14 @@
 // ========================================
 // Shows live market stats at the top of the feed.
 // Gives instant context: "this is a market, not a social network"
+// Uses dedicated /api/market-pulse for accurate server-side aggregation.
 
 "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Lightning, TrendUp, Coins, Users } from "@phosphor-icons/react";
+import { Lightning, TrendUp, Coins, Users, Fire } from "@phosphor-icons/react";
 
 interface MarketStats {
   totalTrades24h: number;
@@ -29,58 +30,10 @@ export default function MarketPulse() {
   useEffect(() => {
     async function fetchPulse() {
       try {
-        const res = await fetch("/api/feed-events?limit=50&type=trade");
+        const res = await fetch("/api/market-pulse");
         if (!res.ok) return;
         const data = await res.json();
-        const events = data.events || [];
-
-        const now = Date.now();
-        const oneDayAgo = now - 24 * 60 * 60 * 1000;
-
-        // Filter to last 24h
-        const recent = events.filter(
-          (e: Record<string, unknown>) =>
-            new Date(e.created_at as string).getTime() > oneDayAgo
-        );
-
-        // Total trades & volume
-        let totalVol = 0;
-        const creatorMap: Record<string, { count: number; name: string; avatar: string | null; mint: string }> = {};
-
-        recent.forEach((e: Record<string, unknown>) => {
-          const d = (e.data || {}) as Record<string, unknown>;
-          totalVol += Number(d.sol_amount || 0) / 1e9;
-
-          const ct = e.creator_tokens as Record<string, unknown> | undefined;
-          const mint = e.mint_address as string;
-          if (!creatorMap[mint]) {
-            creatorMap[mint] = {
-              count: 0,
-              name: (ct?.display_name as string) || "Unknown",
-              avatar: (ct?.avatar_url as string | null) || null,
-              mint,
-            };
-          }
-          creatorMap[mint].count++;
-        });
-
-        // Top creator by trade count
-        const sorted = Object.values(creatorMap).sort((a, b) => b.count - a.count);
-        const top = sorted[0] || null;
-
-        setStats({
-          totalTrades24h: recent.length,
-          totalVolume24h: totalVol,
-          topCreator: top
-            ? {
-                mint_address: top.mint,
-                display_name: top.name,
-                avatar_url: top.avatar,
-                tradeCount: top.count,
-              }
-            : null,
-          activeCreators: Object.keys(creatorMap).length,
-        });
+        setStats(data);
       } catch {
         /* silent */
       }
@@ -133,7 +86,7 @@ export default function MarketPulse() {
             <span className="market-pulse__top-name">
               ${stats.topCreator.display_name}
             </span>
-            <span className="market-pulse__top-label">🔥 trending</span>
+            <span className="market-pulse__top-label"><Fire size={12} weight="fill" style={{ display: 'inline', verticalAlign: 'middle', marginTop: -2 }} /> trending</span>
           </Link>
         )}
       </div>

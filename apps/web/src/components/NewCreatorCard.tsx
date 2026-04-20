@@ -6,6 +6,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { RocketLaunch } from "@phosphor-icons/react";
 import type { FeedEventData } from "./FeedEventCard";
 
 interface NewCreatorCardProps {
@@ -34,7 +35,10 @@ export default function NewCreatorCard({ event }: NewCreatorCardProps) {
       className="new-creator-card"
       style={{ textDecoration: "none", color: "inherit" }}
     >
-      <div className="new-creator-card__badge">🚀 NEW HUMAN</div>
+      <div className="new-creator-card__badge">
+        <RocketLaunch size={12} weight="bold" style={{ display: "inline", verticalAlign: "middle", marginRight: 4, marginTop: -2 }} />
+        NEW HUMAN
+      </div>
       <div className="new-creator-card__inner">
         <div className="new-creator-card__avatar">
           <Image

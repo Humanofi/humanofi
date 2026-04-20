@@ -253,6 +253,42 @@ export async function POST(request: NextRequest) {
         });
       }
 
+      // ── Holder Exit Detection (90%+ sold = exit signal) ──
+      if (tradeType === "sell") {
+        const { data: holderRow } = await supabase
+          .from("token_holders")
+          .select("balance, is_early_believer, created_at")
+          .eq("mint_address", mintAddress)
+          .eq("wallet_address", walletAddress)
+          .single();
+
+        if (holderRow) {
+          // Check if remaining balance is <= 10% of what they ever had
+          // (balance near zero after sell = exit)
+          const remainingBalance = Math.max(0, holderRow.balance || 0);
+          const justSold = tokenAmount || 0;
+          const previousBalance = remainingBalance + justSold;
+          const percentRemaining = previousBalance > 0 ? (remainingBalance / previousBalance) * 100 : 0;
+
+          if (percentRemaining <= 10 && previousBalance > 0) {
+            // Calculate how long they held
+            const holdStart = new Date(holderRow.created_at).getTime();
+            const heldDays = Math.floor((Date.now() - holdStart) / 86400000);
+
+            await supabase.from("feed_events").insert({
+              event_type: "holder_exit",
+              mint_address: mintAddress,
+              wallet_address: walletAddress,
+              data: {
+                was_early_believer: holderRow.is_early_believer || false,
+                held_for_days: heldDays,
+                sol_amount: solAmount,
+              },
+            });
+          }
+        }
+      }
+
       // 4. Recalculate holder ranks for this mint
       await supabase.rpc("recalc_holder_ranks", { p_mint: mintAddress });
 

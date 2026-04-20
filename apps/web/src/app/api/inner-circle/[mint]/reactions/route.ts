@@ -35,22 +35,34 @@ export async function POST(
     if (existing) {
       if (existing.emoji === emoji) {
         // Same emoji → toggle OFF (remove)
-        await supabase.from("inner_circle_reactions").delete().eq("id", existing.id);
+        const { error: delErr } = await supabase.from("inner_circle_reactions").delete().eq("id", existing.id);
+        if (delErr) {
+          console.error("IC reaction delete error:", delErr);
+          return NextResponse.json({ error: "Failed to remove reaction" }, { status: 500 });
+        }
         return NextResponse.json({ action: "removed", emoji });
       } else {
         // Different emoji → replace
-        await supabase.from("inner_circle_reactions")
+        const { error: updErr } = await supabase.from("inner_circle_reactions")
           .update({ emoji })
           .eq("id", existing.id);
+        if (updErr) {
+          console.error("IC reaction update error:", updErr);
+          return NextResponse.json({ error: "Failed to update reaction" }, { status: 500 });
+        }
         return NextResponse.json({ action: "replaced", emoji, previousEmoji: existing.emoji });
       }
     } else {
       // No reaction yet → add
-      await supabase.from("inner_circle_reactions").insert({
+      const { error: insErr } = await supabase.from("inner_circle_reactions").insert({
         post_id: postId,
         wallet_address: walletAddress,
         emoji,
       });
+      if (insErr) {
+        console.error("IC reaction insert error:", insErr);
+        return NextResponse.json({ error: "Failed to add reaction" }, { status: 500 });
+      }
       return NextResponse.json({ action: "added", emoji });
     }
   } catch (error) {

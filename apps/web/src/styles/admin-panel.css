@@ -641,53 +641,76 @@
   color: var(--text-muted);
 }
 
-/* ── Feed Event Cards ── */
+/* ── Feed Event Cards (Premium Brutalist) ── */
 .feed-event {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
+  gap: 16px;
+  padding: 16px 20px;
   background: var(--bg);
-  border: 1.5px solid var(--border-light);
+  border: 2px solid var(--border);
+  box-shadow: 4px 4px 0px var(--border-light);
   text-decoration: none;
   color: var(--text);
-  transition: all 0.15s;
+  transition: all var(--dur) var(--ease);
+  margin-bottom: 12px;
 }
 
 .feed-event:hover {
-  border-color: var(--border);
-  box-shadow: 3px 3px 0px var(--border);
   transform: translate(-1px, -1px);
+  box-shadow: 6px 6px 0px var(--border);
 }
 
 .feed-event--whale {
   border-color: #f59e0b;
-  border-width: 2px;
+  box-shadow: 4px 4px 0px #f59e0b;
   background: #fffbeb;
+  animation: pulse-border 2s infinite;
 }
 
 .feed-event--whale-sell {
   border-color: #ef4444;
+  box-shadow: 4px 4px 0px #ef4444;
   background: #fef2f2;
+}
+
+@keyframes pulse-border {
+  0% { box-shadow: 4px 4px 0px #f59e0b; }
+  50% { box-shadow: 6px 6px 0px rgba(245, 158, 11, 0.4); }
+  100% { box-shadow: 4px 4px 0px #f59e0b; }
 }
 
 .feed-event--milestone {
   border-color: #a855f7;
-  border-width: 2px;
+  box-shadow: 4px 4px 0px #a855f7;
   background: #faf5ff;
 }
 
+.feed-event--exit {
+  border-style: dashed;
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.04);
+}
+
 .feed-event__avatar {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border: 2px solid var(--border);
+  box-shadow: 2px 2px 0px var(--border);
   object-fit: cover;
   flex-shrink: 0;
 }
 
-.feed-event__icon {
-  font-size: 1.1rem;
+.feed-event__icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: var(--bg-panel);
+  border: 2px solid var(--border);
   flex-shrink: 0;
+  box-shadow: 2px 2px 0px var(--border);
 }
 
 .feed-event__body {
@@ -696,16 +719,28 @@
 }
 
 .feed-event__text {
-  font-size: 0.8rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.feed-event__highlight {
+  font-family: monospace;
   font-weight: 700;
-  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.feed-event__money {
+  font-weight: 900;
+  font-family: monospace;
+  font-size: 0.95rem;
 }
 
 .feed-event__time {
-  font-size: 0.65rem;
+  font-size: 0.72rem;
   font-weight: 800;
   color: var(--text-muted);
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 /* ── Recent Trades (compact) ── */
@@ -1178,9 +1213,12 @@
   top: -10px;
   left: 16px;
   z-index: 10;
-  background: linear-gradient(135deg, #f59e0b, #d97706);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent);
   color: #fff;
-  font-size: 0.6rem;
+  font-size: 0.65rem;
   font-weight: 900;
   padding: 3px 10px;
   text-transform: uppercase;
@@ -1235,7 +1273,7 @@
 .feed-stream {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 24px;
 }
 
 .feed-stream__item {
@@ -1258,17 +1296,22 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 16px;
-  padding: 64px 24px;
-  color: var(--text-muted);
-  font-weight: 800;
-  font-size: 0.85rem;
+  padding: 80px 24px;
+  color: var(--text);
+  font-weight: 900;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: 3px dashed var(--border-light);
+  background: var(--bg-panel);
 }
 
 .feed-loading__pulse {
-  width: 32px;
-  height: 32px;
-  border: 3px solid var(--border);
+  width: 40px;
+  height: 40px;
+  border: 5px solid var(--border-light);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: feedSpin 0.8s linear infinite;

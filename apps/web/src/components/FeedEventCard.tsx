@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { ArrowUpRight, ArrowDownRight, Pulse, Users, Trophy, RocketLaunch, SignOut, Lightning } from "@phosphor-icons/react";
 
 export interface FeedEventData {
   id: string;
@@ -57,8 +58,8 @@ export default function FeedEventCard({ event }: FeedEventCardProps) {
   const d = event.data || {};
   const avatar = event.creator_tokens?.avatar_url || "/default-avatar.png";
 
-  let icon: string;
-  let text: string;
+  let iconNode: React.ReactNode;
+  let text: React.ReactNode;
   let extraClass = "";
 
   switch (event.event_type) {
@@ -66,40 +67,56 @@ export default function FeedEventCard({ event }: FeedEventCardProps) {
       const isBuy = (d.trade_type as string) === "buy";
       const sol = formatSolShort(Number(d.sol_amount) || 0);
       const tokens = formatTokensK(Number(d.token_amount) || 0);
-      icon = isBuy ? "🟢" : "🔴";
+      
+      iconNode = isBuy 
+        ? <ArrowUpRight size={18} weight="bold" color="#22c55e" /> 
+        : <ArrowDownRight size={18} weight="bold" color="#ef4444" />;
+        
       text = isBuy
-        ? `${wallet} bought ${tokens} $${name} for ${sol}`
-        : `${wallet} sold ${tokens} $${name} for ${sol}`;
+        ? <><span className="feed-event__highlight">{wallet}</span> bought <strong>{tokens} ${name}</strong> for <span className="feed-event__money">{sol}</span></>
+        : <><span className="feed-event__highlight">{wallet}</span> sold <strong>{tokens} ${name}</strong> for <span className="feed-event__money">{sol}</span></>;
       break;
     }
     case "whale_alert": {
       const sol = formatSolShort(Number(d.sol_amount) || 0);
       const isBuy = (d.trade_type as string) !== "sell";
-      icon = "🐋";
+      
+      iconNode = <Pulse size={18} weight="bold" color={isBuy ? "#22c55e" : "#ef4444"} />;
+      
       text = isBuy
-        ? `Whale Alert: ${wallet} invested ${sol} into $${name}`
-        : `🚨 Whale Sell: ${wallet} dumped ${sol} from $${name}`;
+        ? <><strong>Whale Alert:</strong> <span className="feed-event__highlight">{wallet}</span> invested <span className="feed-event__money">{sol}</span> into ${name}</>
+        : <><strong>Whale Sell:</strong> <span className="feed-event__highlight">{wallet}</span> dumped <span className="feed-event__money">{sol}</span> from ${name}</>;
       extraClass = isBuy ? "feed-event--whale" : "feed-event--whale feed-event--whale-sell";
       break;
     }
     case "new_holder":
-      icon = "👋";
-      text = `New holder joined $${name}'s community`;
+      iconNode = <Users size={18} weight="fill" color="var(--accent)" />;
+      text = <>New backer joined <strong>${name}</strong>'s community</>;
       break;
     case "milestone": {
       const milestone = (d.milestone as number) || 0;
-      icon = "🏆";
-      text = `$${name} just reached ${milestone} holders!`;
+      iconNode = <Trophy size={18} weight="fill" color="#f59e0b" />;
+      text = <><strong>${name}</strong> just reached {milestone} backers!</>;
       extraClass = "feed-event--milestone";
       break;
     }
     case "new_creator":
-      icon = "🚀";
-      text = `${name} just launched their token on Humanofi!`;
+      iconNode = <RocketLaunch size={18} weight="fill" color="#a855f7" />;
+      text = <><strong>{name}</strong> just launched their token on Humanofi!</>;
       extraClass = "feed-event--milestone";
       break;
+    case "holder_exit": {
+      const heldDays = (d.held_for_days as number) || 0;
+      const wasEarly = (d.was_early_believer as boolean) || false;
+      iconNode = <SignOut size={18} weight="bold" color="#ef4444" />;
+      text = wasEarly
+        ? <>An <span style={{ color: "#ef4444", fontWeight: 800 }}>Early Believer</span> left <strong>${name}</strong> after {heldDays}d</>
+        : <>A holder exited <strong>${name}</strong> after {heldDays}d</>;
+      extraClass = "feed-event--exit";
+      break;
+    }
     default:
-      icon = "⚡";
+      iconNode = <Lightning size={18} weight="fill" color="var(--text-muted)" />;
       text = `Activity on $${name}`;
   }
 
@@ -115,7 +132,7 @@ export default function FeedEventCard({ event }: FeedEventCardProps) {
         height={32}
         className="feed-event__avatar"
       />
-      <span className="feed-event__icon">{icon}</span>
+      <div className="feed-event__icon-wrapper">{iconNode}</div>
       <div className="feed-event__body">
         <div className="feed-event__text">{text}</div>
         <div className="feed-event__time">{timeAgo(event.created_at)}</div>

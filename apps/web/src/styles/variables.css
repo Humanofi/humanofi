@@ -22,8 +22,7 @@
   --text-muted: #555555;
   --text-faint: #999999;
   
-  --border: #0a0px0a; /* Pure solid black for main structural borders */
-  --border: #111111;
+  --border: #111111; /* Pure solid black for main structural borders */
   --border-light: #e5e5e5;
   
   /* L'accent : un bleu pur, vibratoire, tech mais confiant */
@@ -40,5 +39,11 @@
 
   --dur: 200ms;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Premium Brutalism Shadows */
+  --shadow-sm: 2px 2px 0px var(--border);
+  --shadow-md: 4px 4px 0px var(--border);
+  --shadow-lg: 6px 6px 0px var(--border);
+  --shadow-hover: 8px 8px 0px var(--border);
 }
 
