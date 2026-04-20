@@ -7,7 +7,7 @@ import { LivePreviewCard } from "@/components/LivePreviewCard";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofi } from "@/hooks/useHumanofi";
 import { useSolPrice } from "@/hooks/useSolPrice";
-import { PublicKey } from "@solana/web3.js";
+import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { toast } from "sonner";
 import FilterDropdown, { type DropdownOption } from "@/components/FilterDropdown";
 import Flag from "@/components/Flag";
@@ -24,6 +24,11 @@ const TREASURY = new PublicKey(
 );
 
 const LAMPORTS_PER_SOL_CONST = 1_000_000_000;
+
+// ── Fixed Creation Fee ──
+const CREATION_FEE_USD = 29.99;
+const HUMANOFI_FEE_USD = 15;
+const TOKEN_SEED_USD = 12;
 
 // ── Expanded categories with icons ──
 const CATEGORIES: DropdownOption[] = [
@@ -133,7 +138,7 @@ export default function CreatePage() {
   const [instagram, setInstagram] = useState("");
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [initialLiquidityUSD, setInitialLiquidityUSD] = useState(20); // $5-$100
+  // Fixed creation fee — no more user-configurable liquidity
   const [step, setStep] = useState<"connect" | "form" | "launching" | "done">("connect");
   const [currentSection, setCurrentSection] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -171,7 +176,7 @@ export default function CreatePage() {
         if (draft.linkedin) setLinkedin(draft.linkedin);
         if (draft.website) setWebsite(draft.website);
         if (draft.instagram) setInstagram(draft.instagram);
-        if (draft.initial_liquidity_usd) setInitialLiquidityUSD(draft.initial_liquidity_usd);
+        // initial_liquidity_usd no longer restored (fixed fee now)
         if (draft.current_section !== undefined && draft.current_section !== null) setCurrentSection(draft.current_section);
         setHasDraft(true);
         toast.success("Draft restored");
@@ -192,12 +197,12 @@ export default function CreatePage() {
         body: JSON.stringify({
           walletAddress,
           tokenName, tokenSymbol, category, bio, story, offer, country,
-          twitter, linkedin, website, instagram, initialLiquidityUSD, currentSection,
+          twitter, linkedin, website, instagram, currentSection,
         }),
       }).then(() => setHasDraft(true)).catch(() => {});
     }, 2000);
     return () => { if (draftTimerRef.current) clearTimeout(draftTimerRef.current); };
-  }, [tokenName, tokenSymbol, category, bio, story, offer, country, twitter, linkedin, website, instagram, initialLiquidityUSD, currentSection, step, walletAddress]);
+  }, [tokenName, tokenSymbol, category, bio, story, offer, country, twitter, linkedin, website, instagram, currentSection, step, walletAddress]);
 
   const clearDraft = useCallback(() => {
     if (walletAddress) {
@@ -208,7 +213,7 @@ export default function CreatePage() {
     setStory(""); setOffer(""); setCountry(""); setTwitter("");
     setLinkedin(""); setWebsite(""); setInstagram("");
     setAvatarPreview(null); setAvatarFile(null);
-    setInitialLiquidityUSD(20); setCurrentSection(0);
+    setCurrentSection(0);
     toast.success("Draft cleared");
   }, [walletAddress]);
 
@@ -322,12 +327,23 @@ export default function CreatePage() {
       // ── STEP 2: Create token on-chain ──
       setLaunchStep(2);
 
+      // ── Build Humanofi creation fee transfer (atomic with createToken) ──
+      const humanofiFeeLamports = Math.floor((HUMANOFI_FEE_USD / solPriceUsd) * LAMPORTS_PER_SOL_CONST);
+      const tokenSeedLamports = Math.floor((TOKEN_SEED_USD / solPriceUsd) * LAMPORTS_PER_SOL_CONST);
+
+      const feeTransferIx = SystemProgram.transfer({
+        fromPubkey: new PublicKey(walletAddress!),
+        toPubkey: TREASURY,
+        lamports: humanofiFeeLamports,
+      });
+
       const result = await createToken({
         name: tokenName,
         symbol: tokenSymbol.toUpperCase(),
         uri: metadataUrl,
-        initialLiquidity: Math.floor((initialLiquidityUSD / solPriceUsd) * LAMPORTS_PER_SOL_CONST),
+        initialLiquidity: tokenSeedLamports,
         treasury: TREASURY,
+        preInstructions: [feeTransferIx],
       });
 
       if (!result) {
@@ -347,6 +363,7 @@ export default function CreatePage() {
             mintAddress: result.mint.toBase58(),
             walletAddress,
             displayName: tokenName,
+            tokenSymbol: tokenSymbol.toUpperCase(),
             category,
             bio,
             avatarUrl,
@@ -371,14 +388,14 @@ export default function CreatePage() {
       // and the creator appear as the first holder.
       try {
         const mintPk = result.mint.toBase58();
-        const solLamports = Math.floor((initialLiquidityUSD / solPriceUsd) * LAMPORTS_PER_SOL_CONST);
+        const solLamports = Math.floor((TOKEN_SEED_USD / solPriceUsd) * LAMPORTS_PER_SOL_CONST);
 
         // Estimate post-creation price from curve math
         // Founder Buy fee = 3% → sol_to_curve ≈ 97% of V
         const founderFeeRate = 0.03;
         const solToCurve = solLamports * (1 - founderFeeRate);
         // x = D + sol_to_curve, where D = 20 × V
-        const depthRatio = 20;
+        const depthRatio = 18;
         const initialX = depthRatio * solLamports + solToCurve;
         const initialY = 1_000_000 * 1_000_000; // 1M tokens in base units
         const spotPriceAfter = (initialX / initialY) * 1_000_000; // lamports per whole token
@@ -414,7 +431,7 @@ export default function CreatePage() {
       setStep("form");
       setLaunchStep(0);
     }
-  }, [tokenName, tokenSymbol, category, bio, avatarPreview, avatarFile, story, offer, country, twitter, linkedin, website, instagram, initialLiquidityUSD, createToken, walletAddress]);
+  }, [tokenName, tokenSymbol, category, bio, avatarPreview, avatarFile, story, offer, country, twitter, linkedin, website, instagram, solPriceUsd, createToken, walletAddress]);
 
   // Form sections for step-by-step flow
   const sections = [
@@ -479,8 +496,8 @@ export default function CreatePage() {
                 Start by connecting your wallet
               </h2>
               <p style={{ color: "var(--text-muted)", marginBottom: 32, lineHeight: 1.6 }}>
-                Creating your token requires biometric identity verification (KYC)
-                and a deployment transaction on Solana. Total cost: ~$10 in SOL.
+                Creating your token requires identity verification
+                and a deployment transaction on Solana.
               </p>
               <button className="btn-solid" style={{ background: "var(--accent)" }} onClick={login}>
                 Connect Wallet
@@ -799,76 +816,39 @@ export default function CreatePage() {
                     <ul style={{ marginTop: 8, paddingLeft: 16 }}>
                       <li>A <strong>Token-2022 mint</strong> is created on Solana (with metadata &amp; freeze)</li>
                       <li>A <strong>Human Curve™ bonding curve</strong> is activated — anyone can buy/sell</li>
-                      <li><strong>${initialLiquidityUSD}</strong> injected as initial liquidity — your token starts with real value</li>
+                      <li><strong>${TOKEN_SEED_USD}</strong> injected as initial liquidity — your token starts with real value</li>
                       <li>You get <strong>Founder tokens</strong> at the initial price (locked 1 year) + earn <strong>up to 3% fees</strong> in SOL on every trade</li>
                       <li>Your profile goes <strong>live on the marketplace</strong></li>
                       <li>You can start posting in your <strong>Inner Circle</strong> (token-gated feed)</li>
                     </ul>
                   </div>
 
-                  {/* ── Initial Liquidity Selector ── */}
+                  {/* ── Fixed Creation Fee Display ── */}
                   <div style={{
                     padding: 24,
-                    border: "2px solid var(--accent)",
-                    background: "linear-gradient(135deg, rgba(0,0,0,0.02), rgba(0,0,0,0.04))",
+                    border: "3px solid var(--accent)",
+                    background: "#fff",
                     marginBottom: 28,
+                    boxShadow: "6px 6px 0px rgba(0,0,0,0.08)",
                   }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                      <span style={{ fontWeight: 800, fontSize: "1rem" }}>◈</span>
-                      <span style={{ fontWeight: 800, fontSize: "0.9rem" }}>Initial Liquidity</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                      <span style={{ fontWeight: 800, fontSize: "1.2rem" }}>◇</span>
+                      <span style={{ fontWeight: 800, fontSize: "0.85rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Token Creation Fee</span>
                     </div>
 
-                    <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", lineHeight: 1.6, marginBottom: 16 }}>
-                      This SOL goes directly into your bonding curve as starting liquidity.
-                      <strong> Nobody holds these funds</strong> — they give your token a real starting value.
-                      We recommend <strong>$20+</strong> for a strong launch. Minimum is $5.
-                    </p>
-
-                    {/* Preset buttons */}
-                    <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
-                      {[5, 10, 20, 50, 100].map((amount) => (
-                        <button
-                          key={amount}
-                          onClick={() => setInitialLiquidityUSD(amount)}
-                          style={{
-                            padding: "8px 16px",
-                            fontSize: "0.82rem",
-                            fontWeight: initialLiquidityUSD === amount ? 800 : 600,
-                            border: initialLiquidityUSD === amount ? "2px solid var(--accent)" : "2px solid var(--border)",
-                            background: initialLiquidityUSD === amount ? "var(--accent)" : "#fff",
-                            color: initialLiquidityUSD === amount ? "#fff" : "var(--text)",
-                            cursor: "pointer",
-                            transition: "all 0.15s",
-                          }}
-                        >
-                          ${amount}
-                        </button>
-                      ))}
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 16 }}>
+                      <span style={{ fontSize: "2rem", fontWeight: 900, letterSpacing: "-0.02em" }}>${CREATION_FEE_USD}</span>
+                      {solPriceUsd > 0 && (
+                        <span style={{ fontSize: "1rem", fontWeight: 700, color: "var(--text-muted)" }}>
+                          ≈ {(CREATION_FEE_USD / solPriceUsd).toFixed(4)} SOL
+                        </span>
+                      )}
                     </div>
 
-                    {/* Slider */}
-                    <input
-                      type="range"
-                      min={5}
-                      max={100}
-                      step={5}
-                      value={initialLiquidityUSD}
-                      onChange={(e) => setInitialLiquidityUSD(Number(e.target.value))}
-                      style={{ width: "100%", accentColor: "var(--accent)" }}
-                    />
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.72rem", color: "var(--text-muted)", marginTop: 4 }}>
-                      <span>$5 (minimum)</span>
-                      <span style={{ fontWeight: 800, color: "var(--text)", fontSize: "0.85rem" }}>
-                        ${initialLiquidityUSD} ≈ {(initialLiquidityUSD / solPriceUsd).toFixed(3)} SOL
-                      </span>
-                      <span>$100</span>
+                    <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", lineHeight: 1.7 }}>
+                      Includes initial liquidity for your bonding curve and Solana network costs.<br />
+                      <strong>Everyone starts with the same base.</strong> One fixed price, one fair start.
                     </div>
-
-                    {initialLiquidityUSD < 20 && (
-                      <div style={{ marginTop: 12, padding: "8px 12px", background: "#fff3cd", fontSize: "0.72rem", color: "#856404", fontWeight: 600 }}>
-                        We recommend at least $20 for a strong initial token value.
-                      </div>
-                    )}
                   </div>
 
                   <button
@@ -884,7 +864,7 @@ export default function CreatePage() {
                     }}
                     onClick={handleLaunch}
                   >
-                    Launch My Token (${initialLiquidityUSD} + ~$2 fees)
+                    Launch My Token — ${CREATION_FEE_USD}
                   </button>
                 </div>
               )}

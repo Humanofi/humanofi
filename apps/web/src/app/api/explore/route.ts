@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
     // ── 1. Base query: creator_tokens ──
     let query = supabase
       .from("creator_tokens")
-      .select("mint_address, wallet_address, display_name, category, bio, avatar_url, activity_score, activity_status, holder_count, apy, country_code, story, offer, socials, created_at, is_suspended")
+      .select("mint_address, wallet_address, display_name, token_symbol, category, bio, avatar_url, activity_score, activity_status, holder_count, apy, country_code, story, offer, socials, created_at, is_suspended")
       .eq("is_suspended", false)
       .gte("holder_count", minHolders)
       .lte("holder_count", maxHolders)
@@ -79,95 +79,76 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ results: [], total: 0 });
     }
 
-    // ── 2. Batch fetch latest price snapshots ──
+    // ── 2. Batch fetch price data from TRADES (real on-chain source) ──
     const mints = creators.map((c) => c.mint_address);
 
-    // Get latest snapshot per mint
-    const { data: latestSnaps } = await supabase
-      .from("price_snapshots")
-      .select("mint_address, price_sol, supply, sol_reserve, created_at")
+    // Get the most recent trade per mint (latest price)
+    const { data: latestTrades } = await supabase
+      .from("trades")
+      .select("mint_address, price_sol, created_at")
       .in("mint_address", mints)
       .order("created_at", { ascending: false });
 
-    // Get snapshots from ~24h ago for price change
+    // Get the oldest trade within the last 24h per mint (for 24h change)
     const ago24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const ago7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
-    const { data: snaps24h } = await supabase
-      .from("price_snapshots")
+    const { data: trades24hAgo } = await supabase
+      .from("trades")
       .select("mint_address, price_sol, created_at")
       .in("mint_address", mints)
       .lte("created_at", ago24h)
       .order("created_at", { ascending: false });
 
-    const { data: snaps7d } = await supabase
-      .from("price_snapshots")
+    // Get the oldest trade within the last 7d per mint
+    const ago7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data: trades7dAgo } = await supabase
+      .from("trades")
       .select("mint_address, price_sol, created_at")
       .in("mint_address", mints)
       .lte("created_at", ago7d)
       .order("created_at", { ascending: false });
 
     // Build lookup maps (first match = most recent for that mint)
-    const latestMap: Record<string, { price_sol: number; supply: number; sol_reserve: number }> = {};
-    for (const s of latestSnaps || []) {
-      if (!latestMap[s.mint_address]) {
-        latestMap[s.mint_address] = {
-          price_sol: Number(s.price_sol),
-          supply: Number(s.supply),
-          sol_reserve: Number(s.sol_reserve),
-        };
+    const latestPriceMap: Record<string, number> = {};
+    for (const t of latestTrades || []) {
+      if (!latestPriceMap[t.mint_address]) {
+        latestPriceMap[t.mint_address] = Number(t.price_sol);
       }
     }
 
     const price24hMap: Record<string, number> = {};
-    for (const s of snaps24h || []) {
-      if (!price24hMap[s.mint_address]) {
-        price24hMap[s.mint_address] = Number(s.price_sol);
+    for (const t of trades24hAgo || []) {
+      if (!price24hMap[t.mint_address]) {
+        price24hMap[t.mint_address] = Number(t.price_sol);
       }
     }
 
     const price7dMap: Record<string, number> = {};
-    for (const s of snaps7d || []) {
-      if (!price7dMap[s.mint_address]) {
-        price7dMap[s.mint_address] = Number(s.price_sol);
+    for (const t of trades7dAgo || []) {
+      if (!price7dMap[t.mint_address]) {
+        price7dMap[t.mint_address] = Number(t.price_sol);
       }
     }
 
     // ── 3. Enrich results ──
     let results = creators.map((c) => {
-      const latest = latestMap[c.mint_address];
+      // Latest trade price (fallback 0 — frontend enriches with on-chain data)
+      const currentPrice = latestPriceMap[c.mint_address] || 0;
       
-      // price_sol from snapshots is in SOL per whole token (e.g. 0.000033)
-      // If no snapshot exists, compute a deterministic base price from the
-      // bonding curve initial parameters: base_price ≈ x0/y0 * 10^6 / 10^9
-      // For a fresh curve: x0 = 100_000_000 (0.1 SOL), y0 = 3_000_000_000_000 → P ≈ 0.0000333
-      let currentPrice = latest?.price_sol || 0;
-      if (currentPrice === 0) {
-        // Deterministic fallback: initial bonding curve price ≈ 0.0000333 SOL
-        currentPrice = 0.0000333;
-      }
-      
-      const oldPrice24h = price24hMap[c.mint_address] || currentPrice;
-      const oldPrice7d = price7dMap[c.mint_address] || currentPrice;
+      const oldPrice24h = price24hMap[c.mint_address];
+      const oldPrice7d = price7dMap[c.mint_address];
 
-      let change24h = oldPrice24h > 0
+      // REAL changes only — computed from actual trade history
+      const change24h = (oldPrice24h && oldPrice24h > 0 && currentPrice > 0)
         ? parseFloat(((currentPrice - oldPrice24h) / oldPrice24h * 100).toFixed(1))
         : 0;
-      let change7d = oldPrice7d > 0
+      const change7d = (oldPrice7d && oldPrice7d > 0 && currentPrice > 0)
         ? parseFloat(((currentPrice - oldPrice7d) / oldPrice7d * 100).toFixed(1))
         : 0;
-
-      // Mock data if 0 to avoid a wall of zeroes in the MVP (deterministic based on mint string)
-      if (change24h === 0) {
-        const charCode = c.mint_address.charCodeAt(0) || 1;
-        const charCode2 = c.mint_address.charCodeAt(c.mint_address.length - 1) || 2;
-        change24h = parseFloat(((charCode % 15) - 5 + (charCode2 % 10) / 10).toFixed(1));
-        change7d = parseFloat((change24h * 1.5 + (charCode % 5)).toFixed(1));
-      }
 
       return {
         mint_address: c.mint_address,
         display_name: c.display_name,
+        token_symbol: c.token_symbol || null,
         category: c.category,
         bio: c.bio || "",
         avatar_url: c.avatar_url,
@@ -182,8 +163,8 @@ export async function GET(request: NextRequest) {
         created_at: c.created_at,
         // Market data
         price_sol: currentPrice,
-        supply_public: latest?.supply || 0,
-        sol_reserve: latest?.sol_reserve || 0,
+        supply_public: 0,
+        sol_reserve: 0,
         change_24h: change24h,
         change_7d: change7d,
       };

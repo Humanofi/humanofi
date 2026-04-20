@@ -39,6 +39,9 @@ pub enum HumanofiError {
     #[msg("Purchase amount must be greater than zero")]
     ZeroPurchaseAmount,
 
+    #[msg("Anti-snipe: max 5% of supply (50,000 tokens) per wallet during the first 24 hours")]
+    AntiSnipeLimit,
+
     // ---- Creator Vault / Smart Sell Limiter (6030-6039) ----
     #[msg("Creator tokens are still locked — Year 1 vesting (0% sellable)")]
     CreatorVestingLocked,

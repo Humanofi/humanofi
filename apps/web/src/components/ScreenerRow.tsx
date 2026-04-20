@@ -13,6 +13,7 @@ import { Info } from "@phosphor-icons/react";
 interface ScreenerRowProps {
   id: string;
   name: string;
+  ticker?: string;
   tag: string;
   price: string;
   priceUsd?: string;
@@ -29,6 +30,7 @@ interface ScreenerRowProps {
 export default function ScreenerRow({
   id,
   name,
+  ticker,
   tag,
   price,
   priceUsd,
@@ -41,7 +43,7 @@ export default function ScreenerRow({
   country,
   offer,
 }: ScreenerRowProps) {
-  const tickerName = name.split(" ")[0].toUpperCase();
+  const tickerName = ticker || name.split(" ")[0].toUpperCase();
   const hasOffer = offer && offer.length > 10;
 
   return (

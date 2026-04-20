@@ -70,6 +70,19 @@ pub fn handler(ctx: Context<Buy>, sol_amount: u64, min_tokens_out: u64) -> Resul
     let clock = Clock::get()?;
     let now = clock.unix_timestamp;
 
+    // ── ANTI-SNIPE: Fair Launch protection (24h window) ──
+    if now < curve.created_at + ANTI_SNIPE_WINDOW {
+        // Read current token balance from buyer's ATA (0 if ATA doesn't exist yet)
+        let current_balance = ctx.accounts.buyer_token_account.amount;
+        let balance_after = current_balance
+            .checked_add(result.tokens_buyer)
+            .ok_or(HumanofiError::MathOverflow)?;
+        require!(
+            balance_after <= ANTI_SNIPE_MAX_TOKENS,
+            HumanofiError::AntiSnipeLimit
+        );
+    }
+
     // ── Record purchase (analytics) ──
     let limiter = &mut ctx.accounts.purchase_limiter;
     if limiter.first_purchase_at == 0 {

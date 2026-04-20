@@ -62,7 +62,7 @@ export default function PersonPublicPage() {
   const [tradeActiveTab, setTradeActiveTab] = useState<"buy" | "sell">("buy");
   const [tradeAmount, setTradeAmount] = useState(0);
 
-  const { creator, curveData, liveCurve, mockPerson, isCreator, isHolder, tokenColor, refreshCurve, chartRef } = usePerson();
+  const { creator, curveData, liveCurve, mockPerson, isCreator, isHolder, tokenColor, refreshCurve, chartRef, antiSnipeActive, antiSnipeEndsAt } = usePerson();
   const { authenticated, login } = usePrivy();
   const { buyTokens, sellTokens, claimCreatorFees, fetchCreatorFeeVault, walletAddress } = useHumanofi();
   const { priceUsd: solPriceUsd } = useSolPrice();
@@ -554,6 +554,24 @@ export default function PersonPublicPage() {
 
   return (
     <>
+      {/* ═══ ANTI-SNIPE FAIR LAUNCH BANNER ═══ */}
+      {antiSnipeActive && (
+        <div className="trade-widget__antispike" style={{ marginBottom: 0 }}>
+          <ShieldCheck size={22} weight="bold" />
+          <div className="trade-widget__antispike-content">
+            <strong>Fair Launch Protection — 24h</strong>
+            <p>Each holder is limited to 50,000 tokens (5% of supply) during the first 24 hours. This protects early believers from whale manipulation.</p>
+          </div>
+          {antiSnipeEndsAt > 0 && (() => {
+            const diff = antiSnipeEndsAt - Math.floor(Date.now() / 1000);
+            if (diff <= 0) return null;
+            const h = Math.floor(diff / 3600);
+            const m = Math.floor((diff % 3600) / 60);
+            return <span className="trade-widget__antispike-timer">{h}h {String(m).padStart(2, "0")}m</span>;
+          })()}
+        </div>
+      )}
+
       {/* ═══ ZONE 1 — MARKET (Chart + Trade, full width) ═══ */}
       <div className="profile-market">
         <div className="profile-market__chart">
@@ -563,6 +581,7 @@ export default function PersonPublicPage() {
           <TradeWidget
             tokenColor={tokenColor}
             displayName={creator?.display_name || mockPerson?.name || "Token"}
+            tokenSymbol={creator?.token_symbol || undefined}
             priceNum={priceNum}
             mintAddress={creator?.mint_address}
             isReal={isReal}
@@ -573,6 +592,8 @@ export default function PersonPublicPage() {
             hasCurveData={!!curveData}
             onTrade={handleTrade}
             onLogin={login}
+            antiSnipeActive={antiSnipeActive}
+            antiSnipeEndsAt={antiSnipeEndsAt}
           />
         </div>
       </div>
@@ -693,7 +714,7 @@ export default function PersonPublicPage() {
         step={tradeStep}
         tradeType={tradeActiveTab}
         amount={String(tradeAmount)}
-        tokenSymbol={creator?.display_name?.split(" ")[0] || mockPerson?.name?.split(" ")[0] || "TOKEN"}
+        tokenSymbol={creator?.token_symbol || creator?.display_name?.split(" ")[0]?.toUpperCase() || mockPerson?.name?.split(" ")[0] || "TOKEN"}
         txSignature={tradeTxSig}
         errorMessage={tradeError}
         onClose={() => {

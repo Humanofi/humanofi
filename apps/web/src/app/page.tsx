@@ -463,28 +463,52 @@ export default function HomeFeedPage() {
                   </div>
                 </div>
               </div>
-              <div className="hero__terminal">
-                <div className="hero__terminal-header">
-                  <div className="hero__terminal-dots">
-                    <span /> <span /> <span />
+              <div className="hero__visual">
+                <div className="hero__cards-stack">
+                  {/* Card 1 (Back left) */}
+                  <div className="hero__card hero__card--bg2">
+                    <div className="hero__card-top">
+                      <img src="https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=150&q=80" alt="Creator" />
+                      <div>
+                        <div className="hero__card-name">Mia R.</div>
+                        <div className="hero__card-symbol">$MIA • Developer</div>
+                      </div>
+                    </div>
+                    <div className="hero__card-stats">
+                      <div>Volume <span>120 SOL</span></div>
+                      <div>Holders <span>45</span></div>
+                    </div>
                   </div>
-                  <div className="hero__terminal-title">SYS // MARKET_PULSE</div>
-                </div>
-                <div className="hero__terminal-body">
-                  <div className="line"><span className="cyan">_init</span> humanofi_protocol v1.0</div>
-                  <div className="line"><span className="yellow">WARN</span> establishing secure connection... OK</div>
-                  <div className="line"><span className="green">SUCCESS</span> live feed synchronized.</div>
-                  <br />
-                  <div className="line prompt">&gt; scan market</div>
-                  <div className="line indent">Found <span className="accent">2,412</span> active human assets.</div>
-                  <div className="line indent">24h Vol: <span className="green">1,400 SOL</span></div>
-                  <br />
-                  <div className="line prompt">&gt; track latest_trade</div>
-                  <div className="line box">
-                    <span className="accent">BUY SIGNATURE DETECTED</span><br/>
-                    Target: @0xDesigner<br/>
-                    Amount: 4.5 SOL<br/>
-                    Status: <span className="green">CONFIRMED</span>
+                  
+                  {/* Card 2 (Back right) */}
+                  <div className="hero__card hero__card--bg1">
+                    <div className="hero__card-top">
+                      <img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=150&q=80" alt="Creator" />
+                      <div>
+                        <div className="hero__card-name">David K.</div>
+                        <div className="hero__card-symbol">$DVK • Founder</div>
+                      </div>
+                    </div>
+                    <div className="hero__card-stats">
+                      <div>Volume <span>850 SOL</span></div>
+                      <div>Holders <span>312</span></div>
+                    </div>
+                  </div>
+
+                  {/* Card 3 (Main front) */}
+                  <div className="hero__card hero__card--main">
+                    <div className="hero__card-top">
+                      <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80" alt="Creator" />
+                      <div>
+                        <div className="hero__card-name">Sarah Chen</div>
+                        <div className="hero__card-symbol">$CHEN • Designer</div>
+                      </div>
+                    </div>
+                    <div className="hero__card-price">
+                      <span>Live Price</span>
+                      <strong>$1.42 <span>+12%</span></strong>
+                    </div>
+                    <div className="hero__card-btn">Invest in Sarah</div>
                   </div>
                 </div>
               </div>

@@ -17,7 +17,7 @@
 import { useCallback } from "react";
 import { PublicKey, Keypair, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { toast } from "sonner";
-import { BN } from "@coral-xyz/anchor";
+import { BN, AnchorProvider } from "@coral-xyz/anchor";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
 import { usePrivy } from "@privy-io/react-auth";
 import { useHumanofiProgram, PROGRAM_ID } from "./useHumanofiProgram";
@@ -92,6 +92,7 @@ export function useHumanofi() {
       uri: string; // metadata JSON URL (contains image, etc.)
       initialLiquidity: number; // in lamports
       treasury: PublicKey;
+      preInstructions?: import("@solana/web3.js").TransactionInstruction[];
     }) => {
       if (!program || !publicKey) {
         toast.error("Connect your wallet first.");
@@ -121,7 +122,7 @@ export function useHumanofi() {
         TOKEN_2022_PROGRAM_ID
       );
 
-      const txPromise = program.methods
+      let builder = program.methods
         .createToken(
           params.name,
           params.symbol,
@@ -141,9 +142,35 @@ export function useHumanofi() {
           tokenProgram: TOKEN_2022_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
-        })
-        .signers([mint])
-        .rpc();
+        });
+
+      // Add pre-instructions (e.g., Humanofi creation fee transfer)
+      if (params.preInstructions && params.preInstructions.length > 0) {
+        builder = builder.preInstructions(params.preInstructions);
+      }
+
+      // Build transaction manually to avoid double-send with Phantom/Privy
+      const tx = await builder.transaction();
+
+      const conn = program.provider.connection;
+      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = publicKey;
+
+      // The mint keypair must sign first (it's a new account being created)
+      tx.partialSign(mint);
+
+      // Then the wallet signs via Privy adapter (does NOT auto-send)
+      const signedTx = await (program.provider as AnchorProvider).wallet.signTransaction(tx);
+
+      // Send raw — we control the send, no double
+      const txPromise = conn.sendRawTransaction(signedTx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      }).then(async (sig) => {
+        await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+        return sig;
+      });
 
       toast.promise(txPromise, {
         loading: "Creating your token on Solana...",
@@ -183,13 +210,11 @@ export function useHumanofi() {
         TOKEN_2022_PROGRAM_ID
       );
 
-      // v3.6: No more creatorTokenAccount or protocolTokenAccount
-      // 100% tokens go to buyer — merit reward removed
-
-      const txPromise = program.methods
+      // Build transaction manually to avoid double-send with Phantom/Privy
+      const tx = await program.methods
         .buy(
           new BN(lamports),
-          new BN(params.minTokensOut || 0) // slippage protection
+          new BN(params.minTokensOut || 0)
         )
         .accountsStrict({
           buyer: publicKey,
@@ -204,7 +229,26 @@ export function useHumanofi() {
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
-        .rpc();
+        .transaction();
+
+      // Set recent blockhash and fee payer
+      const conn = program.provider.connection;
+      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = publicKey;
+
+      // Sign via Privy wallet adapter (does NOT auto-send)
+      const signedTx = await (program.provider as AnchorProvider).wallet.signTransaction(tx);
+
+      // Send raw — we control the send, no double
+      const txPromise = conn.sendRawTransaction(signedTx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      }).then(async (sig) => {
+        // Wait for confirmation
+        await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+        return sig;
+      });
 
       toast.promise(txPromise, {
         loading: `Buying tokens for ${params.solAmount} SOL...`,
@@ -231,6 +275,12 @@ export function useHumanofi() {
         return null;
       }
 
+      // ── DEBUG: Log wallet info ──
+      console.log("[Humanofi] SELL DEBUG — wallet:", publicKey.toBase58());
+      console.log("[Humanofi] SELL DEBUG — mint:", params.mint.toBase58());
+      console.log("[Humanofi] SELL DEBUG — tokenAmount:", params.tokenAmount);
+      console.log("[Humanofi] SELL DEBUG — creatorWallet:", params.creatorWallet.toBase58());
+
       const [bondingCurve] = deriveBondingCurvePDA(params.mint);
       const [creatorFeeVault] = deriveCreatorFeeVaultPDA(params.mint);
       const [protocolConfig] = deriveProtocolConfigPDA();
@@ -242,14 +292,39 @@ export function useHumanofi() {
         TOKEN_2022_PROGRAM_ID
       );
 
+      // ── DEBUG: Check token balance before selling ──
+      try {
+        const tokenBalance = await program.provider.connection.getTokenAccountBalance(sellerTokenAccount);
+        console.log("[Humanofi] SELL DEBUG — Token balance:", tokenBalance.value.uiAmountString, "raw:", tokenBalance.value.amount);
+        console.log("[Humanofi] SELL DEBUG — Trying to sell:", params.tokenAmount, "tokens (raw)");
+        if (Number(tokenBalance.value.amount) < params.tokenAmount) {
+          console.error("[Humanofi] SELL DEBUG — ⚠️ INSUFFICIENT TOKENS! Has:", tokenBalance.value.amount, "Wants:", params.tokenAmount);
+          toast.error(`Insufficient tokens. You have ${tokenBalance.value.uiAmountString} tokens.`);
+          return null;
+        }
+      } catch (balErr) {
+        console.error("[Humanofi] SELL DEBUG — Failed to check token balance (ATA may not exist):", balErr);
+        toast.error("No token account found — you may not hold this token.");
+        return null;
+      }
+
       // Check if seller is creator → include creator_vault
       const isCreator = publicKey.equals(params.creatorWallet);
       const [creatorVaultPda] = deriveCreatorVaultPDA(params.mint);
 
-      const txPromise = program.methods
+      console.log("[Humanofi] SELL DEBUG — isCreator:", isCreator);
+      console.log("[Humanofi] SELL DEBUG — PDAs:", {
+        bondingCurve: bondingCurve.toBase58(),
+        creatorFeeVault: creatorFeeVault.toBase58(),
+        sellerTokenAccount: sellerTokenAccount.toBase58(),
+        protocolConfig: protocolConfig.toBase58(),
+      });
+
+      // Build transaction manually to avoid double-send with Phantom/Privy
+      const tx = await program.methods
         .sell(
           new BN(params.tokenAmount),
-          new BN(params.minSolOut || 0) // slippage protection
+          new BN(params.minSolOut || 0)
         )
         .accountsStrict({
           seller: publicKey,
@@ -264,7 +339,43 @@ export function useHumanofi() {
           tokenProgram: TOKEN_2022_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
-        .rpc();
+        .transaction();
+
+      // Set recent blockhash and fee payer
+      const conn = program.provider.connection;
+      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = publicKey;
+      console.log("[Humanofi] SELL DEBUG — blockhash:", blockhash);
+
+      // Sign via Privy wallet adapter (does NOT auto-send)
+      console.log("[Humanofi] SELL DEBUG — requesting wallet signature...");
+      const signedTx = await (program.provider as AnchorProvider).wallet.signTransaction(tx);
+      console.log("[Humanofi] SELL DEBUG — tx signed, sending raw...");
+
+      // Send raw — we control the send, no double
+      const txPromise = conn.sendRawTransaction(signedTx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      }).then(async (sig) => {
+        console.log("[Humanofi] SELL DEBUG — tx sent, sig:", sig);
+        await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+        console.log("[Humanofi] SELL DEBUG — tx confirmed!");
+        return sig;
+      }).catch((sendErr) => {
+        // Extract detailed logs from SendTransactionError
+        console.error("[Humanofi] SELL DEBUG — sendRawTransaction FAILED:");
+        console.error("[Humanofi] SELL DEBUG — Error:", sendErr);
+        if (sendErr && typeof sendErr === "object" && "logs" in sendErr) {
+          console.error("[Humanofi] SELL DEBUG — Transaction logs:", (sendErr as { logs: string[] }).logs);
+        }
+        if (sendErr && typeof sendErr === "object" && "getLogs" in sendErr && typeof (sendErr as { getLogs: () => Promise<string[]> }).getLogs === "function") {
+          (sendErr as { getLogs: () => Promise<string[]> }).getLogs().then((logs: string[]) => {
+            console.error("[Humanofi] SELL DEBUG — Full logs:", logs);
+          }).catch(() => {});
+        }
+        throw sendErr;
+      });
 
       toast.promise(txPromise, {
         loading: "Selling tokens...",
@@ -289,7 +400,8 @@ export function useHumanofi() {
       const [protocolConfig] = deriveProtocolConfigPDA();
       const [bondingCurve] = deriveBondingCurvePDA(mint);
 
-      const txPromise = program.methods
+      // Build transaction manually to avoid double-send with Phantom/Privy
+      const tx = await program.methods
         .claimCreatorFees()
         .accountsStrict({
           creator: publicKey,
@@ -299,7 +411,22 @@ export function useHumanofi() {
           creatorFeeVault,
           systemProgram: SystemProgram.programId,
         })
-        .rpc();
+        .transaction();
+
+      const conn = program.provider.connection;
+      const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash("confirmed");
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = publicKey;
+
+      const signedTx = await (program.provider as AnchorProvider).wallet.signTransaction(tx);
+
+      const txPromise = conn.sendRawTransaction(signedTx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: "confirmed",
+      }).then(async (sig) => {
+        await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed");
+        return sig;
+      });
 
       toast.promise(txPromise, {
         loading: "Claiming accumulated fees...",
@@ -431,8 +558,8 @@ function parseAnchorError(err: unknown): string {
     // Check for common wallet/network errors
     if (msg.includes("User rejected")) return "Transaction cancelled.";
     if (msg.includes("already been processed"))
-      return "Transaction already sent — refresh the page.";
-    // Check simulation errors FIRST
+      return "Transaction already confirmed — your wallet may show the result. Refresh if needed.";
+    // Check simulation errors AFTER "already processed" (message can contain both)
     if (msg.includes("Simulation failed"))
       return extractSimError(msg);
     if (msg.includes("no record of a prior credit"))

@@ -11,12 +11,15 @@ import ScreenerRow from "@/components/ScreenerRow";
 import Footer from "@/components/Footer";
 import ScreenerSidebar, { type ScreenerFilters, DEFAULT_FILTERS } from "@/components/ScreenerSidebar";
 import { useSolPrice } from "@/hooks/useSolPrice";
+import { useHumanofi } from "@/hooks/useHumanofi";
 import { formatSol, formatUsd, solToUsd } from "@/lib/price";
+import { PublicKey } from "@solana/web3.js";
 import { Binoculars, ArrowUp, ArrowDown } from "@phosphor-icons/react";
 
 interface ExploreResult {
   mint_address: string;
   display_name: string;
+  token_symbol: string | null;
   category: string;
   bio: string;
   avatar_url: string | null;
@@ -41,10 +44,12 @@ type SortKey = "activity_score" | "holder_count" | "price_sol" | "change_24h" | 
 export default function ExplorePage() {
   const [results, setResults] = useState<ExploreResult[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pricesLoaded, setPricesLoaded] = useState(false);
   const [filters, setFilters] = useState<ScreenerFilters>(DEFAULT_FILTERS);
   const [sortBy, setSortBy] = useState<SortKey>("activity_score");
   const [sortAsc, setSortAsc] = useState(false);
   const { priceUsd: solPriceUsd } = useSolPrice();
+  const { fetchBondingCurve } = useHumanofi();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -71,6 +76,35 @@ export default function ExplorePage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // ── Enrich with REAL on-chain prices (same as Person page) ──
+  useEffect(() => {
+    if (loading || results.length === 0 || pricesLoaded || !fetchBondingCurve) return;
+
+    const enrichPrices = async () => {
+      const enriched = await Promise.all(
+        results.map(async (r) => {
+          try {
+            const curve = await fetchBondingCurve(new PublicKey(r.mint_address));
+            if (!curve) return r;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const c = curve as any;
+            const x = c.x.toNumber();
+            const y = c.y.toNumber();
+            const realPrice = (x / y) * 1e6 / 1e9; // SOL per token, same as Person page
+            return { ...r, price_sol: realPrice };
+          } catch {
+            return r;
+          }
+        })
+      );
+      setResults(enriched);
+      setPricesLoaded(true);
+    };
+
+    enrichPrices();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, results.length, pricesLoaded, fetchBondingCurve]);
 
   // Client-side filtering & sorting
   const filtered = useMemo(() => {
@@ -221,6 +255,7 @@ export default function ExplorePage() {
                     key={r.mint_address}
                     id={r.mint_address}
                     name={r.display_name}
+                    ticker={r.token_symbol || undefined}
                     tag={r.category}
                     price={formatPriceSol(r.price_sol)}
                     priceUsd={formatPriceUsd(r.price_sol)}

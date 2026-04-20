@@ -1614,30 +1614,167 @@ img { display: block; max-width: 100%; }
   color: var(--text-muted);
 }
 
-.profile-chart-container {
-  border: 4px solid var(--border);
+/* ── Bonding Curve Chart (Humanofi Terminal) ── */
+.hm-chart {
+  border: 3px solid var(--border);
   background: #fff;
-  padding: 24px;
-  box-shadow: 8px 8px 0px var(--border);
+  box-shadow: 6px 6px 0px rgba(0,0,0,0.08);
+  position: relative;
 }
 
-.profile-chart-header {
+.hm-chart__header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
-  margin-bottom: 24px;
+  align-items: flex-start;
+  padding: 16px 20px 12px;
+  border-bottom: 2px solid var(--border-light);
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.profile-chart-svg-wrap {
-  width: 100%;
-  height: 240px;
-  background: var(--bg-panel);
-  border: 2px solid var(--border-light);
-  overflow: hidden;
+.hm-chart__price-block {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
 }
-.profile-chart-svg {
+
+.hm-chart__price {
+  font-size: 1.4rem;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.hm-chart__price-unit {
+  font-size: 0.65em;
+  color: var(--text-muted);
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.hm-chart__change {
+  font-size: 0.85rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.hm-chart__controls {
+  display: flex;
+  gap: 0;
+  border: 2px solid var(--border);
+}
+
+.hm-chart__tf-btn {
+  padding: 6px 12px;
+  background: #fff;
+  border: none;
+  border-right: 1px solid var(--border-light);
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: var(--font-sans);
+}
+.hm-chart__tf-btn:last-child {
+  border-right: none;
+}
+.hm-chart__tf-btn:hover {
+  background: var(--bg-panel);
+  color: var(--text);
+}
+.hm-chart__tf-btn--active {
+  background: var(--accent);
+  color: #fff;
+}
+.hm-chart__tf-btn--active:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Stats strip */
+.hm-chart__stats {
+  display: flex;
+  gap: 16px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border-light);
+  background: var(--bg-panel);
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.hm-chart__stat {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.hm-chart__stat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.hm-chart__stat-dot--live {
+  background: #10b981;
+  animation: pulse 2s infinite;
+}
+
+/* Chart canvas */
+.hm-chart__canvas {
   width: 100%;
-  height: 100%;
+  transition: opacity 0.4s ease;
+}
+
+/* Empty state */
+.hm-chart__empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -30%);
+  text-align: center;
+  pointer-events: none;
+  z-index: 2;
+}
+.hm-chart__empty-icon {
+  font-size: 2rem;
+  color: var(--border);
+  margin-bottom: 8px;
+  animation: pulse 3s infinite;
+}
+.hm-chart__empty-title {
+  font-size: 0.85rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+.hm-chart__empty-desc {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  max-width: 280px;
+  line-height: 1.5;
+  opacity: 0.7;
+}
+
+/* Legacy compat */
+.profile-chart-container {
+  border: none;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+}
+.profile-chart-header {
+  display: none;
 }
 
 .profile__stats-grid {
@@ -1931,6 +2068,68 @@ img { display: block; max-width: 100%; }
 .trade-widget__onramp-banner svg {
   color: #f59e0b;
   flex-shrink: 0;
+}
+
+/* ── Anti-Snipe Fair Launch Banner ── */
+.trade-widget__antispike {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(217, 119, 6, 0.12));
+  border: 2px solid rgba(245, 158, 11, 0.4);
+  border-left: 4px solid #f59e0b;
+}
+.trade-widget__antispike > svg {
+  color: #f59e0b;
+  flex-shrink: 0;
+}
+.trade-widget__antispike-content {
+  flex: 1;
+  min-width: 0;
+}
+.trade-widget__antispike-content strong {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 900;
+  color: #f59e0b;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.trade-widget__antispike-content p {
+  margin: 3px 0 0;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+.trade-widget__antispike-timer {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 2px solid rgba(245, 158, 11, 0.3);
+  font-size: 0.85rem;
+  font-weight: 900;
+  color: #f59e0b;
+  font-variant-numeric: tabular-nums;
+  animation: antispike-pulse 2s ease-in-out infinite;
+}
+@keyframes antispike-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Anti-Snipe token presets (6 buttons: 5K→50K) */
+.trade-widget__presets--snipe {
+  grid-template-columns: repeat(6, 1fr) !important;
+}
+.trade-widget__preset--active {
+  font-weight: 900;
+}
+.trade-widget__preset--over {
+  text-decoration: line-through;
+  opacity: 0.35;
 }
 
 .trade-widget__onramp-btn {
@@ -2433,26 +2632,33 @@ img { display: block; max-width: 100%; }
 /* ========== TOKEN ECONOMICS (profile view) ========== */
 
 .profile-token-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
 }
 .profile-token-stat {
   border: 2px solid var(--border);
-  padding: 14px;
+  border-bottom: none;
+  padding: 14px 16px;
   background: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.profile-token-stat:last-child {
+  border-bottom: 2px solid var(--border);
 }
 .profile-token-stat span {
-  display: block;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 800;
   text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--text-muted);
-  margin-bottom: 4px;
 }
 .profile-token-stat strong {
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 800;
+  text-align: right;
 }
 
 /* ========== MANAGE PAGE ========== */
@@ -8569,92 +8775,174 @@ img { display: block; max-width: 100%; }
   color: var(--accent);
 }
 
-/* ── Hero Visual: Brutalist Terminal ── */
+/* ── Hero Visual: Floating Human Cards ── */
 
-.hero__terminal {
+.hero__visual {
   flex-shrink: 0;
   width: 380px;
-  background: #000;
-  border: 2px solid var(--border);
-  box-shadow: 6px 6px 0px var(--border);
-  font-family: 'Courier New', Courier, monospace;
-  color: #fff;
-  display: flex;
-  flex-direction: column;
-}
-
-.hero__terminal-header {
+  height: 380px;
+  position: relative;
   display: flex;
   align-items: center;
-  padding: 8px 12px;
-  border-bottom: 2px solid var(--border);
-  background: var(--bg-panel);
+  justify-content: center;
 }
 
-.hero__terminal-dots {
-  display: flex;
-  gap: 6px;
-  margin-right: 16px;
+.hero__cards-stack {
+  position: relative;
+  width: 100%;
+  height: 100%;
 }
 
-.hero__terminal-dots span {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-}
-
-.hero__terminal-dots span:nth-child(1) { background: #ef4444; }
-.hero__terminal-dots span:nth-child(2) { background: #eab308; }
-.hero__terminal-dots span:nth-child(3) { background: #22c55e; }
-
-.hero__terminal-title {
-  color: var(--text);
-  font-size: 0.7rem;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-}
-
-.hero__terminal-body {
+.hero__card {
+  position: absolute;
+  width: 240px;
+  background: #fff;
+  border: 3px solid var(--border);
   padding: 16px;
+  box-shadow: 6px 6px 0px rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.hero__card-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hero__card-top img {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+  background: #f0f0f0;
+}
+
+.hero__card-name {
+  font-weight: 900;
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.hero__card-symbol {
   font-size: 0.75rem;
-  line-height: 1.5;
-  background: #0a0a0a;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
 }
 
-.hero__terminal-body .line {
-  margin-bottom: 6px;
-  opacity: 0;
-  animation: typeLine 0.1s forwards;
+.hero__card-stats {
+  display: flex;
+  justify-content: space-between;
+  border-top: 1px dashed var(--border-light);
+  padding-top: 8px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.hero__card-stats span {
+  color: var(--text);
 }
 
-.hero__terminal-body .line:nth-child(1) { animation-delay: 0.2s; }
-.hero__terminal-body .line:nth-child(2) { animation-delay: 0.5s; }
-.hero__terminal-body .line:nth-child(3) { animation-delay: 1.0s; }
-.hero__terminal-body .line:nth-child(5) { animation-delay: 1.5s; }
-.hero__terminal-body .line:nth-child(6) { animation-delay: 1.8s; }
-.hero__terminal-body .line:nth-child(7) { animation-delay: 2.0s; }
-.hero__terminal-body .line:nth-child(9) { animation-delay: 2.8s; }
-.hero__terminal-body .line:nth-child(10) { animation-delay: 3.5s; }
-
-@keyframes typeLine {
-  to { opacity: 1; }
-}
-
-.hero__terminal-body .prompt { font-weight: bold; color: #fff; }
-.hero__terminal-body .indent { padding-left: 12px; color: #a3a3a3; }
-.hero__terminal-body .cyan { color: #06b6d4; font-weight: bold; }
-.hero__terminal-body .yellow { color: #eab308; font-weight: bold; }
-.hero__terminal-body .green { color: #22c55e; font-weight: bold; }
-.hero__terminal-body .accent { color: var(--accent); font-weight: bold; }
-
-.hero__terminal-body .box {
-  margin-top: 8px;
+.hero__card-price {
+  background: var(--bg-panel);
   padding: 10px;
-  border: 1px dashed var(--accent);
-  background: rgba(0,0,0,0.5);
-  color: #d4d4d4;
-  line-height: 1.6;
+  border-radius: 4px;
+  border: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hero__card-price span {
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.hero__card-price strong {
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hero__card-price strong span {
+  font-size: 0.75rem;
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.hero__card-btn {
+  width: 100%;
+  background: var(--accent);
+  color: #fff;
+  border: 2px solid var(--border);
+  padding: 10px;
+  font-weight: 800;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  box-shadow: 3px 3px 0px rgba(0,0,0,0.2);
+}
+
+/* Animations */
+@keyframes float1 {
+  0%, 100% { transform: rotate(-8deg) translate(-20px, -20px); }
+  50% { transform: rotate(-6deg) translate(-20px, -30px); }
+}
+@keyframes float2 {
+  0%, 100% { transform: rotate(10deg) translate(20px, -60px); }
+  50% { transform: rotate(12deg) translate(20px, -50px); }
+}
+@keyframes floatMain {
+  0%, 100% { transform: translate(0, 10px); }
+  50% { transform: translate(0, 0px); }
+}
+
+.hero__card--bg2 {
+  top: 60px;
+  left: 20px;
+  z-index: 1;
+  opacity: 0.8;
+  transform: rotate(-8deg) translate(-20px, -20px);
+  animation: float1 6s ease-in-out infinite;
+}
+
+.hero__card--bg1 {
+  top: 100px;
+  right: -10px;
+  z-index: 2;
+  opacity: 0.9;
+  transform: rotate(10deg) translate(20px, -60px);
+  animation: float2 7s ease-in-out infinite reverse;
+}
+
+.hero__card--main {
+  top: 170px;
+  left: 50px;
+  z-index: 3;
+  width: 280px;
+  border-color: var(--accent);
+  transform: translate(0, 10px);
+  animation: floatMain 5s ease-in-out infinite;
+}
+
+.hero__cards-stack:hover .hero__card--bg2 {
+  transform: rotate(-12deg) translate(-40px, -30px);
+}
+.hero__cards-stack:hover .hero__card--bg1 {
+  transform: rotate(15deg) translate(40px, -80px);
+}
+.hero__cards-stack:hover .hero__card--main {
+  transform: translate(0, -10px) scale(1.05);
 }
 /* ── Hero responsive ── */
 

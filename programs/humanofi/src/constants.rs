@@ -157,6 +157,19 @@ pub const MIN_INITIAL_LIQUIDITY: u64 = 30_000_000; // 0.03 SOL = 30M lamports
 /// Maximum initial liquidity to prevent price manipulation (10 SOL)
 pub const MAX_INITIAL_LIQUIDITY: u64 = 10_000_000_000; // 10 SOL
 
+// ---- Anti-Snipe Launch Window ----
+//
+// Fair Launch protection: during the first 24 hours after token creation,
+// each wallet is limited to max 5% of the total supply (50,000 tokens).
+// After 24h: no restrictions — fully free market.
+
+/// Anti-snipe protection window: 24 hours after token creation
+pub const ANTI_SNIPE_WINDOW: i64 = 24 * 60 * 60; // 86,400 seconds
+
+/// Max tokens per wallet during anti-snipe window: 5% of total supply
+/// 5% of INITIAL_Y (10^12 base units) = 50,000,000,000 base units = 50,000 tokens
+pub const ANTI_SNIPE_MAX_TOKENS: u64 = 50_000_000_000;
+
 // ---- Seeds ----
 
 pub const SEED_CURVE: &[u8] = b"curve";

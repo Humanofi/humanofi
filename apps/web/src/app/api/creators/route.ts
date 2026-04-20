@@ -102,6 +102,7 @@ export async function POST(request: NextRequest) {
       mintAddress,
       walletAddress,
       displayName,
+      tokenSymbol,
       category,
       bio,
       avatarUrl,
@@ -171,6 +172,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if token symbol is already taken
+    if (tokenSymbol) {
+      const { data: existingBySymbol } = await supabase
+        .from("creator_tokens")
+        .select("id")
+        .eq("token_symbol", tokenSymbol.toUpperCase())
+        .single();
+
+      if (existingBySymbol) {
+        return NextResponse.json(
+          { error: `Token symbol $${tokenSymbol.toUpperCase()} is already taken.` },
+          { status: 409 }
+        );
+      }
+    }
+
     // ══════════════════════════════════════════════
     // INSERT (Only after on-chain verification)
     // ══════════════════════════════════════════════
@@ -182,6 +199,7 @@ export async function POST(request: NextRequest) {
       wallet_address: walletAddress,
       hiuid: walletAddress, // Beta: use wallet as temp hiuid — will be KYC hiuid in prod
       display_name: displayName,
+      token_symbol: tokenSymbol ? tokenSymbol.toUpperCase() : null,
       category,
       bio: bio || "",
       story: story || "",

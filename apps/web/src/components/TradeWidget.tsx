@@ -27,14 +27,19 @@ import {
   CaretDown,
   Coin,
   Lightning,
+  ShieldCheck,
 } from "@phosphor-icons/react";
 
 // Token-2022
 const TOKEN_2022_PROGRAM_ID = new PublicKey("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");
 
+// Anti-Snipe: max tokens per wallet during 24h launch window
+const ANTI_SNIPE_MAX_TOKENS = 50_000; // 50K tokens (human-readable)
+
 interface TradeWidgetProps {
   tokenColor: string;
   displayName: string;
+  tokenSymbol?: string;
   priceNum: number;
   mintAddress?: string;
   isReal: boolean;
@@ -45,6 +50,8 @@ interface TradeWidgetProps {
   hasCurveData: boolean;
   onTrade: (tab: "buy" | "sell", amount: number) => void;
   onLogin: () => void;
+  antiSnipeActive?: boolean;
+  antiSnipeEndsAt?: number;
 }
 
 function formatSol(n: number) {
@@ -67,6 +74,7 @@ function formatTokens(n: number) {
 export default function TradeWidget({
   tokenColor,
   displayName,
+  tokenSymbol,
   priceNum,
   mintAddress,
   isReal,
@@ -77,6 +85,8 @@ export default function TradeWidget({
   hasCurveData,
   onTrade,
   onLogin,
+  antiSnipeActive = false,
+  antiSnipeEndsAt = 0,
 }: TradeWidgetProps) {
   const [activeTab, setActiveTab] = useState<"buy" | "sell">("buy");
   const [amount, setAmount] = useState("");
@@ -85,6 +95,22 @@ export default function TradeWidget({
   const { connection, publicKey } = useHumanofiProgram();
   const { priceUsd: solPriceUsd } = useSolPrice();
   const { fundWallet } = useFundWallet();
+
+  // ── Anti-Snipe countdown ──
+  const [countdown, setCountdown] = useState("");
+  useEffect(() => {
+    if (!antiSnipeActive || !antiSnipeEndsAt) { setCountdown(""); return; }
+    const tick = () => {
+      const diff = antiSnipeEndsAt - Math.floor(Date.now() / 1000);
+      if (diff <= 0) { setCountdown(""); return; }
+      const h = Math.floor(diff / 3600);
+      const m = Math.floor((diff % 3600) / 60);
+      setCountdown(`${h}h ${m.toString().padStart(2, "0")}m`);
+    };
+    tick();
+    const iv = setInterval(tick, 30_000); // update every 30s
+    return () => clearInterval(iv);
+  }, [antiSnipeActive, antiSnipeEndsAt]);
 
   // Handle SOL purchase via onramp
   const handleBuySol = useCallback(() => {
@@ -138,21 +164,36 @@ export default function TradeWidget({
     return () => clearInterval(interval);
   }, [fetchBalances]);
 
+  // ── Anti-Snipe mode flag ──
+  const isSnipeBuy = antiSnipeActive && activeTab === "buy";
+  const snipeRemaining = Math.max(0, ANTI_SNIPE_MAX_TOKENS - tokenBalance);
+
   // ── Conversion helpers ──
   const solAmountFromInput = useMemo(() => {
     const parsed = parseFloat(amount) || 0;
     if (activeTab === "buy") {
+      if (isSnipeBuy) {
+        // In snipe mode, input is in TOKENS → estimate SOL cost
+        if (!hasCurveData || parsed <= 0) return 0;
+        // Reverse: find SOL needed for `parsed` tokens via binary search approximation
+        // Simple approach: use price per token × amount × (1 + fees)
+        const pricePerToken = rawX / rawY; // lamports per base unit
+        return (parsed * 1e6 * pricePerToken / 1e9) * 1.06; // +6% for fees + slippage margin
+      }
       return inputMode === "USD" && solPriceUsd > 0
         ? parsed / solPriceUsd
         : parsed;
     }
     return parsed; // sell: amount is in tokens
-  }, [amount, activeTab, inputMode, solPriceUsd]);
+  }, [amount, activeTab, inputMode, solPriceUsd, isSnipeBuy, hasCurveData, rawX, rawY]);
 
   const usdEquivalent = useMemo(() => {
     if (solPriceUsd <= 0) return null;
     const parsed = parseFloat(amount) || 0;
     if (activeTab === "buy") {
+      if (isSnipeBuy) {
+        return solAmountFromInput * solPriceUsd;
+      }
       if (inputMode === "SOL") return parsed * solPriceUsd;
       return parsed; // already USD
     }
@@ -161,14 +202,24 @@ export default function TradeWidget({
       ? estimateSell(rawX, rawY, rawK, parsed * 1e6).solNet / 1e9
       : parsed * priceNum;
     return solReceive * solPriceUsd;
-  }, [amount, activeTab, inputMode, solPriceUsd, hasCurveData, rawX, rawY, rawK, priceNum]);
+  }, [amount, activeTab, inputMode, solPriceUsd, hasCurveData, rawX, rawY, rawK, priceNum, isSnipeBuy, solAmountFromInput]);
 
   // ── Estimate ──
   const estimate = useMemo(() => {
     const parsed = parseFloat(amount) || 0;
-    if (parsed <= 0) return { value: "0", label: "" };
+    if (parsed <= 0) return { value: "0", label: "", sol: "", usd: undefined as string | undefined };
 
     if (activeTab === "buy") {
+      if (isSnipeBuy) {
+        // Input is tokens → show SOL cost
+        const solCost = solAmountFromInput;
+        return {
+          value: formatSol(solCost),
+          label: "SOL",
+          sol: formatSol(solCost),
+          usd: solPriceUsd > 0 ? formatUsd(solCost * solPriceUsd) : undefined,
+        };
+      }
       const solAmt = solAmountFromInput;
       const tokensOut = hasCurveData
         ? estimateBuy(rawX, rawY, rawK, solAmt * 1e9).tokensBuyer / 1e6
@@ -176,6 +227,8 @@ export default function TradeWidget({
       return {
         value: formatTokens(tokensOut),
         label: `${displayName.split(" ")[0].toUpperCase()} tokens`,
+        sol: "",
+        usd: undefined,
       };
     } else {
       const solOut = hasCurveData
@@ -184,31 +237,59 @@ export default function TradeWidget({
       return {
         value: formatSol(solOut),
         label: "SOL",
+        sol: "",
         usd: solPriceUsd > 0 ? formatUsd(solOut * solPriceUsd) : undefined,
       };
     }
-  }, [amount, activeTab, solAmountFromInput, hasCurveData, rawX, rawY, rawK, priceNum, solPriceUsd, displayName]);
+  }, [amount, activeTab, solAmountFromInput, hasCurveData, rawX, rawY, rawK, priceNum, solPriceUsd, displayName, isSnipeBuy]);
 
   // Validation
   const inputError = useMemo(() => {
     const parsed = parseFloat(amount);
     if (!parsed || parsed <= 0) return null;
     if (activeTab === "buy") {
-      const solNeeded = solAmountFromInput;
-      if (solBalance > 0 && solNeeded > solBalance) return "Insufficient SOL balance";
+      if (isSnipeBuy) {
+        // In snipe mode, input is tokens
+        if (parsed > snipeRemaining) {
+          return snipeRemaining > 0
+            ? `Fair Launch: max ${formatTokens(snipeRemaining)} more tokens`
+            : "Fair Launch limit reached (50K tokens max)";
+        }
+        // Also check SOL
+        if (solBalance > 0 && solAmountFromInput > solBalance) return "Insufficient SOL balance";
+      } else {
+        const solNeeded = solAmountFromInput;
+        if (solBalance > 0 && solNeeded > solBalance) return "Insufficient SOL balance";
+      }
     } else {
       if (tokenBalance > 0 && parsed > tokenBalance) return "Insufficient token balance";
     }
     return null;
-  }, [amount, activeTab, solAmountFromInput, solBalance, tokenBalance]);
+  }, [amount, activeTab, solAmountFromInput, solBalance, tokenBalance, isSnipeBuy, snipeRemaining]);
 
-  // Presets
-  const presets = [
+  // ── Anti-Snipe token presets ──
+  const snipePresets = [
+    { label: "5K", tokens: 5_000 },
+    { label: "10K", tokens: 10_000 },
+    { label: "20K", tokens: 20_000 },
+    { label: "30K", tokens: 30_000 },
+    { label: "40K", tokens: 40_000 },
+    { label: "50K", tokens: 50_000 },
+  ];
+
+  // Normal presets
+  const normalPresets = [
     { label: "25%", factor: 0.25 },
     { label: "50%", factor: 0.5 },
     { label: "75%", factor: 0.75 },
     { label: "MAX", factor: 1 },
   ];
+
+  const handleSnipePreset = (tokens: number) => {
+    const capped = Math.min(tokens, snipeRemaining);
+    if (capped <= 0) return;
+    setAmount(capped.toFixed(0));
+  };
 
   const handlePreset = (factor: number) => {
     if (activeTab === "buy") {
@@ -244,27 +325,20 @@ export default function TradeWidget({
     if (inputError) return;
 
     if (activeTab === "buy") {
+      // In snipe mode, input is in tokens → convert to SOL for onTrade
       onTrade("buy", solAmountFromInput);
     } else {
       onTrade("sell", parsed);
     }
   };
 
-  const tokenShort = displayName.split(" ")[0].toUpperCase();
+  const tokenShort = tokenSymbol || displayName.split(" ")[0].toUpperCase();
 
   return (
     <div className="trade-widget" style={{ borderColor: tokenColor }}>
       {/* Header */}
       <div className="trade-widget__header">
         <span className="trade-widget__title">{isReal ? "Trade" : "Demo Mode"}</span>
-        <span className="trade-widget__price" style={{ color: tokenColor }}>
-          {priceNum > 0 ? formatSol(priceNum) : "—"} SOL
-          {solPriceUsd > 0 && priceNum > 0 && (
-            <span className="trade-widget__price-usd">
-              {formatUsd(solToUsd(priceNum, solPriceUsd))}
-            </span>
-          )}
-        </span>
       </div>
 
       {/* Tabs */}
@@ -336,12 +410,14 @@ export default function TradeWidget({
       <div className="trade-widget__input-group">
         <div className="trade-widget__input-header">
           <label className="trade-widget__label">
-            {activeTab === "buy"
-              ? (inputMode === "USD" ? "Amount in USD" : "Amount in SOL")
-              : `Amount of ${tokenShort}`
+            {isSnipeBuy
+              ? `Tokens to buy (max ${formatTokens(snipeRemaining)})`
+              : activeTab === "buy"
+                ? (inputMode === "USD" ? "Amount in USD" : "Amount in SOL")
+                : `Amount of ${tokenShort}`
             }
           </label>
-          {activeTab === "buy" && solPriceUsd > 0 && (
+          {activeTab === "buy" && !isSnipeBuy && solPriceUsd > 0 && (
             <button className="trade-widget__mode-toggle" onClick={toggleInputMode}>
               <ArrowsClockwise size={11} weight="bold" />
               {inputMode === "SOL" ? "USD" : "SOL"}
@@ -353,22 +429,33 @@ export default function TradeWidget({
           <input
             type="number"
             className={`trade-input ${inputError ? "trade-input--error" : ""}`}
-            placeholder="0.00"
+            placeholder={isSnipeBuy ? "e.g. 10000" : "0.00"}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             min="0"
-            step="any"
+            max={isSnipeBuy ? snipeRemaining : undefined}
+            step={isSnipeBuy ? "1000" : "any"}
           />
           <span className="trade-widget__input-suffix">
-            {activeTab === "buy"
-              ? inputMode === "USD" ? "$" : "SOL"
-              : tokenShort
+            {isSnipeBuy
+              ? "tokens"
+              : activeTab === "buy"
+                ? inputMode === "USD" ? "$" : "SOL"
+                : tokenShort
             }
           </span>
         </div>
 
-        {/* USD equivalent when typing in SOL */}
-        {activeTab === "buy" && amount && usdEquivalent !== null && usdEquivalent > 0 && (
+        {/* SOL cost estimate in snipe mode */}
+        {isSnipeBuy && amount && solAmountFromInput > 0 && (
+          <div className="trade-widget__input-sub">
+            ≈ {formatSol(solAmountFromInput)} SOL
+            {solPriceUsd > 0 && ` (${formatUsd(solAmountFromInput * solPriceUsd)})`}
+          </div>
+        )}
+
+        {/* USD equivalent when typing in SOL (normal mode) */}
+        {!isSnipeBuy && activeTab === "buy" && amount && usdEquivalent !== null && usdEquivalent > 0 && (
           <div className="trade-widget__input-sub">
             ≈ {inputMode === "SOL" ? formatUsd(usdEquivalent) : `${formatSol(usdEquivalent / solPriceUsd)} SOL`}
           </div>
@@ -389,26 +476,46 @@ export default function TradeWidget({
         )}
       </div>
 
-      {/* Presets */}
-      <div className="trade-widget__presets">
-        {presets.map((p) => (
-          <button
-            key={p.label}
-            className="trade-widget__preset"
-            onClick={() => handlePreset(p.factor)}
-            disabled={
-              activeTab === "buy" ? solBalance <= 0.005 : tokenBalance <= 0
-            }
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
+      {/* Presets — Token presets in snipe mode, SOL% presets otherwise */}
+      {isSnipeBuy ? (
+        <div className="trade-widget__presets trade-widget__presets--snipe">
+          {snipePresets.map((p) => {
+            const disabled = p.tokens > snipeRemaining || solBalance <= 0.005;
+            const isActive = amount === String(Math.min(p.tokens, snipeRemaining));
+            return (
+              <button
+                key={p.label}
+                className={`trade-widget__preset ${isActive ? "trade-widget__preset--active" : ""} ${p.tokens > snipeRemaining ? "trade-widget__preset--over" : ""}`}
+                onClick={() => handleSnipePreset(p.tokens)}
+                disabled={disabled}
+                style={isActive ? { background: tokenColor, borderColor: tokenColor, color: "#fff" } : {}}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="trade-widget__presets">
+          {normalPresets.map((p) => (
+            <button
+              key={p.label}
+              className="trade-widget__preset"
+              onClick={() => handlePreset(p.factor)}
+              disabled={
+                activeTab === "buy" ? solBalance <= 0.005 : tokenBalance <= 0
+              }
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Estimate */}
       {parseFloat(amount) > 0 && (
         <div className="trade-widget__estimate">
-          <span>You will {activeTab === "buy" ? "receive" : "get"}</span>
+          <span>{isSnipeBuy ? "Estimated cost" : `You will ${activeTab === "buy" ? "receive" : "get"}`}</span>
           <span style={{ color: "var(--text)", fontWeight: 800 }}>
             ~{estimate.value} {estimate.label}
             {estimate.usd && (

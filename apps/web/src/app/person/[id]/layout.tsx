@@ -37,6 +37,7 @@ export interface CreatorData {
   mint_address: string;
   wallet_address: string;
   display_name: string;
+  token_symbol?: string;
   category: string;
   bio: string;
   story: string;
@@ -69,6 +70,7 @@ export interface BondingCurveData {
   twapPrice: { toString: () => string };
   tradeCount: { toNumber: () => number };
   creator: { toString: () => string };
+  createdAt: { toNumber: () => number };
 }
 
 interface PersonContextType {
@@ -83,6 +85,8 @@ interface PersonContextType {
   tokenColor: string;
   refreshCurve: () => Promise<void>;
   chartRef: React.RefObject<BondingCurveChartHandle | null>;
+  antiSnipeActive: boolean;
+  antiSnipeEndsAt: number;
 }
 
 const PersonContext = createContext<PersonContextType>({
@@ -97,6 +101,8 @@ const PersonContext = createContext<PersonContextType>({
   tokenColor: "#1144ff",
   refreshCurve: async () => {},
   chartRef: { current: null },
+  antiSnipeActive: false,
+  antiSnipeEndsAt: 0,
 });
 
 export function usePerson() {
@@ -338,6 +344,12 @@ export default function PersonLayout({
   const isManage = pathname?.includes("/manage");
   const isProfile = !isInnerCircle && !isPublicPosts && !isDrops && !isManage;
 
+  // ── Anti-Snipe Launch Window (24h) ──
+  const ANTI_SNIPE_WINDOW_SECS = 24 * 60 * 60;
+  const curveCreatedAt = curveData?.createdAt?.toNumber() || 0;
+  const antiSnipeEndsAt = curveCreatedAt > 0 ? curveCreatedAt + ANTI_SNIPE_WINDOW_SECS : 0;
+  const antiSnipeActive = antiSnipeEndsAt > 0 && Math.floor(Date.now() / 1000) < antiSnipeEndsAt;
+
   // Score status config
   const scoreConfig = {
     thriving: { color: "#22c55e", label: "Thriving", icon: "▲" },
@@ -348,7 +360,7 @@ export default function PersonLayout({
   }[activityStatus] || { color: "#f59e0b", label: "Moderate", icon: "○" };
 
   return (
-    <PersonContext.Provider value={{ creator, curveData, liveCurve, isHolder, isCreator, loading, mockPerson: person, displayName, tokenColor, refreshCurve, chartRef }}>
+    <PersonContext.Provider value={{ creator, curveData, liveCurve, isHolder, isCreator, loading, mockPerson: person, displayName, tokenColor, refreshCurve, chartRef, antiSnipeActive, antiSnipeEndsAt }}>
       <div className="halftone-bg" />
       <Topbar />
 

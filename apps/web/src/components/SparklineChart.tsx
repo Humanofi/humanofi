@@ -26,19 +26,8 @@ export default function SparklineChart({
   const [realChange, setRealChange] = useState<number>(change);
   const [hasData, setHasData] = useState(false);
 
-  // --- Seeded Random for Mock Data ---
-  const seedRef = { current: 1337 };
-  const seededRandom = () => {
-    seedRef.current = (seedRef.current * 1664525 + 1013904223) % 4294967296;
-    return seedRef.current / 4294967296;
-  };
-
   useEffect(() => {
     if (!mintAddress) return;
-    
-    // Initialize seed based on mint address
-    const charSum = mintAddress.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    seedRef.current = charSum * 1000;
 
     const fetchData = async () => {
       if (!supabase) return;
@@ -62,26 +51,18 @@ export default function SparklineChart({
             setRealChange(parseFloat(((last - first) / first * 100).toFixed(1)));
           }
         } else {
-          // Generate a realistic looking sparkline trend based on the `change` direction
-          const basePoints = [];
-          let currentVal = change >= 0 ? 30 : 70; // Start point
-          
-          for (let i = 0; i < 12; i++) {
-            basePoints.push(currentVal);
-            // Trend towards the change direction
-            const trend = change >= 0 ? (seededRandom() * 15 - 3) : (seededRandom() * 15 - 12);
-            currentVal += trend;
-          }
-          setPoints(basePoints);
+          // No trades or only 1 trade → flat line (honest — no fake curves)
+          setPoints([10, 10, 10, 10, 10]);
           setHasData(false);
-          setRealChange(change);
+          setRealChange(0);
         }
       } catch {
-        // Keep fallback
+        // Keep flat line
       }
     };
 
     fetchData();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mintAddress, change]);
 
   // Generate smooth SVG path components
